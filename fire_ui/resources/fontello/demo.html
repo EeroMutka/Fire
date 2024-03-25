@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  <!--[if lt IE 9]><script language="javascript" type="text/javascript" src="//html5shim.googlecode.com/svn/trunk/html5.js"></script><![endif]-->
+  <meta charset="UTF-8">
+  <style>
+    html {
+      font-size: 100%;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    a:focus {
+      outline: thin dotted #333;
+      outline: 5px auto -webkit-focus-ring-color;
+      outline-offset: -2px;
+    }
+    a:hover,
+    a:active {
+      outline: 0;
+    }
+    input {
+      margin: 0;
+      font-size: 100%;
+      vertical-align: middle;
+      *overflow: visible;
+      line-height: normal;
+    }
+    input::-moz-focus-inner {
+      padding: 0;
+      border: 0;
+    }
+    body {
+      margin: 0;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      line-height: 20px;
+      color: #333;
+      background-color: #fff;
+    }
+    a {
+      color: #08c;
+      text-decoration: none;
+    }
+    a:hover {
+      color: #005580;
+      text-decoration: underline;
+    }
+    .row {
+      margin-left: -20px;
+      *zoom: 1;
+    }
+    .row:before,
+    .row:after {
+      display: table;
+      content: "";
+      line-height: 0;
+    }
+    .row:after {
+      clear: both;
+    }
+    .span3 {
+      float: left;
+      min-height: 1px;
+      margin-left: 20px;
+      width: 220px;
+    }
+    .container {
+      width: 940px;
+      margin-right: auto;
+      margin-left: auto;
+      *zoom: 1;
+    }
+    .container:before,
+    .container:after {
+      display: table;
+      content: "";
+      line-height: 0;
+    }
+    .container:after {
+      clear: both;
+    }
+    small {
+      font-size: 85%;
+    }
+    h1 {
+      margin: 10px 0;
+      font-family: inherit;
+      font-weight: bold;
+      line-height: 20px;
+      color: inherit;
+      text-rendering: optimizelegibility;
+      line-height: 40px;
+      font-size: 38.5px;
+    }
+    h1 small {
+      font-weight: normal;
+      line-height: 1;
+      color: #999;
+      font-size: 24.5px;
+    }
+
+    body {
+      margin-top: 90px;
+    }
+    .header {
+      position: fixed;
+      top: 0;
+      left: 50%;
+      margin-left: -480px;
+      background-color: #fff;
+      border-bottom: 1px solid #ddd;
+      padding-top: 10px;
+      z-index: 10;
+    }
+    .footer {
+      color: #ddd;
+      font-size: 12px;
+      text-align: center;
+      margin-top: 20px;
+    }
+    .footer a {
+      color: #ccc;
+      text-decoration: underline;
+    }
+    .the-icons {
+      font-size: 14px;
+      line-height: 24px;
+    }
+    .switch {
+      position: absolute;
+      right: 0;
+      bottom: 10px;
+      color: #666;
+    }
+    .switch input {
+      margin-right: 0.3em;
+    }
+    .codesOn .i-name {
+      display: none;
+    }
+    .codesOn .i-code {
+      display: inline;
+    }
+    .i-code {
+      display: none;
+    }
+    @font-face {
+      font-family: 'fontello';
+      src: url('./font/fontello.eot?62415473');
+      src: url('./font/fontello.eot?62415473#iefix') format('embedded-opentype'),
+           url('./font/fontello.woff?62415473') format('woff'),
+           url('./font/fontello.ttf?62415473') format('truetype'),
+           url('./font/fontello.svg?62415473#fontello') format('svg');
+      font-weight: normal;
+      font-style: normal;
+    }
+    .demo-icon {
+      font-family: "fontello";
+      font-style: normal;
+      font-weight: normal;
+      speak: never;
+     
+      display: inline-block;
+      text-decoration: inherit;
+      width: 1em;
+      margin-right: .2em;
+      text-align: center;
+      /* opacity: .8; */
+     
+      /* For safety - reset parent styles, that can break glyph codes*/
+      font-variant: normal;
+      text-transform: none;
+     
+      /* fix buttons height, for twitter bootstrap */
+      line-height: 1em;
+     
+      /* Animation center compensation - margins should be symmetric */
+      /* remove if not needed */
+      margin-left: .2em;
+     
+      /* You can be more comfortable with increased icons size */
+      /* font-size: 120%; */
+     
+      /* Font smoothing. That was taken from TWBS */
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+     
+      /* Uncomment for 3D effect */
+      /* text-shadow: 1px 1px 1px rgba(127, 127, 127, 0.3); */
+    }
+    </style>
+    <link rel="stylesheet" href="css/animation.css"><!--[if IE 7]><link rel="stylesheet" href="css/" + font.fontname + "-ie7.css"><![endif]-->
+    <script>
+      function toggleCodes(on) {
+        var obj = document.getElementById('icons');
+      
+        if (on) {
+          obj.className += ' codesOn';
+        } else {
+          obj.className = obj.className.replace(' codesOn', '');
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="container header">
+      <h1>fontello <small>font demo</small></h1>
+      <label class="switch">
+        <input type="checkbox" onclick="toggleCodes(this.checked)">show codes
+      </label>
+    </div>
+    <div class="container" id="icons">
+      <div class="row">
+        <div class="span3" title="Code: 0x41">
+          <i class="demo-icon icon-check">&#x41;</i> <span class="i-name">icon-check</span><span class="i-code">0x41</span>
+        </div>
+        <div class="span3" title="Code: 0x42">
+          <i class="demo-icon icon-folder">&#x42;</i> <span class="i-name">icon-folder</span><span class="i-code">0x42</span>
+        </div>
+        <div class="span3" title="Code: 0x43">
+          <i class="demo-icon icon-trash">&#x43;</i> <span class="i-name">icon-trash</span><span class="i-code">0x43</span>
+        </div>
+        <div class="span3" title="Code: 0x44">
+          <i class="demo-icon icon-down-open-mini">&#x44;</i> <span class="i-name">icon-down-open-mini</span><span class="i-code">0x44</span>
+        </div>
+      </div>
+      <div class="row">
+        <div class="span3" title="Code: 0x45">
+          <i class="demo-icon icon-left-open-mini">&#x45;</i> <span class="i-name">icon-left-open-mini</span><span class="i-code">0x45</span>
+        </div>
+        <div class="span3" title="Code: 0x46">
+          <i class="demo-icon icon-right-open-mini">&#x46;</i> <span class="i-name">icon-right-open-mini</span><span class="i-code">0x46</span>
+        </div>
+        <div class="span3" title="Code: 0x47">
+          <i class="demo-icon icon-up-open-mini">&#x47;</i> <span class="i-name">icon-up-open-mini</span><span class="i-code">0x47</span>
+        </div>
+        <div class="span3" title="Code: 0x48">
+          <i class="demo-icon icon-plus">&#x48;</i> <span class="i-name">icon-plus</span><span class="i-code">0x48</span>
+        </div>
+      </div>
+      <div class="row">
+        <div class="span3" title="Code: 0x49">
+          <i class="demo-icon icon-minus">&#x49;</i> <span class="i-name">icon-minus</span><span class="i-code">0x49</span>
+        </div>
+        <div class="span3" title="Code: 0x4a">
+          <i class="demo-icon icon-cancel">&#x4a;</i> <span class="i-name">icon-cancel</span><span class="i-code">0x4a</span>
+        </div>
+        <div class="span3" title="Code: 0x4b">
+          <i class="demo-icon icon-puzzle">&#x4b;</i> <span class="i-name">icon-puzzle</span><span class="i-code">0x4b</span>
+        </div>
+        <div class="span3" title="Code: 0x4c">
+          <i class="demo-icon icon-archive">&#x4c;</i> <span class="i-name">icon-archive</span><span class="i-code">0x4c</span>
+        </div>
+      </div>
+      <div class="row">
+        <div class="span3" title="Code: 0x4d">
+          <i class="demo-icon icon-doc-text">&#x4d;</i> <span class="i-name">icon-doc-text</span><span class="i-code">0x4d</span>
+        </div>
+        <div class="span3" title="Code: 0x4e">
+          <i class="demo-icon icon-doc-text-inv">&#x4e;</i> <span class="i-name">icon-doc-text-inv</span><span class="i-code">0x4e</span>
+        </div>
+        <div class="span3" title="Code: 0x4f">
+          <i class="demo-icon icon-cube">&#x4f;</i> <span class="i-name">icon-cube</span><span class="i-code">0x4f</span>
+        </div>
+        <div class="span3" title="Code: 0x50">
+          <i class="demo-icon icon-cubes">&#x50;</i> <span class="i-name">icon-cubes</span><span class="i-code">0x50</span>
+        </div>
+      </div>
+      <div class="row">
+        <div class="span3" title="Code: 0x51">
+          <i class="demo-icon icon-doc-text-1">&#x51;</i> <span class="i-name">icon-doc-text-1</span><span class="i-code">0x51</span>
+        </div>
+        <div class="span3" title="Code: 0x52">
+          <i class="demo-icon icon-doc-text-inv-1">&#x52;</i> <span class="i-name">icon-doc-text-inv-1</span><span class="i-code">0x52</span>
+        </div>
+        <div class="span3" title="Code: 0x53">
+          <i class="demo-icon icon-doc-inv">&#x53;</i> <span class="i-name">icon-doc-inv</span><span class="i-code">0x53</span>
+        </div>
+        <div class="span3" title="Code: 0x54">
+          <i class="demo-icon icon-ccw">&#x54;</i> <span class="i-name">icon-ccw</span><span class="i-code">0x54</span>
+        </div>
+      </div>
+      <div class="row">
+        <div class="span3" title="Code: 0x55">
+          <i class="demo-icon icon-folder-1">&#x55;</i> <span class="i-name">icon-folder-1</span><span class="i-code">0x55</span>
+        </div>
+        <div class="span3" title="Code: 0x56">
+          <i class="demo-icon icon-folder-open">&#x56;</i> <span class="i-name">icon-folder-open</span><span class="i-code">0x56</span>
+        </div>
+        <div class="span3" title="Code: 0x57">
+          <i class="demo-icon icon-folder-empty">&#x57;</i> <span class="i-name">icon-folder-empty</span><span class="i-code">0x57</span>
+        </div>
+        <div class="span3" title="Code: 0x58">
+          <i class="demo-icon icon-folder-open-empty">&#x58;</i> <span class="i-name">icon-folder-open-empty</span><span class="i-code">0x58</span>
+        </div>
+      </div>
+      <div class="row">
+        <div class="span3" title="Code: 0x59">
+          <i class="demo-icon icon-box">&#x59;</i> <span class="i-name">icon-box</span><span class="i-code">0x59</span>
+        </div>
+      </div>
+    </div>
+    <div class="container footer">Generated by <a href="https://fontello.com">fontello.com</a></div>
+  </body>
+</html>
