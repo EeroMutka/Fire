@@ -98,7 +98,7 @@ int main() {
 	OS_InitArena(&os_temp_arena, 4096);
 
 	OS_Inputs window_inputs = {0};
-	OS_Window window = OS_WindowCreate(g_window_size[0], g_window_size[1], OS_STR("Triangle"));
+	OS_Window window = OS_WindowCreate(g_window_size[0], g_window_size[1], OS_STR("Blurred Triangle"));
 	GPU_Init(window.handle);
 	
 	g_offscreen_buffers[0] = GPU_MakeTexture(GPU_Format_RGBA8UN, g_window_size[0], g_window_size[1], 1, GPU_TextureFlag_RenderTarget, NULL);

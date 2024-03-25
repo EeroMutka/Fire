@@ -1040,10 +1040,10 @@ UI_API bool UI_EditNumber(UI_Key key, UI_Size w, UI_Size h, void *value, bool is
 		STR_FloatToStr(UI_FrameArena(), *(double*)value, dragging && has_moved_mouse_after_press ? 1 : 1) : 
 		STR_IntToStrEx(UI_FrameArena(), *(uint64_t*)value, true, 10);
 
-	bool activate =
-		UI_DidBeginSelection(key) ||
-		(UI_Pressed(key, UI_Input_MouseLeft) && UI_InputWasPressed(UI_Input_Enter)) ||
-		(UI_Clicked(key) && !has_moved_mouse_after_press && UI_InputWasReleased(UI_Input_MouseLeft));
+	bool activate_by_enter = UI_Pressed(key, UI_Input_MouseLeft) && UI_InputWasPressed(UI_Input_Enter);
+	bool activate_by_click = UI_Clicked(key) && !has_moved_mouse_after_press && UI_InputWasReleased(UI_Input_MouseLeft);
+	bool activate_by_keyboard_navigation = UI_DidBeginSelection(key) && !UI_InputIsDown(UI_Input_MouseLeft); // this UI_InputIsDown for mouse is a bit of a dumb hack
+	bool activate = activate_by_enter || activate_by_click || activate_by_keyboard_navigation;
 	
 	bool text_edit_was_activated = activate && UI_STATE.edit_number.editing_text != key;
 	if (text_edit_was_activated) {
