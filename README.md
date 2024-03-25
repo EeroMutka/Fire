@@ -16,11 +16,11 @@ This is a collection of easy-to-use programming libraries that are compatible wi
   * Currently only supports Windows
 * `fire_gpu/`
   * Graphics abstraction layer using Vulkan as a backend
-  * Goal to simplify graphics code compared to using Vulkan, but to still provide more control than OpenGL/DirectX.
-  * For now, mostly for my own experiments. You're probably better off using an existing graphics API.
-  * Depends on Vulkan SDK and `fire_ds.h`
+  * The goal is to be a simpler alternative to Vulkan, but to still provide more control than OpenGL/DX11
+  * For now, mostly for my own experiments. You're likely better off using an existing graphics API
+  * Depends on the [Vulkan SDK](https://vulkan.lunarg.com/) and `fire_ds.h`
 * `fire_ui/`
-  * Immediate-mode user interface library to give you menus, buttons, text edit boxes and a ton more.
+  * Immediate-mode user interface library to give you menus, buttons, text edit boxes and lots more
   * Depends on `fire_ds.h`, `fire_string.h`, [stb_rect_pack.h](https://github.com/nothings/stb/blob/master/stb_rect_pack.h) and [stb_truetype.h](https://github.com/nothings/stb/blob/master/stb_truetype.h)
 
 ## Building the Examples
