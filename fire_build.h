@@ -86,6 +86,9 @@ BUILD_API bool BUILD_CompileProject(BUILD_Project *project, const char *project_
 BUILD_API bool BUILD_CreateVisualStudioSolution(const char *project_directory, const char *relative_build_directory,
 	const char *solution_name, BUILD_Project **projects, int projects_count, BUILD_Log *log_or_null);
 
+// If the directory already exists or is successfully created, true is returned.
+BUILD_API bool BUILD_CreateDirectory(const char *directory);
+
 /* ---- end of the public API --------------------------------------------- */
 
 #define BUILD_Vec(T) struct { T *data; int length; int capacity; }
@@ -1222,6 +1225,18 @@ BUILD_API bool BUILD_CompileProject(BUILD_Project *project, const char *project_
 	}
 
 	return ok;
+}
+
+// If the directory already exists or is successfully created, true is returned.
+BUILD_API bool BUILD_CreateDirectory(const char *directory) {
+	BUILD_Arena arena;
+	BUILD_InitArena(&arena, 128);
+	
+	wchar_t *path_wide = BUILD_UTF8ToWide(&arena, directory);
+	bool success = CreateDirectoryW(path_wide, NULL);
+	
+	BUILD_DestroyArena(&arena);
+	return success || GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
 BUILD_API bool BUILD_CreateVisualStudioSolution(const char *project_directory, const char *relative_build_directory,

@@ -64,6 +64,8 @@ int main() {
 	
 	//////////////////////
 	
+	BUILD_CreateDirectory(".build");
+	
 	BUILD_Project* projects[] = {&triangle, &blurred_triangle, &ui_demo};
 	if (!BUILD_CreateVisualStudioSolution(".build", ".", "examples.sln", projects, ArrayCount(projects), BUILD_GetConsole())) {
 		return 1;
