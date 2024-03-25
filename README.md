@@ -5,7 +5,7 @@
 This is a collection of easy-to-use programming libraries that are compatible with both C and C++. The following libraries are included:
 
 * `fire_ds.h`
-  * Provides basic data structures & utilities, such as memory arenas, dynamic arrays, hash maps and bucketed linked lists.
+  * Basic data structures and utilities, such as memory arenas, dynamic arrays, hash maps and bucketed linked lists
 * `fire_string.h`
   * Length-based string type and lots of string utilities
 * `fire_build.h`
