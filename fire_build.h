@@ -4,8 +4,8 @@
 // Version: 0
 // Date: 25 March, 2024
 //
-// This code is released under the MIT license (https://opensource.org/licenses/MIT). Some code in this file is also
-// taken and adapted from "microsoft_craziness.h" by Jonathan Blow, which is released under the MIT license.
+// This code is released under the MIT license (https://opensource.org/licenses/MIT). Some code in this file
+// are also adapted from "microsoft_craziness.h" by Jonathan Blow, which is released under the MIT license.
 //
 // fire_build is a library that lets you build C/C++ code or generate Visual Studio projects from code.
 // The idea is, you make one build.c file, use this library in it, then compile and run it to build your code.
@@ -60,6 +60,7 @@ typedef struct BUILD_Log {
 	void (*print)(struct BUILD_Log *self, const char *message);
 } BUILD_Log;
 
+// NOTE: the `project` pointer must remain stable as long as it's being used.
 BUILD_API void BUILD_InitProject(BUILD_Project *project, const char *name, const BUILD_ProjectOptions *options);
 BUILD_API void BUILD_DestroyProject(BUILD_Project *project);
 
@@ -91,20 +92,20 @@ BUILD_API bool BUILD_CreateDirectory(const char *directory);
 
 /* ---- end of the public API --------------------------------------------- */
 
-#define BUILD_Vec(T) struct { T *data; int length; int capacity; }
 typedef struct { int block_size; struct BUILD_ArenaBlockHeader *first_block; void *block; void *ptr; } BUILD_Arena;
+#define BUILD_Array(T) struct { BUILD_Arena *arena; T *data; int length; int capacity; }
 
 struct BUILD_Project {
 	BUILD_Arena arena;
 	const char *name;
 	BUILD_ProjectOptions opts;
-	BUILD_Vec(const char*) source_files;
-	BUILD_Vec(const char*) source_dirs;
-	BUILD_Vec(const char*) include_dirs;
-	BUILD_Vec(const char*) defines;
-	BUILD_Vec(const char*) linker_inputs;
-	BUILD_Vec(const char*) extra_linker_args;
-	BUILD_Vec(const char*) extra_compiler_args;
+	BUILD_Array(const char*) source_files;
+	BUILD_Array(const char*) source_dirs;
+	BUILD_Array(const char*) include_dirs;
+	BUILD_Array(const char*) defines;
+	BUILD_Array(const char*) linker_inputs;
+	BUILD_Array(const char*) extra_linker_args;
+	BUILD_Array(const char*) extra_compiler_args;
 };
 
 #ifdef /* ---------------- */ BUILD_IMPLEMENTATION /* ---------------- */
@@ -174,19 +175,22 @@ static void BUILD_ArenaReset(BUILD_Arena *arena) {
 	arena->ptr = (char*)arena->first_block + sizeof(BUILD_ArenaBlockHeader);
 }
 
-typedef BUILD_Vec(char) BUILD_VecRaw;
+typedef BUILD_Array(char) BUILD_ArrayRaw;
 
-#define BUILD_VecPush(ARENA, VEC, ELEM) do { \
-	BUILD_VecReserveRaw(ARENA, (BUILD_VecRaw*)(VEC), (VEC)->length + 1, sizeof(*(VEC)->data)); \
-	(VEC)->data[(VEC)->length++] = ELEM; } while (0)
+#define BUILD_ArrayPush(ARR, ELEM) do { \
+		BUILD_ArrayReserveRaw((BUILD_ArrayRaw*)(ARR), (ARR)->length + 1, sizeof(*(ARR)->data)); \
+		(ARR)->data[(ARR)->length] = ELEM; \
+		(ARR)->length++; \
+	} while (0)
 
-static inline void BUILD_VecReserveRaw(BUILD_Arena *arena, BUILD_VecRaw *array, int capacity, int elem_size) {
+static inline void BUILD_ArrayReserveRaw(BUILD_ArrayRaw *array, int capacity, int elem_size) {
 	int new_capacity = array->capacity;
 	while (capacity > new_capacity) {
 		new_capacity = new_capacity == 0 ? 8 : new_capacity * 2;
 	}
+	
 	if (new_capacity != array->capacity) {
-		void *new_data = BUILD_ArenaPush(arena, new_capacity * elem_size);
+		void *new_data = BUILD_ArenaPush(array->arena, new_capacity * elem_size);
 		memcpy(new_data, array->data, array->length * elem_size);
 		array->data = new_data;
 		array->capacity = new_capacity;
@@ -345,6 +349,7 @@ static wchar_t *BUILD_WStrJoin4(BUILD_Arena *arena, const wchar_t *a, const wcha
 	return result;
 }
 
+// From "microsoft_craziness.h"
 typedef void (*BUILD_FindVSVisitProc)(wchar_t *short_name, wchar_t *full_name, BUILD_FindVSVersionData *data);
 static bool BUILD_FindVSVisitFiles(BUILD_Arena *arena, wchar_t *dir_name, BUILD_FindVSVersionData *data, BUILD_FindVSVisitProc proc) {
 	// Visit everything in one folder (non-recursively). If it's a directory
@@ -372,6 +377,7 @@ static bool BUILD_FindVSVisitFiles(BUILD_Arena *arena, wchar_t *dir_name, BUILD_
 	return true;
 }
 
+// From "microsoft_craziness.h"
 static wchar_t *BUILD_FindWindowsKitRootWithKey(BUILD_Arena *arena, HKEY key, wchar_t *version) {
 	// Given a key to an already opened registry entry,
 	// get the value stored under the 'version' subkey.
@@ -398,6 +404,7 @@ static wchar_t *BUILD_FindWindowsKitRootWithKey(BUILD_Arena *arena, HKEY key, wc
 	return value;
 }
 
+// From "microsoft_craziness.h"
 static void BUILD_FindVS_Win10_Best(wchar_t *short_name, wchar_t *full_name, BUILD_FindVSVersionData *data) {
 	// Find the Windows 10 subdirectory with the highest version number.
 
@@ -426,6 +433,7 @@ static void BUILD_FindVS_Win10_Best(wchar_t *short_name, wchar_t *full_name, BUI
 	}
 }
 
+// From "microsoft_craziness.h"
 static void BUILD_FindVS_Win8_Best(wchar_t *short_name, wchar_t *full_name, BUILD_FindVSVersionData *data) {
 	// Find the Windows 8 subdirectory with the highest version number.
 
@@ -446,6 +454,7 @@ static void BUILD_FindVS_Win8_Best(wchar_t *short_name, wchar_t *full_name, BUIL
 	}
 }
 
+// From "microsoft_craziness.h"
 static void BUILD_FindWindowsKitRoot(BUILD_Arena *arena, BUILD_FindVSResult *result) {
 	// Information about the Windows 10 and Windows 8 development kits
 	// is stored in the same place in the registry. We open a key
@@ -500,6 +509,7 @@ static void BUILD_FindWindowsKitRoot(BUILD_Arena *arena, BUILD_FindVSResult *res
 	RegCloseKey(main_key);
 }
 
+// From "microsoft_craziness.h"
 static bool BUILD_FindVisualStudio2017ByFightingThroughMicrosoftCraziness(BUILD_Arena *arena, BUILD_FindVSResult *result) {
 	CoInitialize(NULL);
 	// "Subsequent valid calls return false." So ignore false.
@@ -590,6 +600,7 @@ static bool BUILD_FindVisualStudio2017ByFightingThroughMicrosoftCraziness(BUILD_
 	return found_visual_studio_2017;
 }
 
+// From "microsoft_craziness.h"
 static void BUILD_FindVisualStudioByFightingThroughMicrosoftCraziness(BUILD_Arena *arena, BUILD_FindVSResult *result) {
 	// The name of this procedure is kind of cryptic. Its purpose is
 	// to fight through Microsoft craziness. The things that the fine
@@ -660,6 +671,7 @@ static void BUILD_FindVisualStudioByFightingThroughMicrosoftCraziness(BUILD_Aren
 	// If we get here, we failed to find anything.
 }
 
+// From "microsoft_craziness.h"
 static BUILD_FindVSResult BUILD_FindVisualStudioAndWindowsSDK(BUILD_Arena *arena) {
 	BUILD_FindVSResult result;
 
@@ -687,37 +699,37 @@ static BUILD_LogPrint4(BUILD_Log *log_or_null, const char *A, const char *B, con
 	}
 }
 
-typedef BUILD_Vec(wchar_t) BUILD_WStrBuilder;
-typedef BUILD_Vec(char) BUILD_StrBuilder;
+typedef BUILD_Array(wchar_t) BUILD_WStrBuilder;
+typedef BUILD_Array(char) BUILD_StrBuilder;
 
-static void BUILD_WPrint1(BUILD_Arena *arena, BUILD_WStrBuilder *builder, const wchar_t *string) {
+static void BUILD_WPrint1(BUILD_WStrBuilder *builder, const wchar_t *string) {
 	for (const wchar_t *ptr = string; *ptr; ptr++) {
-		BUILD_VecPush(arena, builder, *ptr);
+		BUILD_ArrayPush(builder, *ptr);
 	}
 }
 
-#define BUILD_WPrint2(ARENA, BUILDER, A, B)    BUILD_WPrint4(ARENA, BUILDER, A, B, NULL, NULL)
-#define BUILD_WPrint3(ARENA, BUILDER, A, B, C) BUILD_WPrint4(ARENA, BUILDER, A, B, C, NULL)
-static void BUILD_WPrint4(BUILD_Arena *arena, BUILD_WStrBuilder *builder, const wchar_t *a, const wchar_t *b, const wchar_t *c, const wchar_t *d) {
-	BUILD_WPrint1(arena, builder, a);
-	BUILD_WPrint1(arena, builder, b);
-	if (c) BUILD_WPrint1(arena, builder, c);
-	if (d) BUILD_WPrint1(arena, builder, d);
+#define BUILD_WPrint2(BUILDER, A, B)    BUILD_WPrint4(BUILDER, A, B, NULL, NULL)
+#define BUILD_WPrint3(BUILDER, A, B, C) BUILD_WPrint4(BUILDER, A, B, C, NULL)
+static void BUILD_WPrint4(BUILD_WStrBuilder *builder, const wchar_t *a, const wchar_t *b, const wchar_t *c, const wchar_t *d) {
+	BUILD_WPrint1(builder, a);
+	BUILD_WPrint1(builder, b);
+	if (c) BUILD_WPrint1(builder, c);
+	if (d) BUILD_WPrint1(builder, d);
 }
 
-static void BUILD_Print1(BUILD_Arena *arena, BUILD_StrBuilder *builder, const char *string) {
+static void BUILD_Print1(BUILD_StrBuilder *builder, const char *string) {
 	for (const char *ptr = string; *ptr; ptr++) {
-		BUILD_VecPush(arena, builder, *ptr);
+		BUILD_ArrayPush(builder, *ptr);
 	}
 }
 
-#define BUILD_Print2(ARENA, BUILDER, A, B)    BUILD_Print4(ARENA, BUILDER, A, B, NULL, NULL)
-#define BUILD_Print3(ARENA, BUILDER, A, B, C) BUILD_Print4(ARENA, BUILDER, A, B, C, NULL)
-static void BUILD_Print4(BUILD_Arena *arena, BUILD_StrBuilder *builder, const char *a, const char *b, const char *c, const char *d) {
-	BUILD_Print1(arena, builder, a);
-	BUILD_Print1(arena, builder, b);
-	if (c) BUILD_Print1(arena, builder, c);
-	if (d) BUILD_Print1(arena, builder, d);
+#define BUILD_Print2(BUILDER, A, B)    BUILD_Print4(BUILDER, A, B, NULL, NULL)
+#define BUILD_Print3(BUILDER, A, B, C) BUILD_Print4(BUILDER, A, B, C, NULL)
+static void BUILD_Print4(BUILD_StrBuilder *builder, const char *a, const char *b, const char *c, const char *d) {
+	BUILD_Print1(builder, a);
+	BUILD_Print1(builder, b);
+	if (c) BUILD_Print1(builder, c);
+	if (d) BUILD_Print1(builder, d);
 }
 
 static bool BUILD_RunProcess(const wchar_t *command_string, uint32_t *out_exit_code, BUILD_Log *log_or_null) {
@@ -787,7 +799,7 @@ static bool BUILD_RunProcess(const wchar_t *command_string, uint32_t *out_exit_c
 static bool BUILD_GetAllFilesInDirectory(BUILD_Arena *arena, const wchar_t *directory, char ***out_files, int *out_files_count) {
 	wchar_t *match_str = BUILD_WStrJoin2(arena, directory, L"\\*");
 
-	BUILD_Vec(char*) files = {0};
+	BUILD_Array(char*) files = {arena};
 
 	WIN32_FIND_DATAW find_info;
 	HANDLE handle = FindFirstFileW(match_str, &find_info);
@@ -799,7 +811,7 @@ static bool BUILD_GetAllFilesInDirectory(BUILD_Arena *arena, const wchar_t *dire
 			
 			const wchar_t *file_w = BUILD_WStrJoin3(arena, directory, L"/", find_info.cFileName);
 			char *file = BUILD_WideToUTF8(arena, file_w);
-			BUILD_VecPush(arena, &files, file);
+			BUILD_ArrayPush(&files, file);
 		}
 		ok = GetLastError() == ERROR_NO_MORE_FILES;
 		FindClose(handle);
@@ -814,182 +826,153 @@ static bool BUILD_GenerateVisualStudioProject(BUILD_Arena *arena, const BUILD_Pr
 	const char *project_filepath, const char *project_directory, const char *relative_build_directory,
 	const char *project_guid, BUILD_Log *log_or_null)
 {
-	BUILD_StrBuilder s = {0};
+	BUILD_StrBuilder s = {arena};
 
-	BUILD_Print1(arena, &s, "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
-	BUILD_Print1(arena, &s, "<Project DefaultTargets=\"Build\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">\n");
+	BUILD_Print1(&s, "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
+	BUILD_Print1(&s, "<Project DefaultTargets=\"Build\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">\n");
 
-	BUILD_Print1(arena, &s, "<ItemGroup Label=\"ProjectConfigurations\">\n");
-	BUILD_Print1(arena, &s, "  <ProjectConfiguration Include=\"Custom|x64\">\n");
-	BUILD_Print1(arena, &s, "    <Configuration>Custom</Configuration>\n");
-	BUILD_Print1(arena, &s, "    <Platform>x64</Platform>\n");
-	BUILD_Print1(arena, &s, "  </ProjectConfiguration>\n");
-	BUILD_Print1(arena, &s, "</ItemGroup>\n");
+	BUILD_Print1(&s, "<ItemGroup Label=\"ProjectConfigurations\">\n");
+	BUILD_Print1(&s, "  <ProjectConfiguration Include=\"Custom|x64\">\n");
+	BUILD_Print1(&s, "    <Configuration>Custom</Configuration>\n");
+	BUILD_Print1(&s, "    <Platform>x64</Platform>\n");
+	BUILD_Print1(&s, "  </ProjectConfiguration>\n");
+	BUILD_Print1(&s, "</ItemGroup>\n");
 
-	BUILD_Print1(arena, &s, "<Import Project=\"$(VCTargetsPath)\\Microsoft.Cpp.Default.props\" />\n");
-	BUILD_Print1(arena, &s, "<PropertyGroup Condition=\"'$(Configuration)|$(Platform)'=='Custom|x64'\" Label=\"Configuration\">\n");
-	BUILD_Print1(arena, &s, "  <ConfigurationType>Application</ConfigurationType>\n");
-	BUILD_Print1(arena, &s, "  <UseDebugLibraries>false</UseDebugLibraries>\n");
-	BUILD_Print1(arena, &s, "  <CharacterSet>Unicode</CharacterSet>\n");
-	BUILD_Print1(arena, &s, "  <PlatformToolset>v143</PlatformToolset>\n");
-	BUILD_Print1(arena, &s, "</PropertyGroup>\n");
+	BUILD_Print1(&s, "<Import Project=\"$(VCTargetsPath)\\Microsoft.Cpp.Default.props\" />\n");
+	BUILD_Print1(&s, "<PropertyGroup Condition=\"'$(Configuration)|$(Platform)'=='Custom|x64'\" Label=\"Configuration\">\n");
+	BUILD_Print1(&s, "  <ConfigurationType>Application</ConfigurationType>\n");
+	BUILD_Print1(&s, "  <UseDebugLibraries>false</UseDebugLibraries>\n");
+	BUILD_Print1(&s, "  <CharacterSet>Unicode</CharacterSet>\n");
+	BUILD_Print1(&s, "  <PlatformToolset>v143</PlatformToolset>\n");
+	BUILD_Print1(&s, "</PropertyGroup>\n");
 
-	BUILD_Print1(arena, &s, "<Import Project=\"$(VCTargetsPath)\\Microsoft.Cpp.props\" />\n");
-	BUILD_Print1(arena, &s, "<ImportGroup Label=\"ExtensionSettings\">\n");
-	BUILD_Print1(arena, &s, "</ImportGroup>\n");
+	BUILD_Print1(&s, "<Import Project=\"$(VCTargetsPath)\\Microsoft.Cpp.props\" />\n");
+	BUILD_Print1(&s, "<ImportGroup Label=\"ExtensionSettings\">\n");
+	BUILD_Print1(&s, "</ImportGroup>\n");
 
-	// BUILD_Print1(arena, &s, "<Import Project=\"$(VCTargetsPath)\\Microsoft.Cpp.props\" />\n");
 
-	BUILD_Print1(arena, &s, "<ImportGroup Label=\"PropertySheets\" Condition=\"'$(Configuration)|$(Platform)'=='Custom|x64'\">\n");
-	BUILD_Print1(arena, &s, "  <Import Project=\"$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props\" Condition=\"exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')\" Label=\"LocalAppDataPlatform\" />\n");
-	BUILD_Print1(arena, &s, "</ImportGroup>\n");
+	BUILD_Print1(&s, "<ImportGroup Label=\"PropertySheets\" Condition=\"'$(Configuration)|$(Platform)'=='Custom|x64'\">\n");
+	BUILD_Print1(&s, "  <Import Project=\"$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props\" Condition=\"exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')\" Label=\"LocalAppDataPlatform\" />\n");
+	BUILD_Print1(&s, "</ImportGroup>\n");
 
-	/*F_Print(&s,
-	"<ImportGroup Label=\"PropertySheets\" Condition=\"'$(Configuration)|$(Platform)'=='Profile|x64'\">\n"
-	"	<Import Project=\"$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props\" Condition=\"exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')\" Label=\"LocalAppDataPlatform\" />\n"
-	"</ImportGroup>\n"
-	);
-
-	BUILD_Print1(arena, &s,
-	"<ImportGroup Label=\"PropertySheets\" Condition=\"'$(Configuration)|$(Platform)'=='Release|x64'\">\n"
-	"	<Import Project=\"$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props\" Condition=\"exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')\" Label=\"LocalAppDataPlatform\" />\n"
-	"</ImportGroup>\n"
-	);*/
-	
-	// BUILD_Print1(arena, &s, "<PropertyGroup Label=\"UserMacros\" />\n");
-	BUILD_Print1(arena, &s, "<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Custom|x64\'\">\n");
-	BUILD_Print3(arena, &s, "  <OutDir>", relative_build_directory, "/</OutDir>\n");
-	BUILD_Print3(arena, &s, "  <IntDir>", relative_build_directory, "/");
-	BUILD_Print2(arena, &s, project->name, "/</IntDir>\n");
-	BUILD_Print1(arena, &s, "</PropertyGroup>\n");
+	BUILD_Print1(&s, "<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Custom|x64\'\">\n");
+	BUILD_Print3(&s, "  <OutDir>", relative_build_directory, "/</OutDir>\n");
+	BUILD_Print3(&s, "  <IntDir>", relative_build_directory, "/");
+	BUILD_Print2(&s, project->name, "/</IntDir>\n");
+	BUILD_Print1(&s, "</PropertyGroup>\n");
 
 	{
-		BUILD_Print1(arena, &s, "<ItemDefinitionGroup Condition=\"'$(Configuration)|$(Platform)'=='Custom|x64'\">\n");
+		BUILD_Print1(&s, "<ItemDefinitionGroup Condition=\"'$(Configuration)|$(Platform)'=='Custom|x64'\">\n");
 
 		{
-			BUILD_Print1(arena, &s, "<ClCompile>\n");
+			BUILD_Print1(&s, "<ClCompile>\n");
 
-			BUILD_Print1(arena, &s, "<PrecompiledHeader>NotUsing</PrecompiledHeader>\n");
-			BUILD_Print1(arena, &s, "<WarningLevel>Level3</WarningLevel>\n");
+			BUILD_Print1(&s, "<PrecompiledHeader>NotUsing</PrecompiledHeader>\n");
+			BUILD_Print1(&s, "<WarningLevel>Level3</WarningLevel>\n");
 
 			{
-				BUILD_Print1(arena, &s, "<PreprocessorDefinitions>");
+				BUILD_Print1(&s, "<PreprocessorDefinitions>");
 				for (int i = 0; i < project->defines.length; i++) {
-					BUILD_Print2(arena, &s, project->defines.data[i], ";");
+					BUILD_Print2(&s, project->defines.data[i], ";");
 				}
-				BUILD_Print1(arena, &s, "</PreprocessorDefinitions>\n");
+				BUILD_Print1(&s, "</PreprocessorDefinitions>\n");
 			}
 
-			BUILD_Print1(arena, &s, "<AdditionalIncludeDirectories>");
+			BUILD_Print1(&s, "<AdditionalIncludeDirectories>");
 			for (int i = 0; i < project->include_dirs.length; i++) {
 				const char *include_dir = project->include_dirs.data[i];
-				// const char *include_dir_canonical;
-				// if (!OS_PathToCanonical(temp, working_dir, include_dir, &include_dir_canonical)) {
-				// 	OS_LogPrint(error_log, "Invalid include directory: `~s`\n", include_dir);
-				// 	return false;
-				// }
-				BUILD_Print2(arena, &s, include_dir, ";");
+				BUILD_Print2(&s, include_dir, ";");
 			}
-			BUILD_Print1(arena, &s, "</AdditionalIncludeDirectories>\n");
+			BUILD_Print1(&s, "</AdditionalIncludeDirectories>\n");
 
 			if (project->opts.debug_info) {
-				BUILD_Print1(arena, &s, "<DebugInformationFormat>OldStyle</DebugInformationFormat>\n"); // OldStyle is the same as /Z7
+				BUILD_Print1(&s, "<DebugInformationFormat>OldStyle</DebugInformationFormat>\n"); // OldStyle is the same as /Z7
 			}
 			if (project->opts.enable_optimizations) {
-				BUILD_Print1(arena, &s, "<Optimization>Full</Optimization>\n");
-				BUILD_Print1(arena, &s, "<FunctionLevelLinking>true</FunctionLevelLinking>\n");
-				BUILD_Print1(arena, &s, "<IntrinsicFunctions>true</IntrinsicFunctions>\n");
-				BUILD_Print1(arena, &s, "<MinimalRebuild>false</MinimalRebuild>\n");
-				BUILD_Print1(arena, &s, "<StringPooling>true</StringPooling>\n");
+				BUILD_Print1(&s, "<Optimization>Full</Optimization>\n");
+				BUILD_Print1(&s, "<FunctionLevelLinking>true</FunctionLevelLinking>\n");
+				BUILD_Print1(&s, "<IntrinsicFunctions>true</IntrinsicFunctions>\n");
+				BUILD_Print1(&s, "<MinimalRebuild>false</MinimalRebuild>\n");
+				BUILD_Print1(&s, "<StringPooling>true</StringPooling>\n");
 			}
 			else {
-				BUILD_Print1(arena, &s, "<Optimization>Disabled</Optimization>\n");
+				BUILD_Print1(&s, "<Optimization>Disabled</Optimization>\n");
 			}
-			BUILD_Print1(arena, &s, "<ExceptionHandling>false</ExceptionHandling>\n");
-			BUILD_Print1(arena, &s, "<RuntimeTypeInfo>false</RuntimeTypeInfo>\n");
-			BUILD_Print1(arena, &s, "<ExternalWarningLevel>Level3</ExternalWarningLevel>\n");
-			BUILD_Print1(arena, &s, "<TreatWarningAsError>true</TreatWarningAsError>\n");
+			BUILD_Print1(&s, "<ExceptionHandling>false</ExceptionHandling>\n");
+			BUILD_Print1(&s, "<RuntimeTypeInfo>false</RuntimeTypeInfo>\n");
+			BUILD_Print1(&s, "<ExternalWarningLevel>Level3</ExternalWarningLevel>\n");
+			BUILD_Print1(&s, "<TreatWarningAsError>true</TreatWarningAsError>\n");
 			{
-				BUILD_Print1(arena, &s, "<AdditionalOptions>");
-				if (!project->opts.enable_warning_unused_variables) BUILD_Print1(arena, &s, "/wd4101 ");
-				if (!project->opts.disable_warning_unhandled_switch_cases) BUILD_Print1(arena, &s, "/w14062 ");
-				if (!project->opts.disable_warning_shadowed_locals) BUILD_Print1(arena, &s, "/w14456 ");
+				BUILD_Print1(&s, "<AdditionalOptions>");
+				if (!project->opts.enable_warning_unused_variables) BUILD_Print1(&s, "/wd4101 ");
+				if (!project->opts.disable_warning_unhandled_switch_cases) BUILD_Print1(&s, "/w14062 ");
+				if (!project->opts.disable_warning_shadowed_locals) BUILD_Print1(&s, "/w14456 ");
 
 				for (int i = 0; i < project->extra_compiler_args.length; i++) {
-					BUILD_Print2(arena, &s, project->extra_compiler_args.data[i], " ");
+					BUILD_Print2(&s, project->extra_compiler_args.data[i], " ");
 				}
 
-				BUILD_Print1(arena, &s, "</AdditionalOptions>\n");
+				BUILD_Print1(&s, "</AdditionalOptions>\n");
 			}
 
 			const char *crt_linking_type = project->opts.c_runtime_library_debug ?
 				(project->opts.c_runtime_library_dll ? "MultiThreadedDebugDLL" : "MultiThreadedDebug") :
 				(project->opts.c_runtime_library_dll ? "MultiThreadedDLL" : "MultiThreaded");
-			BUILD_Print3(arena, &s, "<RuntimeLibrary>", crt_linking_type, "</RuntimeLibrary>\n");
+			BUILD_Print3(&s, "<RuntimeLibrary>", crt_linking_type, "</RuntimeLibrary>\n");
 
-			BUILD_Print1(arena, &s, "</ClCompile>\n");
+			BUILD_Print1(&s, "</ClCompile>\n");
 		}
 
 		{
-			BUILD_Print1(arena, &s, "<Link>\n");
+			BUILD_Print1(&s, "<Link>\n");
 
-			BUILD_Print1(arena, &s, project->opts.windows.disable_console ? "<SubSystem>Windows</SubSystem>\n" : "<SubSystem>Console</SubSystem>\n");
+			BUILD_Print1(&s, project->opts.windows.disable_console ? "<SubSystem>Windows</SubSystem>\n" : "<SubSystem>Console</SubSystem>\n");
 
 			if (project->opts.enable_optimizations) {
-				BUILD_Print1(arena, &s, "<EnableCOMDATFolding>true</EnableCOMDATFolding>\n");
-				BUILD_Print1(arena, &s, "<OptimizeReferences>true</OptimizeReferences>\n");
+				BUILD_Print1(&s, "<EnableCOMDATFolding>true</EnableCOMDATFolding>\n");
+				BUILD_Print1(&s, "<OptimizeReferences>true</OptimizeReferences>\n");
 			}
 
 			if (project->opts.debug_info) {
-				BUILD_Print1(arena, &s, "<GenerateDebugInformation>true</GenerateDebugInformation>\n");
+				BUILD_Print1(&s, "<GenerateDebugInformation>true</GenerateDebugInformation>\n");
 			}
 
-			BUILD_Print1(arena, &s, "<AdditionalDependencies>");
+			BUILD_Print1(&s, "<AdditionalDependencies>");
 			for (int i = 0; i < project->linker_inputs.length; i++) {
-				// const char *linker_input;
-				// if (!OS_PathToCanonical(temp, working_dir, *it.elem, &linker_input)) {
-				// 	OS_LogPrint(error_log, "Invalid linker input: `~s`\n", *it.elem);
-				// 	return false;
-				// }
-				BUILD_Print2(arena, &s, project->linker_inputs.data[i], ";");
+				BUILD_Print2(&s, project->linker_inputs.data[i], ";");
 			}
-			BUILD_Print1(arena, &s, "</AdditionalDependencies>\n");
+			BUILD_Print1(&s, "</AdditionalDependencies>\n");
 
 			{
-				BUILD_Print1(arena, &s, "<AdditionalOptions>");
+				BUILD_Print1(&s, "<AdditionalOptions>");
 				
 				for (int i = 0; i < project->extra_linker_args.length; i++) {
-					BUILD_Print2(arena, &s, project->extra_linker_args.data[i], " ");
+					BUILD_Print2(&s, project->extra_linker_args.data[i], " ");
 				}
 				
-				BUILD_Print1(arena, &s, "/IGNORE:4099 "); // LNK4099: PDB ... was not found with ... or at ''; linking object as if no debug info
+				BUILD_Print1(&s, "/IGNORE:4099 "); // LNK4099: PDB ... was not found with ... or at ''; linking object as if no debug info
 				
-				if (!project->opts.enable_aslr) BUILD_Print1(arena, &s, "/DYNAMICBASE:NO ");
+				if (!project->opts.enable_aslr) BUILD_Print1(&s, "/DYNAMICBASE:NO ");
 				
-				BUILD_Print1(arena, &s, "</AdditionalOptions>\n");
+				BUILD_Print1(&s, "</AdditionalOptions>\n");
 			}
 
-			BUILD_Print1(arena, &s, "</Link>\n");
+			BUILD_Print1(&s, "</Link>\n");
 		}
-		BUILD_Print1(arena, &s, "</ItemDefinitionGroup>\n");
+		BUILD_Print1(&s, "</ItemDefinitionGroup>\n");
 	}
 
 	for (int i = 0; i < project->source_files.length; i++) {
-		//const char *source_file;
-		// if (!OS_PathToCanonical(temp, working_dir, *it.elem, &source_file)) {
-		// 	OS_LogPrint(error_log, "Invalid source file: `~s`\n", *it.elem);
-		// 	return false;
-		// }
-
-		BUILD_Print1(arena, &s, "<ItemGroup>\n");
-		BUILD_Print3(arena, &s, "  <ClCompile Include=\"", project->source_files.data[i], "\" />\n");
-		BUILD_Print1(arena, &s, "</ItemGroup>\n");
+		BUILD_Print1(&s, "<ItemGroup>\n");
+		BUILD_Print3(&s, "  <ClCompile Include=\"", project->source_files.data[i], "\" />\n");
+		BUILD_Print1(&s, "</ItemGroup>\n");
 	}
 	
 	for (int i = 0; i < project->source_dirs.length; i++) {
-		BUILD_StrBuilder source_dir = {0};
-		BUILD_Print3(arena, &source_dir, project_directory, "/", project->source_dirs.data[i]);
-		BUILD_VecPush(arena, &source_dir, 0); // null-terminate
+		BUILD_StrBuilder source_dir = {arena};
+		BUILD_Print3(&source_dir, project_directory, "/", project->source_dirs.data[i]);
+		BUILD_ArrayPush(&source_dir, 0); // Push null-termination
+		
 		const wchar_t *source_dir_wide = BUILD_UTF8ToWide(arena, source_dir.data);
 		
 		char **files; int files_len;
@@ -1003,18 +986,18 @@ static bool BUILD_GenerateVisualStudioProject(BUILD_Arena *arena, const BUILD_Pr
 			if (file_len >= 2 && strcmp(file + file_len - 2, ".c") == 0)   is_source_file = true;
 			if (file_len >= 4 && strcmp(file + file_len - 4, ".cpp") == 0) is_source_file = true;
 			
-			BUILD_Print1(arena, &s, "<ItemGroup>\n");
-			BUILD_Print3(arena, &s, is_source_file ? "  <ClCompile Include=\"" : "  <ClInclude Include=\"", file, "\" />\n");
-			BUILD_Print1(arena, &s, "</ItemGroup>\n");
+			BUILD_Print1(&s, "<ItemGroup>\n");
+			BUILD_Print3(&s, is_source_file ? "  <ClCompile Include=\"" : "  <ClInclude Include=\"", file, "\" />\n");
+			BUILD_Print1(&s, "</ItemGroup>\n");
 		}
 	}
 
-	BUILD_Print1(arena, &s, "<Import Project=\"$(VCTargetsPath)\\Microsoft.Cpp.targets\" />\n");
+	BUILD_Print1(&s, "<Import Project=\"$(VCTargetsPath)\\Microsoft.Cpp.targets\" />\n");
 
-	BUILD_Print1(arena, &s, "<ImportGroup Label=\"ExtensionTargets\">\n");
-	BUILD_Print1(arena, &s, "</ImportGroup>\n");
+	BUILD_Print1(&s, "<ImportGroup Label=\"ExtensionTargets\">\n");
+	BUILD_Print1(&s, "</ImportGroup>\n");
 
-	BUILD_Print1(arena, &s, "</Project>\n");
+	BUILD_Print1(&s, "</Project>\n");
 
 	FILE *file = fopen(project_filepath, "wb");
 	bool ok = file != NULL;
@@ -1030,12 +1013,20 @@ static bool BUILD_GenerateVisualStudioProject(BUILD_Arena *arena, const BUILD_Pr
 	return ok;
 }
 
-
 BUILD_API void BUILD_InitProject(BUILD_Project *project, const char *name, const BUILD_ProjectOptions *options) {
 	memset(project, 0, sizeof(*project));
+	
+	BUILD_InitArena(&project->arena, 4096);
 	project->name = name;
 	project->opts = *options;
-	BUILD_InitArena(&project->arena, 4096);
+	
+	project->source_files.arena = &project->arena;
+	project->source_dirs.arena = &project->arena;
+	project->defines.arena = &project->arena;
+	project->include_dirs.arena = &project->arena;
+	project->linker_inputs.arena = &project->arena;
+	project->extra_linker_args.arena = &project->arena;
+	project->extra_compiler_args.arena = &project->arena;
 }
 
 BUILD_API void BUILD_DestroyProject(BUILD_Project *project) {
@@ -1043,31 +1034,31 @@ BUILD_API void BUILD_DestroyProject(BUILD_Project *project) {
 }
 
 BUILD_API void BUILD_AddSourceFile(BUILD_Project *project, const char *source_file) {
-	BUILD_VecPush(&project->arena, &project->source_files, source_file);
+	BUILD_ArrayPush(&project->source_files, source_file);
 }
 
 BUILD_API void BUILD_AddSourceDir(BUILD_Project *project, const char *source_dir) {
-	BUILD_VecPush(&project->arena, &project->source_dirs, source_dir);
+	BUILD_ArrayPush(&project->source_dirs, source_dir);
 }
 
 BUILD_API void BUILD_AddDefine(BUILD_Project *project, const char *define) {
-	BUILD_VecPush(&project->arena, &project->defines, define);
+	BUILD_ArrayPush(&project->defines, define);
 }
 
 BUILD_API void BUILD_AddIncludeDir(BUILD_Project *project, const char *include_dir) {
-	BUILD_VecPush(&project->arena, &project->include_dirs, include_dir);
+	BUILD_ArrayPush(&project->include_dirs, include_dir);
 }
 
 BUILD_API void BUILD_AddLinkerInput(BUILD_Project *project, const char *linker_input) {
-	BUILD_VecPush(&project->arena, &project->linker_inputs, linker_input);
+	BUILD_ArrayPush(&project->linker_inputs, linker_input);
 }
 
 BUILD_API void BUILD_AddExtraLinkerArg(BUILD_Project *project, const char *arg_string) {
-	BUILD_VecPush(&project->arena, &project->extra_linker_args, arg_string);
+	BUILD_ArrayPush(&project->extra_linker_args, arg_string);
 }
 
 BUILD_API void BUILD_AddExtraCompilerArg(BUILD_Project *project, const char *arg_string) {
-	BUILD_VecPush(&project->arena, &project->extra_compiler_args, arg_string);
+	BUILD_ArrayPush(&project->extra_compiler_args, arg_string);
 }
 
 static void BUILD_OSConsolePrint(BUILD_Log *log, const char *message) {
@@ -1084,15 +1075,6 @@ BUILD_API bool BUILD_CompileProject(BUILD_Project *project, const char *project_
 {
 	BUILD_Arena *arena = &project->arena;
 	bool ok = true;
-	
-	// const char *output_file_abs, directory_wide;
-	// if (ok && !OS_PathToCanonical(temp , working_dir, directory, &directory_wide)) {
-	// 	ok = false;
-	// 	log->report_message(log, "Invalid intermediate directory: ~s\n", directory);
-	// }
-	// if (ok && !OS_PathToCanonical(temp , working_dir, project->output_file, &output_file_abs)) {
-	// 	ok = false; OS_LogPrint(error_log, "Invalid output filepath: ~s\n", project->output_file);
-	// }
 
 	if (ok) {
 		BUILD_FindVSResult windows_sdk = BUILD_FindVisualStudioAndWindowsSDK(arena);
@@ -1105,7 +1087,8 @@ BUILD_API bool BUILD_CompileProject(BUILD_Project *project, const char *project_
 
 		if (project->opts.windows.use_msbuild) {
 			assert(project->opts.target != BUILD_Target_ObjectFileOnly); // you must have a linker stage when using msbuild
-			TODO();
+			
+			__debugbreak(); // TODO
 #if 0
 			const char *vs_base_path = StrFromUTF16(windows_sdk.vs_base_path, temp);
 
@@ -1130,32 +1113,32 @@ BUILD_API bool BUILD_CompileProject(BUILD_Project *project, const char *project_
 #endif
 		}
 		else {
-			BUILD_StrBuilder abs_build_directory = {0};
-			BUILD_Print3(arena, &abs_build_directory, project_directory, "/", relative_build_directory);
-			BUILD_VecPush(arena, &abs_build_directory, 0); // null-terminate
+			BUILD_StrBuilder abs_build_directory = {arena};
+			BUILD_Print3(&abs_build_directory, project_directory, "/", relative_build_directory);
+			BUILD_ArrayPush(&abs_build_directory, 0); // Push null-termination
 			
 			const wchar_t *abs_build_directory_wide = BUILD_UTF8ToWide(arena, abs_build_directory.data);
 			
-			BUILD_WStrBuilder msvc_args = {0};
-			BUILD_WPrint3(arena, &msvc_args, L"\"", msvc_directory, L"\\cl.exe\""); // print cl.exe path
+			BUILD_WStrBuilder msvc_args = {arena};
+			BUILD_WPrint3(&msvc_args, L"\"", msvc_directory, L"\\cl.exe\""); // print cl.exe path
 
-			BUILD_WPrint1(arena, &msvc_args, L" /WX"); // treat warnings as errors
-			BUILD_WPrint1(arena, &msvc_args, L" /W3"); // warning level 3
+			BUILD_WPrint1(&msvc_args, L" /WX"); // treat warnings as errors
+			BUILD_WPrint1(&msvc_args, L" /W3"); // warning level 3
 
 			for (int i = 0; i < project->defines.length; i++) {
 				const wchar_t *define = BUILD_UTF8ToWide(arena, project->defines.data[i]);
-				BUILD_WPrint2(arena, &msvc_args, L" /D", define);
+				BUILD_WPrint2(&msvc_args, L" /D", define);
 			}
 
-			if (project->opts.debug_info) BUILD_WPrint1(arena, &msvc_args, L" /Z7");
-			if (!project->opts.enable_warning_unused_variables) BUILD_WPrint1(arena, &msvc_args, L" /wd4101");
-			if (!project->opts.disable_warning_unhandled_switch_cases) BUILD_WPrint1(arena, &msvc_args, L" /w14062");
-			if (!project->opts.disable_warning_shadowed_locals) BUILD_WPrint1(arena, &msvc_args, L" /w14456");
+			if (project->opts.debug_info) BUILD_WPrint1(&msvc_args, L" /Z7");
+			if (!project->opts.enable_warning_unused_variables) BUILD_WPrint1(&msvc_args, L" /wd4101");
+			if (!project->opts.disable_warning_unhandled_switch_cases) BUILD_WPrint1(&msvc_args, L" /w14062");
+			if (!project->opts.disable_warning_shadowed_locals) BUILD_WPrint1(&msvc_args, L" /w14456");
 
 			for (int i = 0; i < project->extra_compiler_args.length; i++) {
 				const wchar_t *arg = BUILD_UTF8ToWide(arena, project->extra_compiler_args.data[i]);
-				BUILD_WPrint1(arena, &msvc_args, L" ");
-				BUILD_WPrint1(arena, &msvc_args, arg);
+				BUILD_WPrint1(&msvc_args, L" ");
+				BUILD_WPrint1(&msvc_args, arg);
 			}
 
 			if (project->opts.c_runtime_library_debug) __debugbreak(); // TODO
@@ -1163,60 +1146,54 @@ BUILD_API bool BUILD_CompileProject(BUILD_Project *project, const char *project_
 
 			for (int i = 0; i < project->source_files.length; i++) {
 				const wchar_t *source_file = BUILD_UTF8ToWide(arena, project->source_files.data[i]);
-				BUILD_WPrint3(arena, &msvc_args, L" \"", source_file, L"\"");
+				BUILD_WPrint3(&msvc_args, L" \"", source_file, L"\"");
 			}
 
 			for (int i = 0; i < project->include_dirs.length; i++) {
 				const wchar_t *include_dir = BUILD_UTF8ToWide(arena, project->include_dirs.data[i]);
-				BUILD_WPrint3(arena, &msvc_args, L" \"/I", include_dir, L"\"");
+				BUILD_WPrint3(&msvc_args, L" \"/I", include_dir, L"\"");
 			}
 
-			BUILD_WPrint3(arena, &msvc_args, L" \"/Fo", abs_build_directory_wide, L"/\"");
-			BUILD_WPrint3(arena, &msvc_args, L" \"/I", windows_sdk_include_base_path, L"\\shared\"");
-			BUILD_WPrint3(arena, &msvc_args, L" \"/I", windows_sdk_include_base_path, L"\\ucrt\"");
-			BUILD_WPrint3(arena, &msvc_args, L" \"/I", windows_sdk_include_base_path, L"\\um\"");
-			BUILD_WPrint3(arena, &msvc_args, L" \"/I", vs_include_path, L"\"");
+			BUILD_WPrint3(&msvc_args, L" \"/Fo", abs_build_directory_wide, L"/\"");
+			BUILD_WPrint3(&msvc_args, L" \"/I", windows_sdk_include_base_path, L"\\shared\"");
+			BUILD_WPrint3(&msvc_args, L" \"/I", windows_sdk_include_base_path, L"\\ucrt\"");
+			BUILD_WPrint3(&msvc_args, L" \"/I", windows_sdk_include_base_path, L"\\um\"");
+			BUILD_WPrint3(&msvc_args, L" \"/I", vs_include_path, L"\"");
 
 			switch (project->opts.target) {
 			case BUILD_Target_Executable: break;
-			case BUILD_Target_DynamicLibrary: BUILD_WPrint1(arena, &msvc_args, L" /LD"); break;
-			case BUILD_Target_ObjectFileOnly: BUILD_WPrint1(arena, &msvc_args, L" /c"); break;
+			case BUILD_Target_DynamicLibrary: BUILD_WPrint1(&msvc_args, L" /LD"); break;
+			case BUILD_Target_ObjectFileOnly: BUILD_WPrint1(&msvc_args, L" /c"); break;
 			}
 
 			if (project->opts.target != BUILD_Target_ObjectFileOnly) {
 				const wchar_t *project_name = BUILD_UTF8ToWide(arena, project->name);
 				const wchar_t *file_extension = project->opts.target == BUILD_Target_Executable ? L".exe" : L".dll";
 				
-				BUILD_WPrint1(arena, &msvc_args, L" /Fe");
-				BUILD_WPrint1(arena, &msvc_args, abs_build_directory_wide);
-				BUILD_WPrint1(arena, &msvc_args, L"\\");
-				BUILD_WPrint1(arena, &msvc_args, project_name);
-				BUILD_WPrint1(arena, &msvc_args, file_extension);
+				BUILD_WPrint1(&msvc_args, L" /Fe");
+				BUILD_WPrint1(&msvc_args, abs_build_directory_wide);
+				BUILD_WPrint1(&msvc_args, L"\\");
+				BUILD_WPrint1(&msvc_args, project_name);
+				BUILD_WPrint1(&msvc_args, file_extension);
 				
-				BUILD_WPrint1(arena, &msvc_args, L" /link");
-				BUILD_WPrint1(arena, &msvc_args, L" /NOLOGO"); // disable Microsoft linker startup banner text
-				BUILD_WPrint1(arena, &msvc_args, L" /INCREMENTAL:NO");
+				BUILD_WPrint1(&msvc_args, L" /link");
+				BUILD_WPrint1(&msvc_args, L" /NOLOGO"); // disable Microsoft linker startup banner text
+				BUILD_WPrint1(&msvc_args, L" /INCREMENTAL:NO");
 
-				if (project->opts.windows.disable_console) BUILD_WPrint1(arena, &msvc_args, L" /SUBSYSTEM:WINDOWS");
+				if (project->opts.windows.disable_console) BUILD_WPrint1(&msvc_args, L" /SUBSYSTEM:WINDOWS");
 				if (project->extra_linker_args.length > 0) __debugbreak(); // TODO
-
-				// const wchar_t *output_file_abs = BUILD_UTF8ToWide(arena, project->output_file_or_null);
-				
-				// BUILD_WPrint1(arena, &msvc_args, L" \"/OUT:");
-				// BUILD_WPrint4(arena, &msvc_args, directory_wide, L"\\", project_name, file_extension);
-				// BUILD_WPrint1(arena, &msvc_args, L"\"");
 
 				for (int i = 0; i < project->linker_inputs.length; i++) {
 					const wchar_t *linker_input = BUILD_UTF8ToWide(arena, project->linker_inputs.data[i]);
-					BUILD_WPrint3(arena, &msvc_args, L" \"", linker_input, L"\"");
+					BUILD_WPrint3(&msvc_args, L" \"", linker_input, L"\"");
 				}
 
-				BUILD_WPrint3(arena, &msvc_args, L" \"/LIBPATH:", windows_sdk_um_library_path, L"\"");
-				BUILD_WPrint3(arena, &msvc_args, L" \"/LIBPATH:", windows_sdk_ucrt_library_path, L"\"");
-				BUILD_WPrint3(arena, &msvc_args, L" \"/LIBPATH:", vs_library_path, L"\"");
+				BUILD_WPrint3(&msvc_args, L" \"/LIBPATH:", windows_sdk_um_library_path, L"\"");
+				BUILD_WPrint3(&msvc_args, L" \"/LIBPATH:", windows_sdk_ucrt_library_path, L"\"");
+				BUILD_WPrint3(&msvc_args, L" \"/LIBPATH:", vs_library_path, L"\"");
 			}
 
-			BUILD_VecPush(arena, &msvc_args, 0); // null-termination
+			BUILD_ArrayPush(&msvc_args, 0); // Push null-termination
 
 			uint32_t exit_code = 0;
 			if (ok) ok = BUILD_RunProcess(msvc_args.data, &exit_code, log_or_null);
@@ -1227,7 +1204,6 @@ BUILD_API bool BUILD_CompileProject(BUILD_Project *project, const char *project_
 	return ok;
 }
 
-// If the directory already exists or is successfully created, true is returned.
 BUILD_API bool BUILD_CreateDirectory(const char *directory) {
 	BUILD_Arena arena;
 	BUILD_InitArena(&arena, 128);
@@ -1247,28 +1223,16 @@ BUILD_API bool BUILD_CreateVisualStudioSolution(const char *project_directory, c
 	
 	bool ok = true;
 	
-	BUILD_StrBuilder s = {0};
-	BUILD_Print1(&arena, &s, "Microsoft Visual Studio Solution File, Format Version 12.00\n");
-	BUILD_Print1(&arena, &s, "# Visual Studio Version 17\n");
-	BUILD_Print1(&arena, &s, "VisualStudioVersion = 17.6.33712.159\n");
-	BUILD_Print1(&arena, &s, "MinimumVisualStudioVersion = 10.0.40219.1\n");
-	
-	//const char *directory_wide;
-	//if (!OS_PathToCanonical(temp, working_dir, directory, &directory_wide)) {
-	//	ok = false; OS_LogPrint(error_log, "Invalid directory: \"~s\"\n", directory);
-	//}
+	BUILD_StrBuilder s = {&arena};
+	BUILD_Print1(&s, "Microsoft Visual Studio Solution File, Format Version 12.00\n");
+	BUILD_Print1(&s, "# Visual Studio Version 17\n");
+	BUILD_Print1(&s, "VisualStudioVersion = 17.6.33712.159\n");
+	BUILD_Print1(&s, "MinimumVisualStudioVersion = 10.0.40219.1\n");
 
-	BUILD_Vec(const char*) project_guids = {0};
+	BUILD_Array(const char*) project_guids = {&arena};
 	
 	for (size_t i = 0; i < projects_count; i++) {
 		BUILD_Project *project = projects[i];
-		
-		// assert(it->output_file_or_null != NULL);
-		// const char *output_file_abs;
-		// assert(it->output_file.length != 0);
-		// if (ok && !OS_PathToCanonical(temp, working_dir, it->output_file, &output_file_abs)) {
-		// 	ok = false; OS_LogPrint(error_log, "Invalid output file path: \"~s\"\n", it->output_file);
-		// }
 
 		char *project_guid;
 		{ // Create new GUID
@@ -1286,52 +1250,51 @@ BUILD_API bool BUILD_CreateVisualStudioSolution(const char *project_directory, c
 			*dst = 0;
 		}
 		
-		BUILD_VecPush(&arena, &project_guids, project_guid);
+		BUILD_ArrayPush(&project_guids, project_guid);
 		
-		BUILD_StrBuilder project_filepath = {0};
-		BUILD_Print4(&arena, &project_filepath, project_directory, "/", project->name, ".vcxproj");
-		BUILD_VecPush(&arena, &project_filepath, '\0'); // null-terminate
+		BUILD_StrBuilder project_filepath = {&arena};
+		BUILD_Print4(&project_filepath, project_directory, "/", project->name, ".vcxproj");
+		BUILD_ArrayPush(&project_filepath, '\0'); // null-terminate
 		
-		BUILD_StrBuilder project_name_with_extension = {0};
-		BUILD_Print2(&arena, &project_name_with_extension, project->name, ".vcxproj");
-		BUILD_VecPush(&arena, &project_name_with_extension, '\0'); // null-terminate
+		BUILD_StrBuilder project_name = {&arena};
+		BUILD_Print2(&project_name, project->name, ".vcxproj");
+		BUILD_ArrayPush(&project_name, '\0'); // null-terminate
 		
 		if (ok) {
 			ok = BUILD_GenerateVisualStudioProject(&arena, project,
 				project_filepath.data, project_directory, relative_build_directory, project_guid, log_or_null);
 		}
 
-		BUILD_Print3(&arena, &s, "Project(\"{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}\") = \"", project->name, "\"");
-		BUILD_Print3(&arena, &s, ", \"", project_name_with_extension.data, "\"");
-		BUILD_Print3(&arena, &s, ", \"", project_guid, "\"\n");
-		BUILD_Print1(&arena, &s, "EndProject\n");
+		BUILD_Print3(&s, "Project(\"{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}\") = \"", project->name, "\"");
+		BUILD_Print3(&s, ", \"", project_name.data, "\"");
+		BUILD_Print3(&s, ", \"", project_guid, "\"\n");
+		BUILD_Print1(&s, "EndProject\n");
 	}
 
-	BUILD_Print1(&arena, &s, "Global\n");
-	BUILD_Print1(&arena, &s, "  GlobalSection(SolutionConfigurationPlatforms) = preSolution\n");
-	//BUILD_WPrint1(arena, &s, "\t\tDebug|x64 = Custom|x64\n");
-	BUILD_Print1(&arena, &s, "  EndGlobalSection\n");
-	BUILD_Print1(&arena, &s, "  GlobalSection(ProjectConfigurationPlatforms) = postSolution\n");
+	BUILD_Print1(&s, "Global\n");
+	BUILD_Print1(&s, "  GlobalSection(SolutionConfigurationPlatforms) = preSolution\n");
+	BUILD_Print1(&s, "  EndGlobalSection\n");
+	BUILD_Print1(&s, "  GlobalSection(ProjectConfigurationPlatforms) = postSolution\n");
 
 	for (int i = 0; i < projects_count; i++) {
 		const char *project_guid = project_guids.data[i];
-		BUILD_Print3(&arena, &s, "    ", project_guid, ".Custom|x64.ActiveCfg = Custom|x64\n");
-		BUILD_Print3(&arena, &s, "    ", project_guid, ".Custom|x64.Build.0 = Custom|x64\n");
+		BUILD_Print3(&s, "    ", project_guid, ".Custom|x64.ActiveCfg = Custom|x64\n");
+		BUILD_Print3(&s, "    ", project_guid, ".Custom|x64.Build.0 = Custom|x64\n");
 	}
 
-	BUILD_Print1(&arena, &s, "  EndGlobalSection\n");
-	BUILD_Print1(&arena, &s, "  GlobalSection(SolutionProperties) = preSolution\n");
-	BUILD_Print1(&arena, &s, "    HideSolutionNode = FALSE\n");
-	BUILD_Print1(&arena, &s, "  EndGlobalSection\n");
-	BUILD_Print1(&arena, &s, "  GlobalSection(ExtensibilityGlobals) = postSolution\n");
-	BUILD_Print1(&arena, &s, "    SolutionGuid = {E8A6471F-96EE-4CB5-A6F7-DD09AD151C28}\n");
-	BUILD_Print1(&arena, &s, "  EndGlobalSection\n");
-	BUILD_Print1(&arena, &s, "EndGlobal\n");
+	BUILD_Print1(&s, "  EndGlobalSection\n");
+	BUILD_Print1(&s, "  GlobalSection(SolutionProperties) = preSolution\n");
+	BUILD_Print1(&s, "    HideSolutionNode = FALSE\n");
+	BUILD_Print1(&s, "  EndGlobalSection\n");
+	BUILD_Print1(&s, "  GlobalSection(ExtensibilityGlobals) = postSolution\n");
+	BUILD_Print1(&s, "    SolutionGuid = {E8A6471F-96EE-4CB5-A6F7-DD09AD151C28}\n");
+	BUILD_Print1(&s, "  EndGlobalSection\n");
+	BUILD_Print1(&s, "EndGlobal\n");
 	
 	if (ok) {
-		BUILD_StrBuilder solution_filepath = {0};
-		BUILD_Print3(&arena, &solution_filepath, project_directory, "/", solution_name);
-		BUILD_VecPush(&arena, &solution_filepath, '\0'); // null-terminate
+		BUILD_StrBuilder solution_filepath = {&arena};
+		BUILD_Print3(&solution_filepath, project_directory, "/", solution_name);
+		BUILD_ArrayPush(&solution_filepath, '\0'); // null-terminate
 		
 		FILE *file = fopen(solution_filepath.data, "wb");
 		ok = file != NULL;
