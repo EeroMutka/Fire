@@ -1,8 +1,8 @@
 # Fire Libraries
 
-	WARNING: although I use this code myself, it's still a work-in-progress and will go through lots more iteration! So assume "unstable version 0" for now.
+***WARNING**: Although I use this code myself, it's still experimental work-in-progress and will go through lots more iteration!*
 
-A collection of easy-to-use programming libraries that are compatible with both C and C++. The following libraries are included:
+This is a collection of easy-to-use programming libraries that are compatible with both C and C++. The following libraries are included:
 
 * `fire_ds.h`
   * Provides basic data structures & utilities, such as memory arenas, dynamic arrays, hash maps and bucketed linked lists.
