@@ -1239,8 +1239,8 @@ BUILD_API bool BUILD_CreateVisualStudioSolution(const char *project_directory, c
 			GUID guid;
 			CoCreateGuid(&guid);
 			wchar_t guid_wstr[128];
-			int guid_wstr_len_inc_null = StringFromGUID2(&guid, guid_wstr, 128);
-			project_guid = BUILD_ArenaPush(&arena, guid_wstr_len_inc_null);
+			int guid_wstr_len_including_null = StringFromGUID2(&guid, guid_wstr, 128);
+			project_guid = BUILD_ArenaPush(&arena, guid_wstr_len_including_null);
 			
 			wchar_t *src = guid_wstr; char *dst = project_guid;
 			while (*src) {
