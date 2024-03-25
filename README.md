@@ -32,3 +32,14 @@ For now, you'll need Windows and [Visual Studio](https://visualstudio.microsoft.
 3. Open `x64 Native Tools Command Prompt for VS <year>` from the Windows Start Menu. Within this terminal, `cd` into the `examples` folder.
 4. Run `cl gen_projects.c && gen_projects`.
 5. Open `.build/examples.sln` in Visual Studio and hit build!
+
+
+## Examples
+*triangle*
+![ui_demo](/screenshots/triangle.png)
+
+*blurred_triangle*
+![ui_demo](/screenshots/blurred_triangle.png)
+
+*ui_demo*
+![ui_demo](/screenshots/ui_demo.png)
