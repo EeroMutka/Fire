@@ -36,11 +36,8 @@ For now, you'll need Windows and [Visual Studio](https://visualstudio.microsoft.
 
 ## Examples
 
-*triangle*
 ![ui_demo](/screenshots/triangle.png)
 
-*blurred_triangle*
 ![ui_demo](/screenshots/blurred_triangle.png)
 
-*ui_demo*
 ![ui_demo](/screenshots/ui_demo.png)
