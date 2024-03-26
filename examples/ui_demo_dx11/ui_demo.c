@@ -452,8 +452,9 @@ int main() {
 	ID3D11Texture2D* framebuffer;
 	IDXGISwapChain1_GetBuffer(swapchain, 0, &IID_ID3D11Texture2D, (void**)&framebuffer); // grab framebuffer from swapchain
 
-	D3D11_RENDER_TARGET_VIEW_DESC framebufferRTVdesc = {0}; // needed for SRGB framebuffer when using FLIP model swap effect
-	framebufferRTVdesc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+	D3D11_RENDER_TARGET_VIEW_DESC framebufferRTVdesc = {0};
+	//framebufferRTVdesc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+	framebufferRTVdesc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
 	framebufferRTVdesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 
 	ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource*)framebuffer, &framebufferRTVdesc, &g_framebufferRTV);
@@ -549,8 +550,6 @@ int main() {
 	ID3D11Device_CreateBuffer(device, &indexbufferdesc, &indexbufferSRD, &indexbuffer);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
-	
-	FLOAT clearcolor[4] = { 0.025f, 0.025f, 0.025f, 1.0f };
 
 	UINT stride = 6 * sizeof(float);
 	UINT offset = 0;
@@ -581,10 +580,13 @@ int main() {
 		g_ui_inputs.icons_font = &icons_font;
 		UI_OS_TranslateInputs(&g_ui_inputs , &window_inputs, &os_temp_arena);
 
+		FLOAT clearcolor[4] = { 0.15f, 0.15f, 0.15f, 1.f };
+		ID3D11DeviceContext_ClearRenderTargetView(dc, g_framebufferRTV, clearcolor);
+		
 		UpdateAndRender();
 
 		///////////////////////////////////////////////////////////////////////////////////////////
-
+#if 0
 		D3D11_MAPPED_SUBRESOURCE constantbufferMSR;
 
 		ID3D11DeviceContext_Map(dc, (ID3D11Resource*)constantbuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &constantbufferMSR); // update constant buffer every frame
@@ -619,6 +621,7 @@ int main() {
 		ID3D11DeviceContext_DrawIndexed(dc, ARRAYSIZE(indexdata), 0, 0);
 
 		///////////////////////////////////////////////////////////////////////////////////////////
+#endif
 
 		IDXGISwapChain1_Present(swapchain, 1, 0);
 	}

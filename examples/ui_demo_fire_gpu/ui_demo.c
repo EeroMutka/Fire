@@ -438,7 +438,7 @@ int main() {
 		g_ui_inputs = (UI_Inputs){0};
 		g_ui_inputs.base_font = &base_font;
 		g_ui_inputs.icons_font = &icons_font;
-		UI_OS_TranslateInputs(&g_ui_inputs , &window_inputs, &os_temp_arena);
+		UI_OS_TranslateInputs(&g_ui_inputs, &window_inputs, &os_temp_arena);
 		
 		UpdateAndRender();
 	}

@@ -2491,6 +2491,9 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t rune, UI_FontUsage font, int *o
 			
 			for (int x = packed_char.x0; x < packed_char.x1; x++) {
 				dst_row[x] = ((uint32_t)src_row[x] << 24) | 0x00FFFFFF;
+				//dst_row[x] = ((uint32_t)src_row[x] << 24) | 0x00FFFFFF;
+				// Aha! Blending modes!
+				//dst_row[x] = 0x01010101;//((uint32_t)src_row[x] << 0) | 0xFFFFFF00;
 			}
 		}
 		

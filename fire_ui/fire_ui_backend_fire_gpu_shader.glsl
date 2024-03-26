@@ -14,7 +14,7 @@ layout(push_constant) uniform Constants {
 
 	void main() {
 		// Transform vertices from screen space to clip space
-		gl_Position = vec4(2.*vs_position.xy*constants.pixel_size - 1., 0., 1);
+		gl_Position = vec4(2.*vs_position*constants.pixel_size - 1., 0., 1);
 		fs_uv = vs_uv;
 		fs_color = vs_color;
 	}
