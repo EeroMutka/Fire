@@ -49,7 +49,7 @@ static UI_Text g_dummy_text_2;
 
 static DS_Vec(TreeSpecie) g_trees;
 
-static uint32_t g_window_width = 1200;
+static uint32_t g_window_size = 1200;
 static uint32_t g_window_height = 900;
 
 ////////////////////////////////////////////////////////////
@@ -60,7 +60,7 @@ static UI_Box *TopBarButton(UI_Key key, UI_Size w, UI_Size h, STR string) {
 
 static void UpdateAndRender() {
 	UI_GPU_BeginFrame();
-	UI_BeginFrame(&g_ui_inputs, UI_VEC2{(float)g_window_width, (float)g_window_height});
+	UI_BeginFrame(&g_ui_inputs, UI_VEC2{(float)g_window_size, (float)g_window_height});
 
 	UI_Box *top_bar = NULL;
 	UI_Box *file_button = NULL;
@@ -68,7 +68,7 @@ static void UpdateAndRender() {
 	
 	//// Top bar ///////////////////////////////////////////////
 
-	UI_Box *top_bar_root = UI_AddBox(UI_KEY(), UI_SizePx((float)g_window_width), UI_SizeFit(), 0);
+	UI_Box *top_bar_root = UI_AddBox(UI_KEY(), UI_SizePx((float)g_window_size), UI_SizeFit(), 0);
 	UI_PushBox(top_bar_root);
 
 	{
@@ -93,7 +93,7 @@ static void UpdateAndRender() {
 	
 	//// Main area /////////////////////////////////////////////
 
-	UI_Vec2 main_area_size = {(float)g_window_width, (float)g_window_height - top_bar_root->computed_size.y};
+	UI_Vec2 main_area_size = {(float)g_window_size, (float)g_window_height - top_bar_root->computed_size.y};
 	UI_Box *main_area = UI_AddBox(UI_KEY(), UI_SizePx(main_area_size.x), UI_SizePx(main_area_size.y), UI_BoxFlag_DrawBorder|UI_BoxFlag_ChildPadding);
 	UI_PushBox(main_area);
 	
@@ -359,7 +359,7 @@ static void UpdateAndRender() {
 }
 
 static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
-	g_window_width = width;
+	g_window_size = width;
 	g_window_height = height;
 	UpdateAndRender();
 }
@@ -398,7 +398,7 @@ int main() {
 	OS_InitArena(&os_persistent_arena, 4096);
 
 	OS_Inputs window_inputs = {0};
-	OS_Window window = OS_WindowCreate(g_window_width, g_window_height, OS_STR("Fire UI demo"));
+	OS_Window window = OS_WindowCreate(g_window_size, g_window_height, OS_STR("Fire UI demo"));
 
 	GPU_Init(window.handle);
 	

@@ -54,19 +54,33 @@ int main() {
 	
 	//////////////////////
 	
-	BUILD_Project ui_demo;
-	BUILD_InitProject(&ui_demo, "ui_demo", &opts);
-	BUILD_AddIncludeDir(&ui_demo, "../../"); // Repository root folder
+	BUILD_Project ui_demo_fire_gpu;
+	BUILD_InitProject(&ui_demo_fire_gpu, "ui_demo_fire_gpu", &opts);
+	BUILD_AddIncludeDir(&ui_demo_fire_gpu, "../../"); // Repository root folder
 	
-	AddFireGPU(&ui_demo);
+	AddFireGPU(&ui_demo_fire_gpu);
 	
-	BUILD_AddSourceFile(&ui_demo, "../ui_demo/ui_demo.c");
+	BUILD_AddSourceFile(&ui_demo_fire_gpu, "../ui_demo_fire_gpu/ui_demo.c");
+	
+	//////////////////////
+	
+	BUILD_Project ui_demo_dx11;
+	BUILD_InitProject(&ui_demo_dx11, "ui_demo_dx11", &opts);
+	BUILD_AddIncludeDir(&ui_demo_dx11, "../../"); // Repository root folder
+	
+	BUILD_AddSourceFile(&ui_demo_dx11, "../ui_demo_dx11/ui_demo.c");
 	
 	//////////////////////
 	
 	BUILD_CreateDirectory(".build");
 	
-	BUILD_Project* projects[] = {&triangle, &blurred_triangle, &ui_demo};
+	BUILD_Project *projects[] = {
+		&triangle,
+		&blurred_triangle,
+		&ui_demo_fire_gpu,
+		&ui_demo_dx11,
+	};
+	
 	if (!BUILD_CreateVisualStudioSolution(".build", ".", "examples.sln", projects, ArrayCount(projects), BUILD_GetConsole())) {
 		return 1;
 	}

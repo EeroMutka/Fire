@@ -222,14 +222,18 @@ typedef enum UI_AlignV { UI_AlignV_Upper, UI_AlignV_Middle, UI_AlignV_Lower } UI
 typedef enum UI_AlignH { UI_AlignH_Left, UI_AlignH_Middle, UI_AlignH_Right } UI_AlignH;
 
 #define UI_TEXTURE_ID_NIL ((UI_TextureID)0)
-#define UI_BUFFER_ID_NIL ((UI_TextureID)0)
+//#define UI_BUFFER_ID_NIL ((UI_BufferID)0)
+
+#ifndef UI_MAX_BACKEND_BUFFERS
+#define UI_MAX_BACKEND_BUFFERS 16
+#endif
 
 typedef uint64_t UI_TextureID; // UI_TEXTURE_ID_NIL is a reserved value
-typedef uint64_t UI_BufferID;  // UI_BUFFER_ID_NIL is a reserved value
+// typedef uint64_t UI_BufferID;  // UI_BUFFER_ID_NIL is a reserved value
 
 typedef struct UI_DrawCall {
-	UI_BufferID vertex_buffer;
-	UI_BufferID index_buffer;
+	int vertex_buffer_id;
+	int index_buffer_id;
 	UI_TextureID texture;
 	uint32_t first_index;
 	uint32_t index_count;
@@ -292,16 +296,17 @@ typedef enum UI_InputState {
 } UI_InputState;
 
 typedef struct UI_Backend {
-	UI_BufferID (*create_vertex_buffer)(uint32_t size_in_bytes);
-	UI_BufferID (*create_index_buffer)(uint32_t size_in_bytes);
-	void (*destroy_buffer)(UI_BufferID buffer);
+	// `buffer_id` is a value between 0 and UI_MAX_BACKEND_BUFFERS - 1
+	void (*create_vertex_buffer)(int buffer_id, uint32_t size_in_bytes);
+	void (*create_index_buffer)(int buffer_id, uint32_t size_in_bytes);
+	void (*destroy_buffer)(int buffer_id);
 
-	// `atlas_id` may be 0 or 1
+	// `atlas_id` is a value between 0 and 1
 	UI_TextureID (*create_atlas)(int atlas_id, uint32_t width, uint32_t height);
 	void (*destroy_atlas)(int atlas_id);
 
 	// From these functions, the returned pointer must stay valid until UI_EndFrame or destroy_buffer/destroy_atlas is called.
-	void *(*buffer_map_until_frame_end)(UI_BufferID buffer);
+	void *(*buffer_map_until_frame_end)(int buffer_id);
 	void *(*atlas_map_until_frame_end)(int atlas_id);
 } UI_Backend;
 
@@ -380,8 +385,8 @@ typedef struct UI_State {
 	uint8_t *atlas_buffer_grayscale; // stb rect pack works with grayscale, while we want to convert to RGBA8 on the fly.
 	
 	// For now, only support a single fixed-size vertex & index buffer.
-	UI_BufferID vertex_buffer;
-	UI_BufferID index_buffer;
+	// UI_BufferID vertex_buffer;
+	// UI_BufferID index_buffer;
 
 	// Mouse position in screen space coordinates, snapped to the pixel center. Placing it at the pixel center means we don't
 	// need to worry about dUI_enerate cases where the mouse is exactly at the edge of one or many rectangles when testing for overlap.
@@ -1946,9 +1951,10 @@ UI_API void UI_BeginFrame(const UI_Inputs *inputs, UI_Vec2 window_size) {
 	
 	UI_STATE.draw_next_vertex = 0;
 	UI_STATE.draw_next_index = 0;
-	UI_STATE.draw_vertices = UI_STATE.backend.buffer_map_until_frame_end(UI_STATE.vertex_buffer);
-	UI_STATE.draw_indices = UI_STATE.backend.buffer_map_until_frame_end(UI_STATE.index_buffer);
-	
+	UI_STATE.draw_vertices = UI_STATE.backend.buffer_map_until_frame_end(0);
+	UI_STATE.draw_indices = UI_STATE.backend.buffer_map_until_frame_end(1);
+	UI_CHECK(UI_STATE.draw_vertices != NULL && UI_STATE.draw_indices != NULL);
+
 	UI_STATE.inputs = *inputs;
 	UI_STATE.outputs = (UI_Outputs){0};
 	UI_STATE.window_size = window_size;
@@ -2034,8 +2040,8 @@ UI_API void UI_Deinit(void) {
 	DS_DestroyArena(&UI_STATE.new_frame_arena);
 	DS_DestroyArena(&UI_STATE.old_frame_arena);
 
-	UI_STATE.backend.destroy_buffer(UI_STATE.vertex_buffer);
-	UI_STATE.backend.destroy_buffer(UI_STATE.index_buffer);
+	UI_STATE.backend.destroy_buffer(0);
+	UI_STATE.backend.destroy_buffer(1);
 	UI_STATE.backend.destroy_atlas(0);
 
 	DS_MemFree(UI_STATE.atlas_buffer_grayscale);
@@ -2069,11 +2075,8 @@ UI_API void UI_Init(DS_Arena *persistent_arena, const UI_Backend *backend) {
 		data[0] = 0xFFFFFFFF;
 	}
 
-	UI_STATE.vertex_buffer = backend->create_vertex_buffer(sizeof(UI_DrawVertex) * UI_MAX_VERTEX_COUNT);
-	UI_CHECK(UI_STATE.vertex_buffer != UI_BUFFER_ID_NIL);
-
-	UI_STATE.index_buffer = backend->create_index_buffer(sizeof(uint32_t) * UI_MAX_INDEX_COUNT);
-	UI_CHECK(UI_STATE.vertex_buffer != UI_BUFFER_ID_NIL);
+	backend->create_vertex_buffer(0, sizeof(UI_DrawVertex) * UI_MAX_VERTEX_COUNT);
+	backend->create_index_buffer(1, sizeof(uint32_t) * UI_MAX_INDEX_COUNT);
 
 	//UI_.atlases[0] = GPU_MakeTexture(GPU_Format_RGBA8UN, UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE, 1, 0, NULL);
 	//UI_.atlas_staging_buffer = GPU_MakeBuffer(sizeof(uint32_t)*UI_GLYPH_MAP_SIZE*UI_GLYPH_MAP_SIZE, GPU_BufferFlag_CPU, NULL);
@@ -2277,8 +2280,8 @@ static void UI_FinalizeDrawBatch() {
 		draw_call.texture = UI_STATE.draw_active_texture;
 		draw_call.first_index = first_index;
 		draw_call.index_count = index_count;
-		draw_call.vertex_buffer = UI_STATE.vertex_buffer;
-		draw_call.index_buffer = UI_STATE.index_buffer;
+		draw_call.vertex_buffer_id = 0;
+		draw_call.index_buffer_id = 1;
 		DS_VecPush(&UI_STATE.draw_calls, draw_call);
 	}
 	DS_ProfExit();
