@@ -213,6 +213,8 @@ int main() {
 
 		Render();
 	}
+	
+	GPU_WaitUntilIdle();
 
 	// Cleanup resources
 	

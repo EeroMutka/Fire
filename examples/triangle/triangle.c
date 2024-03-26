@@ -118,6 +118,10 @@ int main() {
 		Render();
 	}
 
+	GPU_WaitUntilIdle();
+
+	// Cleanup resources
+
 	GPU_DestroyGraph(g_graphs[0]);
 	GPU_DestroyGraph(g_graphs[1]);
 	GPU_DestroyBuffer(g_vertex_buffer);
