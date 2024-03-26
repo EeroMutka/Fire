@@ -118,7 +118,18 @@ int main() {
 		Render();
 	}
 
-	// TODO: cleanup resources
+	GPU_DestroyGraph(g_graphs[0]);
+	GPU_DestroyGraph(g_graphs[1]);
+	GPU_DestroyBuffer(g_vertex_buffer);
+	GPU_DestroyBuffer(g_index_buffer);
+	GPU_DestroyGraphicsPipeline(g_pipeline);
+	GPU_DestroyDescriptorSet(g_desc_set);
+	GPU_DestroyPipelineLayout(pipeline_layout);
+	GPU_DestroyRenderPass(g_render_pass);
+	GPU_Deinit();
+
+	OS_DestroyArena(&os_temp_arena);
+	OS_Deinit();
 
 	return 0;
 }

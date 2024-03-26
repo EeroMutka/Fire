@@ -18,7 +18,6 @@ typedef STR OS_String;
 #include "fire_ui/stb_rect_pack.h"
 #include "fire_ui/stb_truetype.h"
 
-	#include <stdio.h> // TODO: remove this
 #include "fire_ui/fire_ui.h"
 #include "fire_ui/fire_ui_backend_fire_gpu.h"
 #include "fire_ui/fire_ui_backend_fire_os.h"
@@ -374,6 +373,10 @@ static void AddTreeSpecie(UI_Key key, STR name, STR information) {
 	DS_VecPush(&g_trees, tree);
 }
 
+static void DestroyTreeSpecie(TreeSpecie *tree) {
+	UI_TextFree(&tree->text);
+}
+
 int main() {
 	OS_Init();
 
@@ -440,7 +443,32 @@ int main() {
 		UpdateAndRender();
 	}
 
-	// TODO: cleanup resources
+	GPU_WaitUntilIdle();
+	
+	//// Cleanup resources /////////////////////////////
+
+	UI_TextFree(&g_dummy_text);
+	UI_TextFree(&g_dummy_text_2);
+	UI_DestroyFont(&base_font);
+	UI_DestroyFont(&icons_font);
+	UI_Deinit();
+	UI_GPU_Deinit();
+
+	GPU_DestroyDescriptorArena(g_descriptor_arenas[0]);
+	GPU_DestroyDescriptorArena(g_descriptor_arenas[1]);
+	GPU_DestroyGraph(g_graphs[0]);
+	GPU_DestroyGraph(g_graphs[1]);
+	GPU_DestroyRenderPass(main_renderpass);
+	GPU_Deinit();
+
+	OS_DestroyArena(&os_persistent_arena);
+	OS_DestroyArena(&os_temp_arena);
+	DS_DestroyArena(&persistent_arena);
+	
+	for (int i = 0; i < g_trees.length; i++) DestroyTreeSpecie(&g_trees.data[i]);
+	DS_VecDestroy(&g_trees);
+
+	OS_Deinit();
 
 	return 0;
 }

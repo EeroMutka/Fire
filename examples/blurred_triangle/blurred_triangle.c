@@ -214,7 +214,32 @@ int main() {
 		Render();
 	}
 
-	// TODO: cleanup resources
+	// Cleanup resources
+	
+	GPU_DestroyGraph(g_graphs[0]);
+	GPU_DestroyGraph(g_graphs[1]);
+	GPU_DestroyBuffer(g_vertex_buffer);
+	GPU_DestroyBuffer(g_index_buffer);
+	
+	for (int i = 0; i < 2; i++) {
+		GPU_DestroyDescriptorSet(g_blur_desc_sets[i]);
+		GPU_DestroyGraphicsPipeline(g_blur_pipelines[i]);
+		GPU_DestroyRenderPass(g_blur_passes[i]);
+	}
+	
+	GPU_DestroyPipelineLayout(g_blur_pipeline_layout);
+	GPU_DestroyDescriptorSet(g_triangle_desc_set);
+	GPU_DestroyGraphicsPipeline(g_triangle_pipeline);
+	GPU_DestroyPipelineLayout(triangle_pipeline_layout);
+	GPU_DestroyRenderPass(g_triangle_pass);
+	GPU_DestroyRenderPass(directional_blur_pass);
+	GPU_DestroyTexture(tex);
+	GPU_DestroyTexture(g_offscreen_buffers[0]);
+	GPU_DestroyTexture(g_offscreen_buffers[1]);
+	GPU_Deinit();
+
+	OS_DestroyArena(&os_temp_arena);
+	OS_Deinit();
 
 	return 0;
 }

@@ -49,7 +49,7 @@
 #define DS_DEFAULT_ALIGNMENT sizeof(void*)
 #define DS_MAX_ALIGNMENT     sizeof(void*[2]) // this should be the alignment of the largest SIMD type.
 
-#ifdef DS_REALLOC_OVERRIDE
+#ifdef DS_USE_CUSTOM_REALLOC
 char *DS_Realloc_Impl(char *old_ptr, int new_size, int new_alignment);
 #else
 #include <stdlib.h>

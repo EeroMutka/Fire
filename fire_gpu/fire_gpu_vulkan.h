@@ -110,11 +110,11 @@ typedef struct GPU_PipelineLayout {
 	VkPipelineLayout vk_handle;
 } GPU_PipelineLayout;
 
-typedef struct GPU_DescriptorPool GPU_DescriptorPool;
+/*typedef struct GPU_DescriptorPool GPU_DescriptorPool;
 struct GPU_DescriptorPool {
 	VkDescriptorPool vk_handle;
 	GPU_DescriptorPool *next;
-};
+};*/
 
 typedef struct GPU_DescriptorArena {
 	DS_Arena arena;
@@ -213,7 +213,7 @@ typedef union GPU_Entity {
 	GPU_TextureImpl texture;
 	GPU_BufferImpl buffer;
 	GPU_DescriptorSet descriptor_set;
-	GPU_DescriptorPool descriptor_pool;
+	//GPU_DescriptorPool descriptor_pool;
 	GPU_DescriptorArena descriptor_arena;
 	GPU_GraphicsPipeline graphics_pipeline;
 	GPU_ComputePipeline compute_pipeline;
@@ -262,7 +262,7 @@ typedef struct GPU_Context {
 	// GPU_FrameInFlight new_frame;
 
 	VkCommandPool cmd_pool;
-	VkDescriptorPool descriptor_pool;
+	// VkDescriptorPool descriptor_pool;
 
 	GPU_Texture *nil_storage_image;
 	GPU_Buffer *nil_storage_buffer;
@@ -541,19 +541,21 @@ static VkFormat GPU_GetVkFormat(GPU_Format format) {
 	return VK_FORMAT_UNDEFINED;
 }
 
-// returns false if the width or height is 0
-static bool GPU_MaybeRecreateSwapchain() {
+static void GPU_MaybeRecreateSwapchain(void) {
 	DS_ProfEnter();
 
-	// @speed: is this a slow way to query the window size?
 	VkSurfaceCapabilitiesKHR caps;
-	GPU_CheckVK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(FGPU.physical_device, FGPU.surface, &caps));
+	VkResult surface_caps_result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(FGPU.physical_device, FGPU.surface, &caps);
+	
+	// After closing a window, FGPU_GraphWait() may still be called and surface_caps_result may then return VK_ERROR_SURFACE_LOST_KHR.
+	GPU_Check(surface_caps_result == VK_SUCCESS || surface_caps_result == VK_ERROR_SURFACE_LOST_KHR);
+	
 	uint32_t width = caps.currentExtent.width, height = caps.currentExtent.height;
-		
-	bool non_zero_size = width != 0 && height != 0;
-
-	bool recreate = non_zero_size && (width != FGPU.swapchain.width || height != FGPU.swapchain.height);
-	if (recreate) {
+	
+	if (surface_caps_result == VK_SUCCESS &&
+		width != 0 && height != 0 &&
+		(width != FGPU.swapchain.width || height != FGPU.swapchain.height))
+	{
 		// printf("RECREATE SWAPCHAIN!\n");
 
 		GPU_CheckVK(vkDeviceWaitIdle(FGPU.device));
@@ -617,7 +619,6 @@ static bool GPU_MaybeRecreateSwapchain() {
 		}
 	}
 	DS_ProfExit();
-	return non_zero_size;
 }
 
 GPU_API GPU_Sampler *GPU_SamplerLinearWrap() { return FGPU.sampler_linear_wrap; }
@@ -1194,7 +1195,7 @@ GPU_API void GPU_Deinit() {
 	vkDestroyCommandPool(FGPU.device, FGPU.cmd_pool, NULL);
 
 	//vkDestroyPipelineLayout(FGPU.device, FGPU.pipeline_layout, NULL);
-	vkDestroyDescriptorPool(FGPU.device, FGPU.descriptor_pool, NULL);
+	vkDestroyDescriptorPool(FGPU.device, FGPU.global_descriptor_pool, NULL);
 	//vkDestroyDescriptorSetLayout(FGPU.device, FGPU.descriptor_set_layout, NULL);
 
 	GPU_DestroySwapchain(&FGPU.swapchain);
