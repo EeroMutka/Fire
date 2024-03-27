@@ -49,7 +49,7 @@ typedef struct {
 //// Globals ///////////////////////////////////////////////
 
 static IDXGISwapChain* g_swapchain;
-static ID3D11RenderTargetView* g_framebufferRTV;
+static ID3D11RenderTargetView* g_framebuffer_rtv;
 
 static UI_Inputs g_ui_inputs;
 static UI_Outputs g_ui_outputs;
@@ -350,10 +350,10 @@ static void UpdateAndRender() {
 	//// Render frame /////////////////////////////
 	
 	FLOAT clearcolor[4] = { 0.15f, 0.15f, 0.15f, 1.f };
-	UI_DX11_STATE.devicecontext->ClearRenderTargetView(g_framebufferRTV, clearcolor);
+	UI_DX11_STATE.device_context->ClearRenderTargetView(g_framebuffer_rtv, clearcolor);
 
 	UI_EndFrame(&g_ui_outputs);
-	UI_DX11_EndFrame(&g_ui_outputs, g_framebufferRTV, g_window_size);
+	UI_DX11_EndFrame(&g_ui_outputs, g_framebuffer_rtv, g_window_size);
 	
 	g_swapchain->Present(1, 0);
 }
@@ -376,17 +376,17 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
 	g_window_size[1] = height;
 
 	// Recreate swapchain
-	g_framebufferRTV->Release();
+	g_framebuffer_rtv->Release();
 
 	g_swapchain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, 0);
 	
 	ID3D11Texture2D* framebuffer;
 	g_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&framebuffer); // grab framebuffer from swapchain
 
-	D3D11_RENDER_TARGET_VIEW_DESC framebufferRTVdesc = {0};
-	framebufferRTVdesc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
-	framebufferRTVdesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-	UI_DX11_STATE.device->CreateRenderTargetView(framebuffer, &framebufferRTVdesc, &g_framebufferRTV);
+	D3D11_RENDER_TARGET_VIEW_DESC framebuffer_rtv_desc = {0};
+	framebuffer_rtv_desc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
+	framebuffer_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	UI_DX11_STATE.device->CreateRenderTargetView(framebuffer, &framebuffer_rtv_desc, &g_framebuffer_rtv);
 	
 	framebuffer->Release(); // We don't need this handle anymore
 
@@ -422,34 +422,34 @@ int main() {
 	STR ui_shader_src;
 	UI_CHECK(OS_ReadEntireFile(&os_persistent_arena, ui_shader_filepath, &ui_shader_src));
 
-	D3D_FEATURE_LEVEL featurelevels[] = { D3D_FEATURE_LEVEL_11_0 };
+	D3D_FEATURE_LEVEL dx_feature_levels[] = { D3D_FEATURE_LEVEL_11_0 };
 	
-	DXGI_SWAP_CHAIN_DESC swapchaindesc = {0};
-	swapchaindesc.BufferDesc.Width  = 0; // use window width
-	swapchaindesc.BufferDesc.Height = 0; // use window height
-	swapchaindesc.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-	swapchaindesc.SampleDesc.Count  = 1;
-	swapchaindesc.BufferUsage       = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapchaindesc.BufferCount       = 2;
-	swapchaindesc.OutputWindow      = (HWND)window.handle;
-	swapchaindesc.Windowed          = TRUE;
-	swapchaindesc.SwapEffect        = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	DXGI_SWAP_CHAIN_DESC swapchain_desc = {0};
+	swapchain_desc.BufferDesc.Width  = 0; // use window width
+	swapchain_desc.BufferDesc.Height = 0; // use window height
+	swapchain_desc.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+	swapchain_desc.SampleDesc.Count  = 1;
+	swapchain_desc.BufferUsage       = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapchain_desc.BufferCount       = 2;
+	swapchain_desc.OutputWindow      = (HWND)window.handle;
+	swapchain_desc.Windowed          = TRUE;
+	swapchain_desc.SwapEffect        = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 	
 	ID3D11Device* device;
 	ID3D11DeviceContext* dc;
-	D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG, featurelevels, ARRAYSIZE(featurelevels), D3D11_SDK_VERSION, &swapchaindesc, &g_swapchain, &device, NULL, &dc);
+	D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG, dx_feature_levels, ARRAYSIZE(dx_feature_levels), D3D11_SDK_VERSION, &swapchain_desc, &g_swapchain, &device, NULL, &dc);
 
-	g_swapchain->GetDesc(&swapchaindesc); // Update swapchaindesc with actual window size
+	g_swapchain->GetDesc(&swapchain_desc); // Update swapchain_desc with actual window size
 	
 	///////////////////////////////////////////////////////////////////////////////////////////////
 
 	ID3D11Texture2D* framebuffer;
 	g_swapchain->GetBuffer(0, _uuidof(ID3D11Texture2D), (void**)&framebuffer); // grab framebuffer from swapchain
 
-	D3D11_RENDER_TARGET_VIEW_DESC framebufferRTVdesc = {0};
-	framebufferRTVdesc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
-	framebufferRTVdesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-	device->CreateRenderTargetView(framebuffer, &framebufferRTVdesc, &g_framebufferRTV);
+	D3D11_RENDER_TARGET_VIEW_DESC framebuffer_rtv_desc = {0};
+	framebuffer_rtv_desc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
+	framebuffer_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	device->CreateRenderTargetView(framebuffer, &framebuffer_rtv_desc, &g_framebuffer_rtv);
 	
 	framebuffer->Release(); // We don't need this handle anymore
 
