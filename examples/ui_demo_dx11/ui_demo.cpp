@@ -368,8 +368,8 @@ static void AddTreeSpecie(UI_Key key, STR name, STR information) {
 	DS_VecPush(&g_trees, tree);
 }
 
-static void DestroyTreeSpecie(TreeSpecie *tree) {
-	UI_TextFree(&tree->text);
+static void TreeSpecieDeinit(TreeSpecie *tree) {
+	UI_TextDeinit(&tree->text);
 }
 
 static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
@@ -408,13 +408,13 @@ int main() {
 	UI_TextInit(&g_dummy_text_2, STR_(""));
 
 	DS_Arena persistent_arena;
-	DS_InitArena(&persistent_arena, 4096);
+	DS_ArenaInit(&persistent_arena, 4096);
 
 	OS_Arena os_persistent_arena;
-	OS_InitArena(&os_persistent_arena, 4096);
+	OS_ArenaInit(&os_persistent_arena, 4096);
 	
 	OS_Arena os_temp_arena;
-	OS_InitArena(&os_temp_arena, 4096);
+	OS_ArenaInit(&os_temp_arena, 4096);
 
 	OS_Inputs window_inputs = {0};
 	OS_Window window = OS_WindowCreate(1200, 900, OS_STR("UI demo (DX11)"));

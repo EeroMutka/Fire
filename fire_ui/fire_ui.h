@@ -568,7 +568,7 @@ UI_API bool UI_IsEditTextActive(UI_Key box);
 
 // TODO: cleanup UI_Text, ideally get rid of it.
 UI_API void UI_TextInit(UI_Text *text, UI_String initial_value);
-UI_API void UI_TextFree(UI_Text *text);
+UI_API void UI_TextDeinit(UI_Text *text);
 UI_API void UI_TextSet(UI_Text *text, UI_String value);
 
 // In the future, I could remove the UI_Text type and make all of the functions work with just a regular UI_String type. But for now, let's depend on UI_Text
@@ -980,7 +980,7 @@ UI_API void UI_ApplyEditTextRequest(UI_Text *text, const UI_EditTextRequest *req
 		DS_VecRemoveN(&text->line_offsets, request->replace_from.line, request->replace_to.line - request->replace_from.line);
 	
 		DS_ForVecEach(int, &text->line_offsets, it) {
-			*it.elem -= remove_n;
+			*it.ptr -= remove_n;
 		}
 	}
 
@@ -1202,8 +1202,8 @@ UI_API void UI_TextInit(UI_Text *text, UI_String initial_value) {
 	UI_TextSet(text, initial_value);
 }
 
-UI_API void UI_TextFree(UI_Text *text) {
-	DS_VecDestroy(&text->str);
+UI_API void UI_TextDeinit(UI_Text *text) {
+	DS_VecDeinit(&text->str);
 }
 
 UI_API void UI_TextSet(UI_Text *text, UI_String value) {
@@ -2043,8 +2043,8 @@ UI_API void UI_BeginFrame(const UI_Inputs *inputs, UI_Vec2 window_size) {
 }
 
 UI_API void UI_Deinit(void) {
-	DS_DestroyArena(&UI_STATE.new_frame_arena);
-	DS_DestroyArena(&UI_STATE.old_frame_arena);
+	DS_ArenaDeinit(&UI_STATE.new_frame_arena);
+	DS_ArenaDeinit(&UI_STATE.old_frame_arena);
 
 	UI_STATE.backend.destroy_buffer(0);
 	UI_STATE.backend.destroy_buffer(1);
@@ -2059,8 +2059,8 @@ UI_API void UI_Init(DS_Arena *persistent_arena, const UI_Backend *backend) {
 	memset(&UI_STATE, 0, sizeof(UI_STATE));
 	UI_STATE.persistent_arena = persistent_arena;
 	UI_STATE.backend = *backend;
-	DS_InitArena(&UI_STATE.old_frame_arena, DS_KIB(4));
-	DS_InitArena(&UI_STATE.new_frame_arena, DS_KIB(4));
+	DS_ArenaInit(&UI_STATE.old_frame_arena, DS_KIB(4));
+	DS_ArenaInit(&UI_STATE.new_frame_arena, DS_KIB(4));
 
 	stbtt_PackBegin(&UI_STATE.pack_context, NULL, UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE, 0, UI_GLYPH_PADDING, NULL);
 
@@ -2448,7 +2448,7 @@ UI_API void UI_LoadFontFromData(UI_Font *font, const void *ttf_data, float y_off
 }
 
 UI_API void UI_DestroyFont(UI_Font *font) {
-	DS_MapDestroy(&font->glyph_map);
+	DS_MapDeinit(&font->glyph_map);
 }
 
 static UI_CachedGlyph UI_GetCachedGlyph(uint32_t rune, UI_FontUsage font, int *out_atlas_index) {

@@ -54,21 +54,36 @@ static char *DS_Realloc_Impl(char *old_ptr, int new_size, int new_alignment) {
 
 // ----------------------------------------------------------
 
-typedef struct DS_ArenaBlockHeader {
+typedef struct DS_DefaultArenaBlockHeader {
 	int size_including_header;
-	struct DS_ArenaBlockHeader *next; // may be NULL
-} DS_ArenaBlockHeader;
+	struct DS_DefaultArenaBlockHeader *next; // may be NULL
+} DS_DefaultArenaBlockHeader;
 
-typedef struct DS_ArenaMark {
-	DS_ArenaBlockHeader *block; // If the arena has no blocks allocated yet, then we mark the beginning of the arena by setting this member to NULL.
+typedef struct DS_DefaultArenaMark {
+	DS_DefaultArenaBlockHeader *block; // If the arena has no blocks allocated yet, then we mark the beginning of the arena by setting this member to NULL.
 	char *ptr;
-} DS_ArenaMark;
+} DS_DefaultArenaMark;
 
-typedef struct DS_Arena {
+typedef struct DS_DefaultArena {
 	int block_size;
-	DS_ArenaBlockHeader *first_block; // may be NULL
-	DS_ArenaMark mark;
-} DS_Arena;
+	DS_DefaultArenaBlockHeader *first_block; // may be NULL
+	DS_DefaultArenaMark mark;
+} DS_DefaultArena;
+
+#ifdef DS_CUSTOM_ARENA
+// If you want to implement your own custom arena, you must provide definitions for the following:
+// - DS_Arena
+// - DS_ArenaMark
+// - void DS_ArenaInit_Custom(DS_Arena *arena, int block_size)
+// - void DS_ArenaDeinit_Custom(DS_Arena *arena)
+// - char *DS_ArenaPush_Custom(DS_Arena *arena, int size, int alignment)
+// - DS_ArenaMark DS_ArenaGetMark_Custom(DS_Arena *arena)
+// - void DS_ArenaSetMark_Custom(DS_Arena *arena, DS_ArenaMark mark)
+// - void DS_ArenaReset_Custom(DS_Arena *arena)
+#else
+typedef DS_DefaultArena DS_Arena;
+typedef DS_DefaultArenaMark DS_ArenaMark;
+#endif
 
 // -------------------------------------------------------------------
 
@@ -88,8 +103,8 @@ typedef struct DS_Arena {
 // Results in a compile-error if `elem` does not match the array's element type
 #define DS_VecTypecheck(array, elem) (void)((array)->data == elem)
 
-#define DS_MapTypecheckK(MAP, PTR) (PTR == &(MAP)->data->key)
-#define DS_MapTypecheckV(MAP, PTR) (PTR == &(MAP)->data->value)
+#define DS_MapTypecheckK(MAP, PTR) ((PTR) == &(MAP)->data->key)
+#define DS_MapTypecheckV(MAP, PTR) ((PTR) == &(MAP)->data->value)
 #define DS_MapKSize(MAP) sizeof((MAP)->data->key)
 #define DS_MapVSize(MAP) sizeof((MAP)->data->value)
 #define DS_MapElemSize(MAP) sizeof(*(MAP)->data)
@@ -224,7 +239,7 @@ Remove the first node of a singly linked list, e.g.
 //      /* This scope won't run, because baz did not exist before, but if it did, we could look at the value of qux. */
 //   }
 //   
-//   DS_MapDestroy(&map); // Reset the map and free the memory if using the heap allocator
+//   DS_MapDeinit(&map); // Reset the map and free the memory if using the heap allocator
 // 
 
 // Basic hash functions
@@ -273,8 +288,8 @@ typedef DS_Map(char, char) DS_MapRaw;
 	DS_MapClearRaw((DS_MapRaw*)(MAP), DS_MapElemSize(MAP))
 
 // * Reset the map to a default state and free its memory if using the heap allocator.
-#define DS_MapDestroy(MAP) /* (DS_Map(K, V) *MAP) */ \
-	DS_MapDestroyRaw((DS_MapRaw*)(MAP), DS_MapElemSize(MAP))
+#define DS_MapDeinit(MAP) /* (DS_Map(K, V) *MAP) */ \
+	DS_MapDeinitRaw((DS_MapRaw*)(MAP), DS_MapElemSize(MAP))
 
 #define DS_ForMapEach(K, V, MAP, IT) /* (type K, type V, DS_Map(K, V) *MAP, name IT) */ \
 	struct DS_Concat(_dummy_, __LINE__) { int i_next; K *key; V *value; }; \
@@ -305,7 +320,7 @@ typedef DS_Map(char, char) DS_MapRaw;
 //   if (DS_SetRemove(&set, &foo)) { /* This scope will run, because the key exists. */ }
 //   if (DS_SetRemove(&set, &foo)) { /* This scope won't run, because the key doesn't exist anymore. */ }
 //
-//   DS_SetDestroy(&set); // Reset the set and free the memory if using the heap allocator
+//   DS_SetDeinit(&set); // Reset the set and free the memory if using the heap allocator
 //
 
 #define DS_Set(K) \
@@ -342,8 +357,8 @@ typedef DS_Set(char) DS_SetRaw;
 	DS_MapClearRaw((DS_MapRaw*)(SET), DS_MapElemSize(SET))
 
 // * Reset the set to a default state and free its memory if using the heap allocator.
-#define DS_SetDestroy(SET) /* (DS_Set(K) *SET) */ \
-	DS_MapDestroyRaw((DS_MapRaw*)(SET), DS_MapElemSize(SET))
+#define DS_SetDeinit(SET) /* (DS_Set(K) *SET) */ \
+	DS_MapDeinitRaw((DS_MapRaw*)(SET), DS_MapElemSize(SET))
 
 // * Return true if the key was newly added.
 static inline bool DS_MapGetOrAddRaw(DS_MapRaw *map, const void *key, DS_OUT void **out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
@@ -380,17 +395,20 @@ static inline bool DS_MapIter(DS_MapRaw *map, int *i, void **out_key, void **out
 	return true;
 }
 
-// -- Memory allocation --------------------------------
+// -- Arena interface --------------------------------
 
-DS_API void DS_InitArena(DS_Arena *arena, int block_size);
-DS_API void DS_DestroyArena(DS_Arena *arena);
+DS_API void DS_ArenaInit(DS_Arena *arena, int block_size);
+DS_API void DS_ArenaDeinit(DS_Arena *arena);
 
 DS_API char *DS_ArenaPush(DS_Arena *arena, int size);
+DS_API char *DS_ArenaPushZero(DS_Arena *arena, int size);
 DS_API char *DS_ArenaPushEx(DS_Arena *arena, int size, int alignment);
 
 DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena *arena);
 DS_API void DS_ArenaSetMark(DS_Arena *arena, DS_ArenaMark mark);
 DS_API void DS_ArenaReset(DS_Arena *arena);
+
+// -- Memory allocation --------------------------------
 
 static char *DS_Realloc(const void *old_ptr, int new_size, int new_alignment) {
 	char *result = DS_Realloc_Impl((char*)old_ptr, new_size, new_alignment);
@@ -402,7 +420,6 @@ static char *DS_Realloc(const void *old_ptr, int new_size, int new_alignment) {
 #define DS_MemAlloc(SIZE)              DS_Realloc(NULL, SIZE, DS_DEFAULT_ALIGNMENT)
 #define DS_MemFree(PTR)                DS_Realloc(PTR, 0, 1)
 
-// static inline void *ArenaPushZero(DS_Arena *arena, int size) { void *p = DS_ArenaPush(arena, size); return memset(p, 0, size); }
 static inline void *DS_CloneSize(DS_Arena *arena, const void *value, int size) { void *p = DS_ArenaPush(arena, size); return memcpy(p, value, size); }
 static inline void *DS_CloneSizeA(DS_Arena *arena, const void *value, int size, int align) { void *p = DS_ArenaPushEx(arena, size, align); return memcpy(p, value, size); }
 
@@ -454,30 +471,21 @@ typedef DS_Vec(void) DS_VecRaw;
 #define DS_VecClear(VEC)               (VEC)->length = 0
 
 // Reset the array to a default state and free its memory if using the heap allocator.
-#define DS_VecDestroy(VEC)             DS_VecDestroyRaw((DS_VecRaw*)(VEC), DS_VecElemSize(*VEC))
+#define DS_VecDeinit(VEC)             DS_VecDeinitRaw((DS_VecRaw*)(VEC), DS_VecElemSize(*VEC))
 
 /*
-Array iteration macro
+Magical array iteration macro
 e.g.
 DS_Vec(float) foo;
-DS_ForVecEach(float, foo, it) {
+DS_ForVecEach(float, &foo, it) {
     printf("foo at index %d has the value of %f\n", it.i, it.elem);
 }
-TODO: we should check the generated assembly and compare it to a hand-written loop. @speed
 */
 #define DS_ForVecEach(T, VEC, IT) \
-	static const T DS_Concat(_dummy_T, __LINE__) = {0}; \
-	DS_VecTypecheck((VEC), &DS_Concat(_dummy_T, __LINE__)); \
-	struct DS_Concat(_dummy_, __LINE__) {int i; T *elem;}; \
-	for (struct DS_Concat(_dummy_, __LINE__) IT = {0}; DS_VecIter((VEC), &IT.i, (void**)&IT.elem, sizeof(T)); IT.i++)
+	(void)((T*)0 == (VEC)->data); /* Trick the compiler into checking that T is the same as the elem type of VEC */ \
+	struct DS_Concat(_dummy_, __LINE__) {int i; T *ptr;}; /* Declaring new struct types in for-loop initializers is not standard C */ \
+	for (struct DS_Concat(_dummy_, __LINE__) IT = {0, (VEC)->data}; IT.i < (VEC)->length; IT.i++, IT.ptr++)
 
-// -- DS_Vec initialization macros --
-
-// DS_Vec/slice from varargs
-// #define Arr(T, ...) {(T[]){__VA_ARGS__}, sizeof((T[]){__VA_ARGS__}) / sizeof(T)}
-
-// DS_Vec/slice from c-style array
-// #define ArrC(T, x) StructLit(T){x, sizeof(x) / sizeof(x[0])}
 
 DS_API int DS_VecPushRaw(DS_VecRaw *array, const void *elem, int elem_size);
 DS_API int DS_VecPushNRaw(DS_VecRaw *array, const void *elems, int n, int elem_size);
@@ -487,21 +495,9 @@ DS_API void DS_VecRemoveRaw(DS_VecRaw *array, int i, int elem_size);
 DS_API void DS_VecRemoveNRaw(DS_VecRaw *array, int i, int n, int elem_size);
 DS_API void DS_VecPopRaw(DS_VecRaw *array, DS_OUT void *out_elem, int elem_size);
 DS_API void DS_VecReserveRaw(DS_VecRaw *array, int capacity, int elem_size);
-
 DS_API void DS_VecResizeRaw(DS_VecRaw *array, int length, const void *value, int elem_size); // set value to NULL to not initialize the memory
 
-static inline bool DS_VecIter(const void *array, int *i, void **elem, int elem_size) {
-	if ((size_t)*i < (size_t)((DS_VecRaw*)array)->length) {
-		*elem = (char*)((DS_VecRaw*)array)->data + (*i) * elem_size;
-		return true;
-	}
-	return false;
-}
-
 // -- Slot Allocator --------------------------------------------------------------------
-
-// TODO:
-// hmm, I want a slot allocator which I can iterate through. I basically want a data structure which is like an array, except that I can remove stuff from the middle easily. But currently that's not allowed, because DS_BucketList internally uses the `next` pointer of each slot. tricky. ALSO, if I don't care about bucket allocator NOR iteration, I could make the `next` pointer a union with the slot. Maybe it should be that iterating through DS_SlotAllocator would loop through ALL values, even dead ones. What about building bucket lists on top of slot allocators then?
 
 #define DS_SlotAllocator(T, N) struct { \
 	struct { union {T value; T *next_free_slot;} slots[N]; void *next_bucket; } *buckets[2]; /* first and last bucket */ \
@@ -527,7 +523,6 @@ typedef DS_SlotAllocator(char, 1) SlotAllocatorRaw;
 
 
 // * The slot's memory won't be initialized or overridden if it existed before.
-// TODO: to allow for generational handles, we need to either clear to zero the first time the slot is made, or return a boolean.
 #define DS_TakeSlot(ALLOCATOR) \
 	DS_TakeSlotRaw((SlotAllocatorRaw*)(ALLOCATOR))
 
@@ -553,7 +548,7 @@ typedef DS_BucketList(char) BucketListRaw;
 //#define BucketListInitUsingSlotAllocator(LIST, SLOT_ALLOCATOR) BucketListInitUsingSlotAllocatorRaw((BucketListRaw*)(LIST), (SlotAllocatorRaw*)(SLOT_ALLOCATOR), DS_BucketElemSize(LIST))
 
 #define DS_BucketListPush(LIST, ELEM) \
-	DS_BucketListPushRaw((BucketListRaw*)(LIST), ELEM, DS_BucketElemSize(LIST), DS_BucketNextPtrOffset(LIST))
+	DS_BucketListPushRaw((BucketListRaw*)(LIST), (ELEM), DS_BucketElemSize(LIST), DS_BucketNextPtrOffset(LIST))
 
 #define DS_ForBucketListEach(T, LIST, IT) \
 	struct DS_Concat(_dummy_, __LINE__) {void *bucket; uint32_t slot_index; T *elem;}; \
@@ -567,7 +562,7 @@ typedef DS_BucketList(char) BucketListRaw;
 
 #define DS_BucketListSetEnd(LIST, END)   DS_BucketListSetEndRaw((BucketListRaw*)(LIST), (END))
 
-#define DS_BucketListDestroy(LIST)       DS_BucketListDestroyRaw((BucketListRaw*)(LIST), DS_BucketNextPtrOffset(LIST))
+#define DS_BucketListDeinit(LIST)       DS_BucketListDeinitRaw((BucketListRaw*)(LIST), DS_BucketNextPtrOffset(LIST))
 
 // -- IMPLEMENTATION ------------------------------------------------------------------
 
@@ -687,7 +682,7 @@ static inline void DS_BucketListSetEndRaw(BucketListRaw *list, DS_BucketListInde
 //	*list = result;
 //}
 
-static inline void DS_BucketListDestroyRaw(BucketListRaw *list, int next_bucket_ptr_offset) {
+static inline void DS_BucketListDeinitRaw(BucketListRaw *list, int next_bucket_ptr_offset) {
 	DS_ProfEnter();
 	void *bucket = list->buckets[0];
 	for (;bucket;) {
@@ -849,7 +844,7 @@ DS_API void DS_VecInitRaw(DS_VecRaw *array, DS_Arena *arena) {
 	array->arena = arena;
 }
 
-DS_API void DS_VecDestroyRaw(DS_VecRaw *array, int elem_size) {
+DS_API void DS_VecDeinitRaw(DS_VecRaw *array, int elem_size) {
 	DS_ProfEnter();
 	DS_DebugFillGarbage(array->data, array->capacity * elem_size);
 	if (array->arena == DS_USE_HEAP) {
@@ -890,7 +885,7 @@ static inline void DS_MapClearRaw(DS_MapRaw *map, int elem_size) {
 	map->length = 0;
 }
 
-static inline void DS_MapDestroyRaw(DS_MapRaw *map, int elem_size) {
+static inline void DS_MapDeinitRaw(DS_MapRaw *map, int elem_size) {
 	DS_ProfEnter();
 	DS_DebugFillGarbage(map->data, map->capacity * elem_size);
 	if (map->arena == DS_USE_HEAP) {
@@ -1002,7 +997,7 @@ static inline void *DS_MapFindPtrRaw(DS_MapRaw *map, const void *key, int K_size
 	if (map->capacity == 0) return NULL;
 	DS_ProfEnter();
 	
-	// TODO: it'd be nice to use the squirrel3 hash function for small keys... just not sure how to implement that in an ergonomic way.
+	// TODO: it'd be nice to use an integer hash function for small keys... just not sure how to implement that in an ergonomic way.
 	// Maybe just ask for the hash?
 
 	uint32_t hash = DS_MurmurHash3(key, K_size, 989898);
@@ -1189,45 +1184,63 @@ static inline bool DS_MapInsertRaw(DS_MapRaw *map, const void *key, DS_OUT void 
 	return added;
 }
 
-DS_API void DS_InitArena(DS_Arena *arena, int block_size) {
+DS_API void DS_ArenaInit(DS_Arena *arena, int block_size) {
+#ifdef DS_CUSTOM_ARENA
+	DS_ArenaInit_Custom(arena, block_size);
+#else
 	DS_Arena _arena = {0};
 	_arena.block_size = block_size;
 	*arena = _arena;
+#endif
 }
 
-DS_API void DS_DestroyArena(DS_Arena *arena) {
-	for (DS_ArenaBlockHeader *block = arena->first_block; block;) {
-		DS_ArenaBlockHeader *next = block->next;
+DS_API void DS_ArenaDeinit(DS_Arena *arena) {
+#ifdef DS_CUSTOM_ARENA
+	DS_ArenaDeinit_Custom(arena);
+#else
+	for (DS_DefaultArenaBlockHeader *block = arena->first_block; block;) {
+		DS_DefaultArenaBlockHeader *next = block->next;
 		DS_MemFree(block);
 		block = next;
 	}
 	DS_DebugFillGarbage(arena, sizeof(DS_Arena));
+#endif
 }
 
 DS_API char *DS_ArenaPush(DS_Arena *arena, int size) {
 	return DS_ArenaPushEx(arena, size, DS_DEFAULT_ALIGNMENT);
 }
 
+DS_API char *DS_ArenaPushZero(DS_Arena *arena, int size) {
+	char *ptr = DS_ArenaPushEx(arena, size, DS_DEFAULT_ALIGNMENT);
+	memset(ptr, 0, size);
+	return ptr;
+}
+
 DS_API char *DS_ArenaPushEx(DS_Arena *arena, int size, int alignment) {
+#ifdef DS_CUSTOM_ARENA
+	char *result = DS_ArenaPush_Custom(arena, size, alignment)
+	return result;
+#else
 	DS_ProfEnter();
 	
 	bool alignment_is_power_of_2 = ((alignment) & ((alignment) - 1)) == 0;
 	DS_CHECK(alignment != 0 && alignment_is_power_of_2);
 	DS_CHECK(alignment <= DS_MAX_ALIGNMENT); // DS_Arena blocks get allocated using DS_MAX_ALIGNMENT, and so all allocations within an arena must conform to that.
 
-	DS_ArenaBlockHeader *curr_block = arena->mark.block; // may be NULL
+	DS_DefaultArenaBlockHeader *curr_block = arena->mark.block; // may be NULL
 	void *curr_ptr = arena->mark.ptr;
 
 	char *result_address = (char*)DS_AlignUpPow2((uintptr_t)curr_ptr, alignment);
 	int remaining_space = curr_block ? curr_block->size_including_header - (int)((uintptr_t)result_address - (uintptr_t)curr_block) : 0;
 
 	if (size > remaining_space) { // We need a new block!
-		int result_offset = DS_AlignUpPow2(sizeof(DS_ArenaBlockHeader), alignment);
+		int result_offset = DS_AlignUpPow2(sizeof(DS_DefaultArenaBlockHeader), alignment);
 		int new_block_size = result_offset + size;
 		if (arena->block_size > new_block_size) new_block_size = arena->block_size;
 
-		DS_ArenaBlockHeader *new_block = NULL;
-		DS_ArenaBlockHeader *next_block = NULL;
+		DS_DefaultArenaBlockHeader *new_block = NULL;
+		DS_DefaultArenaBlockHeader *next_block = NULL;
 
 		// If there is a block at the end of the list that we have used previously, but aren't using anymore, then try to start using that one.
 		if (curr_block && curr_block->next) {
@@ -1241,7 +1254,7 @@ DS_API char *DS_ArenaPushEx(DS_Arena *arena, int size, int alignment) {
 
 		// Otherwise, insert a new block.
 		if (new_block == NULL) {
-			new_block = (DS_ArenaBlockHeader*)DS_Realloc(NULL, new_block_size, DS_MAX_ALIGNMENT);
+			new_block = (DS_DefaultArenaBlockHeader*)DS_Realloc(NULL, new_block_size, DS_MAX_ALIGNMENT);
 			new_block->size_including_header = new_block_size;
 			new_block->next = next_block;
 			
@@ -1254,16 +1267,20 @@ DS_API char *DS_ArenaPushEx(DS_Arena *arena, int size, int alignment) {
 	}
 	
 	arena->mark.ptr = result_address + size;
-	DS_ProfExit();
 	return result_address;
+	DS_ProfExit();
+#endif
 }
 
 DS_API void DS_ArenaReset(DS_Arena *arena) {
+#ifdef DS_CUSTOM_ARENA
+	DS_ArenaReset_Custom(arena);
+#else
 	DS_ProfEnter();
 	if (arena->first_block) {
 		// Free all blocks after the first block
-		for (DS_ArenaBlockHeader *block = arena->first_block->next; block;) {
-			DS_ArenaBlockHeader *next = block->next;
+		for (DS_DefaultArenaBlockHeader *block = arena->first_block->next; block;) {
+			DS_DefaultArenaBlockHeader *next = block->next;
 			DS_MemFree(block);
 			block = next;
 		}
@@ -1276,24 +1293,34 @@ DS_API void DS_ArenaReset(DS_Arena *arena) {
 		}
 	}
 	arena->mark.block = arena->first_block;
-	arena->mark.ptr = (char*)arena->first_block + sizeof(DS_ArenaBlockHeader);
+	arena->mark.ptr = (char*)arena->first_block + sizeof(DS_DefaultArenaBlockHeader);
 	DS_ProfExit();
+#endif
 }
 
 DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena *arena) {
+#ifdef DS_CUSTOM_ARENA
+	DS_ArenaMark result = DS_ArenaGetMark_Custom(arena);
+	return result;
+#else
 	return arena->mark;
+#endif
 }
 
 DS_API void DS_ArenaSetMark(DS_Arena *arena, DS_ArenaMark mark) {
+#ifdef DS_CUSTOM_ARENA
+	DS_ArenaSetMark_Custom(arena, mark);
+#else
 	DS_ProfEnter();
 	if (mark.block == NULL) {
 		arena->mark.block = arena->first_block;
-		arena->mark.ptr = (char*)arena->first_block + sizeof(DS_ArenaBlockHeader);
+		arena->mark.ptr = (char*)arena->first_block + sizeof(DS_DefaultArenaBlockHeader);
 	}
 	else {
 		arena->mark = mark;
 	}
 	DS_ProfExit();
+#endif
 }
 
 //#ifndef DS_REALLOC_OVERRIDE

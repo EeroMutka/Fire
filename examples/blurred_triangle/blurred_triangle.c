@@ -95,7 +95,7 @@ int main() {
 	OS_Init();
 
 	OS_Arena os_temp_arena;
-	OS_InitArena(&os_temp_arena, 4096);
+	OS_ArenaInit(&os_temp_arena, 4096);
 
 	OS_Inputs window_inputs = {0};
 	OS_Window window = OS_WindowCreate(g_window_size[0], g_window_size[1], OS_STR("Blurred Triangle"));
@@ -240,7 +240,7 @@ int main() {
 	GPU_DestroyTexture(g_offscreen_buffers[1]);
 	GPU_Deinit();
 
-	OS_DestroyArena(&os_temp_arena);
+	OS_ArenaDeinit(&os_temp_arena);
 	OS_Deinit();
 
 	return 0;

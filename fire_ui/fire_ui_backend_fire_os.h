@@ -9,12 +9,12 @@ static UI_InputStates UI_OS_TranslateInputStates(OS_InputStateFlags flags) {
 	return states;
 }
 
-static UI_String UI_OS_GetClipboardString(void *user_data) {
-	UI_String string = OS_ClipboardGetText((OS_Arena*)user_data);
+static STR UI_OS_GetClipboardString(void *user_data) {
+	STR string = OS_ClipboardGetText((OS_Arena*)user_data);
 	return string;
 }
 
-static void UI_OS_SetClipboardString(UI_String string, void *user_data) {
+static void UI_OS_SetClipboardString(STR string, void *user_data) {
 	OS_ClipboardSetText(string);
 }
 

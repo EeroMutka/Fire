@@ -687,7 +687,7 @@ GPU_API GPU_Binding GPU_StorageImageBinding(GPU_PipelineLayout *layout, const ch
 
 GPU_API void GPU_DestroyPipelineLayout(GPU_PipelineLayout *layout) {
 	if (layout) {
-		DS_VecDestroy(&layout->bindings);
+		DS_VecDeinit(&layout->bindings);
 		vkDestroyPipelineLayout(FGPU.device, layout->vk_handle, NULL);
 		vkDestroyDescriptorSetLayout(FGPU.device, layout->descriptor_set_layout, NULL);
 		GPU_FreeEntity((GPU_Entity*)layout);
@@ -711,7 +711,7 @@ GPU_API void GPU_FinalizePipelineLayout(GPU_PipelineLayout *layout) {
 		vk_binding.descriptorCount = 1;
 		vk_binding.stageFlags = VK_SHADER_STAGE_ALL;
 		
-		switch (it.elem->kind) {
+		switch (it.ptr->kind) {
 		case GPU_ResourceKind_Texture: { vk_binding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE; } break;
 		case GPU_ResourceKind_Sampler: { vk_binding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER; } break;
 		case GPU_ResourceKind_Buffer:  { vk_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; } break;
@@ -765,7 +765,7 @@ GPU_API void GPU_DestroyDescriptorSet(GPU_DescriptorSet *set) {
 	if (set) {
 		GPU_Check(set->descriptor_arena == NULL);
 		GPU_Check(set->global_descriptor_pool != NULL);
-		DS_VecDestroy(&set->bindings);
+		DS_VecDeinit(&set->bindings);
 		GPU_CheckVK(vkFreeDescriptorSets(FGPU.device, set->global_descriptor_pool, 1, &set->vk_handle));
 	}
 }
@@ -981,8 +981,8 @@ GPU_API void GPU_Init(GPU_WindowHandle window) {
 
 	memset(&FGPU, 0, sizeof(FGPU));
 	FGPU.window = window;
-	DS_InitArena(&FGPU.persistent_arena, DS_KIB(4));
-	DS_InitArena(&FGPU.temp_arena, DS_KIB(1));
+	DS_ArenaInit(&FGPU.persistent_arena, DS_KIB(4));
+	DS_ArenaInit(&FGPU.temp_arena, DS_KIB(1));
 		
 	DS_SlotAllocatorInitA(&FGPU.entities, &FGPU.persistent_arena);
 
@@ -1212,8 +1212,8 @@ GPU_API void GPU_Deinit() {
 		
 	glslang_finalize_process(); // Right now, we use global state for GPU (can't have multiple instances at the same time), so this is fine. But if we change the fact, we need to deal with this being per process, not per thread.  :GLSLangInitNote
 
-	DS_DestroyArena(&FGPU.persistent_arena);
-	DS_DestroyArena(&FGPU.temp_arena);
+	DS_ArenaDeinit(&FGPU.persistent_arena);
+	DS_ArenaDeinit(&FGPU.temp_arena);
 
 	DS_ProfExit();
 }
@@ -1924,7 +1924,7 @@ GPU_API GPU_GraphicsPipeline *GPU_MakeGraphicsPipeline(const GPU_GraphicsPipelin
 GPU_API void GPU_DestroyComputePipeline(GPU_ComputePipeline *pipeline) {
 	if (pipeline) {
 		vkDestroyPipeline(FGPU.device, pipeline->vk_handle, NULL);
-		DS_VecDestroy(&pipeline->accesses);
+		DS_VecDeinit(&pipeline->accesses);
 		GPU_FreeEntity((GPU_Entity*)pipeline);
 	}
 }
@@ -1932,7 +1932,7 @@ GPU_API void GPU_DestroyComputePipeline(GPU_ComputePipeline *pipeline) {
 GPU_API void GPU_DestroyGraphicsPipeline(GPU_GraphicsPipeline *pipeline) {
 	if (pipeline) {
 		vkDestroyPipeline(FGPU.device, pipeline->vk_handle, NULL);
-		DS_VecDestroy(&pipeline->accesses);
+		DS_VecDeinit(&pipeline->accesses);
 		GPU_FreeEntity((GPU_Entity*)pipeline);
 	}
 }
@@ -2414,7 +2414,7 @@ static void GPU_InsertBarriers(GPU_Graph *graph, GPU_ResourceAccess *accesses, u
 
 GPU_API GPU_DescriptorArena *GPU_MakeDescriptorArena() {
 	GPU_DescriptorArena *descriptor_arena = &GPU_NewEntity()->descriptor_arena;
-	DS_InitArena(&descriptor_arena->arena, 256);
+	DS_ArenaInit(&descriptor_arena->arena, 256);
 		
 	VkDescriptorPoolSize pool_sizes[4];
 	pool_sizes[0].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
@@ -2451,7 +2451,7 @@ GPU_API void GPU_DestroyDescriptorArena(GPU_DescriptorArena *descriptor_arena) {
 		//	 if (next) GPU_TODO();
 		//	 pool = next;
 		// }
-		DS_DestroyArena(&descriptor_arena->arena);
+		DS_ArenaDeinit(&descriptor_arena->arena);
 		GPU_FreeEntity((GPU_Entity*)descriptor_arena);
 	}
 }
@@ -2496,7 +2496,7 @@ GPU_API void GPU_DestroyGraph(GPU_Graph *graph) {
 	vkDestroyFence(FGPU.device, graph->gpu_finished_working_fence, NULL);
 	vkFreeCommandBuffers(FGPU.device, FGPU.cmd_pool, 1, &graph->cmd_buffer);
 	// GPU_DestroyDescriptorArena(graph->descriptor_arena);
-	DS_DestroyArena(&graph->arena);
+	DS_ArenaDeinit(&graph->arena);
 }
 
 GPU_API GPU_Graph *GPU_MakeGraph(void) {
@@ -2506,7 +2506,7 @@ GPU_API GPU_Graph *GPU_MakeGraph(void) {
 	// That would be pretty awesome. Then we could have lots of arenas without feeling bad about it,
 	// and even ditch malloc and free completely and just go to VirtualAlloc directly.
 	// ... but how to make it deterministic? I guess that would be up to FOS to provide a deterministic VirtualAlloc.
-	DS_InitArena(&_arena, DS_KIB(1));
+	DS_ArenaInit(&_arena, DS_KIB(1));
 
 	GPU_Graph *graph = DS_New(GPU_Graph, &_arena);
 	graph->arena = _arena;
@@ -2600,10 +2600,10 @@ GPU_API void GPU_GraphSubmit(GPU_Graph *graph) {
 		VkPipelineStageFlags src_stage_mask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; // By default, this barrier depends on nothing
 
 		DS_ForVecEach(GPU_BufferImpl*, &graph->builder_state.buffers, it) {
-			(*it.elem)->temp = NULL;
+			(*it.ptr)->temp = NULL;
 		}
 		DS_ForVecEach(GPU_TextureImpl*, &graph->builder_state.textures, it) {
-			GPU_TextureImpl *texture = *it.elem;
+			GPU_TextureImpl *texture = *it.ptr;
 			VkAccessFlags aspect = GPU_GetImageAspectFlags(texture->base.format);
 
 			// Let's default idle_layout to SHADER_READ_ONLY_OPTIMAL for all textures (except for swapchain textures). This makes it so that you can do some arbitrary storage image computations with a texture, and it shouldn't affect performance when you're not doing writes anymore. But this might just be a dumb heuristic. If we have a storage image that we always write to at the start of a new frame/graph, then we would like to keep it as GENERAL. One solution would be to keep track of `idle_layout` separately for every view, and not even try to transition them to anything at the end of a graph. Another idea would be to add a texture flag for "preferred idle layout". Idk.
@@ -2680,10 +2680,7 @@ GPU_API void GPU_GraphSubmit(GPU_Graph *graph) {
 		present_info.pSwapchains = &FGPU.swapchain.vk_handle;
 		present_info.pImageIndices = &graph->frame.img_index;
 
-		DS_ProfEnterN(vkQueuePresent);
 		VkResult result = vkQueuePresentKHR(FGPU.queue, &present_info);
-		DS_ProfExitN(vkQueuePresent);
-
 		if (result != VK_ERROR_OUT_OF_DATE_KHR && result != VK_SUBOPTIMAL_KHR) GPU_CheckVK(result);
 	}
 
@@ -2766,8 +2763,8 @@ GPU_API void GPU_OpBeginRenderPass(GPU_Graph *graph) {
 	}
 
 	DS_ForVecEach(GPU_DrawParams, &graph->builder_state.prepared_draw_params, it) {
-		GPU_GraphicsPipeline *pipeline = it.elem->pipeline;
-		GPU_DescriptorSet *desc_set = it.elem->desc_set;
+		GPU_GraphicsPipeline *pipeline = it.ptr->pipeline;
+		GPU_DescriptorSet *desc_set = it.ptr->desc_set;
 
 		for (int access_i = 0; access_i < pipeline->accesses.length; access_i++) {
 			GPU_Access *binding_access = &pipeline->accesses.data[access_i];
@@ -2839,8 +2836,8 @@ GPU_API void GPU_OpDispatch(GPU_Graph *graph, uint32_t group_count_x, uint32_t g
 	accesses.arena = &graph->arena;
 
 	DS_ForVecEach(GPU_Access, &pipeline->accesses, it) {
-		GPU_BindingInfo binding_info = DS_VecGet(pipeline->layout->bindings, it.elem->binding);
-		GPU_BindingValue binding_value = DS_VecGet(desc_set->bindings, it.elem->binding);
+		GPU_BindingInfo binding_info = DS_VecGet(pipeline->layout->bindings, it.ptr->binding);
+		GPU_BindingValue binding_value = DS_VecGet(desc_set->bindings, it.ptr->binding);
 		
 		uint32_t first_layer = 0, layer_count = 0;
 		uint32_t first_mip_level = 0, mip_level_count = 1;
@@ -2849,19 +2846,19 @@ GPU_API void GPU_OpDispatch(GPU_Graph *graph, uint32_t group_count_x, uint32_t g
 		switch (binding_info.kind) {
 		case GPU_ResourceKind_StorageImage: {
 			GPU_Texture *texture = (GPU_Texture*)binding_value.ptr;
-			if (it.elem->flags & GPU_AccessFlag_Read)  access_flags |= GPU_ResourceAccessFlag_StorageImageRead;
-			if (it.elem->flags & GPU_AccessFlag_Write) access_flags |= GPU_ResourceAccessFlag_StorageImageWrite;
+			if (it.ptr->flags & GPU_AccessFlag_Read)  access_flags |= GPU_ResourceAccessFlag_StorageImageRead;
+			if (it.ptr->flags & GPU_AccessFlag_Write) access_flags |= GPU_ResourceAccessFlag_StorageImageWrite;
 			first_mip_level = binding_value.mip_level;
 			layer_count = texture->layer_count;
 		} break;
 		case GPU_ResourceKind_Buffer: {
-			if (it.elem->flags & GPU_AccessFlag_Read)  access_flags |= GPU_ResourceAccessFlag_BufferRead;
-			if (it.elem->flags & GPU_AccessFlag_Write) access_flags |= GPU_ResourceAccessFlag_BufferWrite;
+			if (it.ptr->flags & GPU_AccessFlag_Read)  access_flags |= GPU_ResourceAccessFlag_BufferRead;
+			if (it.ptr->flags & GPU_AccessFlag_Write) access_flags |= GPU_ResourceAccessFlag_BufferWrite;
 		} break;
 		case GPU_ResourceKind_Sampler: break;
 		case GPU_ResourceKind_Texture: {
 			GPU_Texture *texture = (GPU_Texture*)binding_value.ptr;
-			GPU_Check(it.elem->flags == GPU_AccessFlag_Read); // Textures can only be read from
+			GPU_Check(it.ptr->flags == GPU_AccessFlag_Read); // Textures can only be read from
 			access_flags |= GPU_ResourceAccessFlag_TextureRead;
 			
 			if (binding_value.mip_level == GPU_MIP_LEVEL_ALL) {

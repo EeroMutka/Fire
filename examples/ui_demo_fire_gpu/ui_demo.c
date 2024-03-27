@@ -373,8 +373,8 @@ static void AddTreeSpecie(UI_Key key, STR name, STR information) {
 	DS_VecPush(&g_trees, tree);
 }
 
-static void DestroyTreeSpecie(TreeSpecie *tree) {
-	UI_TextFree(&tree->text);
+static void TreeSpecieDeinit(TreeSpecie *tree) {
+	UI_TextDeinit(&tree->text);
 }
 
 int main() {
@@ -391,11 +391,11 @@ int main() {
 	UI_TextInit(&g_dummy_text_2, STR_(""));
 
 	DS_Arena persistent_arena;
-	DS_InitArena(&persistent_arena, 4096);
+	DS_ArenaInit(&persistent_arena, 4096);
 
 	OS_Arena os_temp_arena, os_persistent_arena;
-	OS_InitArena(&os_temp_arena, 4096);
-	OS_InitArena(&os_persistent_arena, 4096);
+	OS_ArenaInit(&os_temp_arena, 4096);
+	OS_ArenaInit(&os_persistent_arena, 4096);
 
 	OS_Inputs window_inputs = {0};
 	OS_Window window = OS_WindowCreate(g_window_size, g_window_height, OS_STR("UI demo (Fire GPU)"));
@@ -447,8 +447,8 @@ int main() {
 	
 	//// Cleanup resources /////////////////////////////
 
-	UI_TextFree(&g_dummy_text);
-	UI_TextFree(&g_dummy_text_2);
+	UI_TextDeinit(&g_dummy_text);
+	UI_TextDeinit(&g_dummy_text_2);
 	UI_DestroyFont(&base_font);
 	UI_DestroyFont(&icons_font);
 	UI_Deinit();
@@ -461,12 +461,12 @@ int main() {
 	GPU_DestroyRenderPass(main_renderpass);
 	GPU_Deinit();
 
-	OS_DestroyArena(&os_persistent_arena);
-	OS_DestroyArena(&os_temp_arena);
-	DS_DestroyArena(&persistent_arena);
+	OS_ArenaDeinit(&os_persistent_arena);
+	OS_ArenaDeinit(&os_temp_arena);
+	DS_ArenaDeinit(&persistent_arena);
 	
-	for (int i = 0; i < g_trees.length; i++) DestroyTreeSpecie(&g_trees.data[i]);
-	DS_VecDestroy(&g_trees);
+	for (int i = 0; i < g_trees.length; i++) TreeSpecieDeinit(&g_trees.data[i]);
+	DS_VecDeinit(&g_trees);
 
 	OS_Deinit();
 

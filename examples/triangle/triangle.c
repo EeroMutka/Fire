@@ -56,11 +56,15 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
 	Render();
 }
 
+typedef struct {
+	int x;
+} Foo;
+
 int main() {
 	OS_Init();
 
 	OS_Arena os_temp_arena;
-	OS_InitArena(&os_temp_arena, 4096);
+	OS_ArenaInit(&os_temp_arena, 4096);
 
 	OS_Inputs window_inputs = {0};
 	OS_Window window = OS_WindowCreate(1200, 900, OS_STR("Triangle"));
@@ -132,7 +136,7 @@ int main() {
 	GPU_DestroyRenderPass(g_render_pass);
 	GPU_Deinit();
 
-	OS_DestroyArena(&os_temp_arena);
+	OS_ArenaDeinit(&os_temp_arena);
 	OS_Deinit();
 
 	return 0;

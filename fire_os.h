@@ -331,8 +331,8 @@ typedef struct OS_Arena {
 OS_API void OS_Init(void);
 OS_API void OS_Deinit(void);
 
-OS_API void OS_InitArena(OS_Arena *arena, int block_size);
-OS_API void OS_DestroyArena(OS_Arena *arena);
+OS_API void OS_ArenaInit(OS_Arena *arena, int block_size);
+OS_API void OS_ArenaDeinit(OS_Arena *arena);
 OS_API char *OS_ArenaPush(OS_Arena *arena, int size);
 OS_API void OS_ArenaReset(OS_Arena *arena);
 
@@ -534,13 +534,13 @@ static void OS_VecReserveRaw(OS_VecRaw *array, int capacity, int elem_size) {
 
 #define OS_AlignUpPow2(x, p) (((x) + (p) - 1) & ~((p) - 1)) // e.g. (x=30, p=16) -> 32
 
-OS_API void OS_InitArena(OS_Arena *arena, int block_size) {
+OS_API void OS_ArenaInit(OS_Arena *arena, int block_size) {
 	OS_Arena _arena = {0};
 	_arena.block_size = block_size;
 	*arena = _arena;
 }
 
-OS_API void OS_DestroyArena(OS_Arena *arena) {
+OS_API void OS_ArenaDeinit(OS_Arena *arena) {
 	for (OS_ArenaBlockHeader *block = arena->first_block; block;) {
 		OS_ArenaBlockHeader *next = block->next;
 		free(block);
@@ -696,12 +696,12 @@ OS_API void OS_Init(void) {
 	OS_current_process = GetCurrentProcess();
 	SymInitialize(OS_current_process, NULL, true);
 
-	OS_InitArena(&OS_temp_arena, 1024);
+	OS_ArenaInit(&OS_temp_arena, 1024);
 }
 
 OS_API void OS_Deinit(void) {
 	OS_CHECK(OS_temp_arena_counter == 0);
-	OS_DestroyArena(&OS_temp_arena);
+	OS_ArenaDeinit(&OS_temp_arena);
 }
 
 OS_API OS_Tick OS_Now(void) {
