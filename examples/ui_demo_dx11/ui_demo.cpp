@@ -354,6 +354,7 @@ static void UpdateAndRender() {
 
 	UI_EndFrame(&g_ui_outputs);
 	UI_DX11_EndFrame(&g_ui_outputs, g_framebuffer_rtv, g_window_size);
+	UI_OS_ApplyOutputs(&g_ui_outputs);
 	
 	g_swapchain->Present(1, 0);
 }
