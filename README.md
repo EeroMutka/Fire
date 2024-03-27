@@ -25,7 +25,7 @@ This is a collection of easy-to-use programming libraries that are compatible wi
 
 ## Building the Examples
 
-For now, you'll need Windows and [Visual Studio](https://visualstudio.microsoft.com/) installed to build and run the examples.
+You'll need Windows and [Visual Studio](https://visualstudio.microsoft.com/) installed to build and run the examples.
 
 1. Open `x64 Native Tools Command Prompt for VS <year>` from the Windows Start Menu. Within this terminal, `cd` into the `examples` folder.
 2. Run `cl gen_projects.c && gen_projects`.
