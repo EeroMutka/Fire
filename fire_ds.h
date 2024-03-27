@@ -15,17 +15,10 @@
 #include <stdbool.h>
 #include <string.h>  // memcpy, memmove, memset, memcmp, strlen
 
-// For profiling, these may be removed from non-profiled builds.
-// It makes sense to have these as a common interface, as they can be used with any profiler.
-// ... but if we have multiple translation units, how can we define these? I guess we have to do custom translation units then.
 #ifndef DS_PROFILER_MACROS_OVERRIDE
 // Function-level profiler scope. A single function may only have one of these, and it should span the entire function.
 #define DS_ProfEnter()
 #define DS_ProfExit()
-
-// Nested profiler scope. NAME should NOT be in quotes.
-#define DS_ProfEnterN(NAME)
-#define DS_ProfExitN(NAME)
 #endif
 
 #ifndef DS_CHECK_OVERRIDE
@@ -61,28 +54,23 @@ static char *DS_Realloc_Impl(char *old_ptr, int new_size, int new_alignment) {
 
 // ----------------------------------------------------------
 
-typedef struct DS_DefaultArenaBlockHeader {
+typedef struct DS_ArenaBlockHeader {
 	int size_including_header;
-	struct DS_DefaultArenaBlockHeader *next; // may be NULL
-} DS_DefaultArenaBlockHeader;
+	struct DS_ArenaBlockHeader *next; // may be NULL
+} DS_ArenaBlockHeader;
 
-typedef struct DS_DefaultArenaMark {
-	DS_DefaultArenaBlockHeader *block; // If the arena has no blocks allocated yet, then we mark the beginning of the arena by setting this member to NULL.
+typedef struct DS_ArenaMark {
+	DS_ArenaBlockHeader *block; // If the arena has no blocks allocated yet, then we mark the beginning of the arena by setting this member to NULL.
 	char *ptr;
-} DS_DefaultArenaMark;
+} DS_ArenaMark;
 
-typedef struct DS_DefaultArena {
+typedef struct DS_Arena {
 	int block_size;
-	DS_DefaultArenaBlockHeader *first_block; // may be NULL
-	DS_DefaultArenaMark mark;
-} DS_DefaultArena;
+	DS_ArenaBlockHeader *first_block; // may be NULL
+	DS_ArenaMark mark;
+} DS_Arena;
 
 // -------------------------------------------------------------------
-
-//#ifndef OS_ARENA_OVERRIDE
-typedef DS_DefaultArena DS_Arena;
-typedef DS_DefaultArenaMark DS_ArenaMark;
-//#endif
 
 // -- internal helpers -----------
 
@@ -392,28 +380,17 @@ static inline bool DS_MapIter(DS_MapRaw *map, int *i, void **out_key, void **out
 	return true;
 }
 
-// -- Default DS_Arena ------------------------
+// -- Memory allocation --------------------------------
 
-DS_API void DS_InitDefaultArena(DS_DefaultArena *arena, int block_size);
-DS_API void DS_DestroyDefaultArena(DS_DefaultArena *arena);
+DS_API void DS_InitArena(DS_Arena *arena, int block_size);
+DS_API void DS_DestroyArena(DS_Arena *arena);
 
-DS_API char *DS_DefaultArenaPush(DS_Arena *arena, int size, int alignment);
-DS_API DS_ArenaMark DS_DefaultArenaGetMark(DS_Arena *arena);
-DS_API void DS_DefaultArenaSetMark(DS_Arena *arena, DS_ArenaMark mark);
-DS_API void DS_DefaultArenaReset(DS_Arena *arena);
+DS_API char *DS_ArenaPush(DS_Arena *arena, int size);
+DS_API char *DS_ArenaPushEx(DS_Arena *arena, int size, int alignment);
 
-// -- DS_Arena --------------------------------
-
-#ifndef DS_CUSTOM_ARENA
-static inline void DS_InitArena(DS_Arena *arena, int block_size)                { DS_InitDefaultArena(arena, block_size); }
-static inline void DS_DestroyArena(DS_Arena *arena)                             { DS_DestroyDefaultArena(arena); }
-
-static inline char *DS_ArenaPushA(DS_Arena *arena, int size, int alignment)     { return DS_DefaultArenaPush(arena, size, alignment); }
-static inline char *DS_ArenaPush(DS_Arena *arena, int size)                     { return DS_DefaultArenaPush(arena, size, DS_DEFAULT_ALIGNMENT); }
-static inline DS_ArenaMark DS_ArenaGetMark(DS_Arena *arena)                        { return DS_DefaultArenaGetMark(arena); }
-static inline void DS_ArenaSetMark(DS_Arena *arena, DS_ArenaMark mark)             { DS_DefaultArenaSetMark(arena, mark); }
-static inline void DS_ArenaReset(DS_Arena *arena)                               { DS_DefaultArenaReset(arena); }
-#endif
+DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena *arena);
+DS_API void DS_ArenaSetMark(DS_Arena *arena, DS_ArenaMark mark);
+DS_API void DS_ArenaReset(DS_Arena *arena);
 
 static char *DS_Realloc(const void *old_ptr, int new_size, int new_alignment) {
 	char *result = DS_Realloc_Impl((char*)old_ptr, new_size, new_alignment);
@@ -427,7 +404,7 @@ static char *DS_Realloc(const void *old_ptr, int new_size, int new_alignment) {
 
 // static inline void *ArenaPushZero(DS_Arena *arena, int size) { void *p = DS_ArenaPush(arena, size); return memset(p, 0, size); }
 static inline void *DS_CloneSize(DS_Arena *arena, const void *value, int size) { void *p = DS_ArenaPush(arena, size); return memcpy(p, value, size); }
-static inline void *DS_CloneSizeA(DS_Arena *arena, const void *value, int size, int align) { void *p = DS_ArenaPushA(arena, size, align); return memcpy(p, value, size); }
+static inline void *DS_CloneSizeA(DS_Arena *arena, const void *value, int size, int align) { void *p = DS_ArenaPushEx(arena, size, align); return memcpy(p, value, size); }
 
 // -- DS_Vec --------------------------------
 
@@ -630,6 +607,7 @@ static inline void DS_SlotAllocatorInitRaw(SlotAllocatorRaw *allocator,
 	uint32_t bucket_next_ptr_offset, uint32_t slot_size, uint32_t bucket_size,
 	uint32_t num_slots_per_bucket, DS_Arena *arena)
 {
+	DS_ProfEnter();
 	SlotAllocatorRaw result = {0};
 	result.bucket_next_ptr_offset = bucket_next_ptr_offset;
 	result.slot_size = slot_size;
@@ -637,9 +615,11 @@ static inline void DS_SlotAllocatorInitRaw(SlotAllocatorRaw *allocator,
 	result.num_slots_per_bucket = num_slots_per_bucket;
 	result.arena = arena;
 	*allocator = result;
+	DS_ProfExit();
 }
 
 static inline void *DS_TakeSlotRaw(SlotAllocatorRaw *allocator) {
+	DS_ProfEnter();
 	void *result = NULL;
 	DS_CHECK(allocator->arena != NULL); // Did you forget to call DS_SlotAllocatorInit?
 
@@ -676,7 +656,7 @@ static inline void *DS_TakeSlotRaw(SlotAllocatorRaw *allocator) {
 		result = (char*)bucket + allocator->slot_size*slot_idx;
 	}
 
-	// *(void**)((char*)result + next_ptr_offset) = DS_SLOT_IS_OCCUPIED;
+	DS_ProfExit();
 	return result;
 }
 
@@ -708,6 +688,7 @@ static inline void DS_BucketListSetEndRaw(BucketListRaw *list, DS_BucketListInde
 //}
 
 static inline void DS_BucketListDestroyRaw(BucketListRaw *list, int next_bucket_ptr_offset) {
+	DS_ProfEnter();
 	void *bucket = list->buckets[0];
 	for (;bucket;) {
 		void *next_bucket = *(void**)((char*)bucket + next_bucket_ptr_offset);
@@ -725,9 +706,11 @@ static inline void DS_BucketListDestroyRaw(BucketListRaw *list, int next_bucket_
 
 	BucketListRaw empty = {0};
 	*list = empty;
+	DS_ProfExit();
 }
 
 static inline void *DS_BucketListPushRaw(BucketListRaw *list, void *elem, int elem_size, int next_bucket_ptr_offset) {
+	DS_ProfEnter();
 	void *bucket = list->buckets[1];
 
 	if (bucket == NULL || list->last_bucket_end == list->elems_per_bucket) {
@@ -770,6 +753,7 @@ static inline void *DS_BucketListPushRaw(BucketListRaw *list, void *elem, int el
 	uint32_t slot_idx = list->last_bucket_end++;
 	void *result = (char*)bucket + elem_size*slot_idx;
 	memcpy(result, elem, elem_size);
+	DS_ProfExit();
 	return result;
 }
 
@@ -783,21 +767,17 @@ DS_API void DS_VecReserveRaw(DS_VecRaw *array, int capacity, int elem_size) {
 	}
 	
 	if (new_capacity != array->capacity) {
-		DS_ProfEnterN(Resize);
-		
 		if (array->arena == DS_USE_HEAP) {
 			array->data = DS_Realloc(array->data, new_capacity * elem_size, DS_DEFAULT_ALIGNMENT);
 		}
 		else {
-			void *new_data = DS_ArenaPushA(array->arena, new_capacity * elem_size, DS_DEFAULT_ALIGNMENT);
+			void *new_data = DS_ArenaPushEx(array->arena, new_capacity * elem_size, DS_DEFAULT_ALIGNMENT);
 			memcpy(new_data, array->data, array->length * elem_size);
 			DS_DebugFillGarbage(array->data, array->length * elem_size); // fill the old data with garbage to potentially catch errors
 			array->data = new_data;
 		}
 
 		array->capacity = new_capacity;
-
-		DS_ProfExitN(Resize);
 	}
 
 	DS_ProfExit();
@@ -870,12 +850,14 @@ DS_API void DS_VecInitRaw(DS_VecRaw *array, DS_Arena *arena) {
 }
 
 DS_API void DS_VecDestroyRaw(DS_VecRaw *array, int elem_size) {
+	DS_ProfEnter();
 	DS_DebugFillGarbage(array->data, array->capacity * elem_size);
 	if (array->arena == DS_USE_HEAP) {
 		DS_Realloc(array->data, 0, DS_DEFAULT_ALIGNMENT);
 	}
 	DS_VecRaw empty = {0};
 	*array = empty;
+	DS_ProfExit();
 }
 
 DS_API int DS_VecPushRaw(DS_VecRaw *array, const void *elem, int elem_size) {
@@ -909,12 +891,14 @@ static inline void DS_MapClearRaw(DS_MapRaw *map, int elem_size) {
 }
 
 static inline void DS_MapDestroyRaw(DS_MapRaw *map, int elem_size) {
+	DS_ProfEnter();
 	DS_DebugFillGarbage(map->data, map->capacity * elem_size);
 	if (map->arena == DS_USE_HEAP) {
 		DS_Realloc(map->data, 0, DS_DEFAULT_ALIGNMENT);
 	}
 	DS_MapRaw empty = {0};
 	*map = empty;
+	DS_ProfExit();
 }
 
 #if defined(_MSC_VER)
@@ -926,6 +910,7 @@ static inline void DS_MapDestroyRaw(DS_MapRaw *map, int elem_size) {
 
 // See https://github.com/aappleby/smhasher/blob/master/src/MurmurHash2.cpp
 static uint64_t DS_MurmurHash64A(const void *key, int len, uint64_t seed) {
+	DS_ProfEnter();
 	const uint64_t m = 0xc6a4a7935bd1e995LLU;
 	const int r = 47;
 
@@ -959,11 +944,13 @@ static uint64_t DS_MurmurHash64A(const void *key, int len, uint64_t seed) {
 	h ^= h >> r;
 	h *= m;
 	h ^= h >> r;
+	DS_ProfExit();
 	return h;
 }
 
 // See https://github.com/aappleby/smhasher/blob/master/src/DS_MurmurHash3.cpp
 DS_API uint32_t DS_MurmurHash3(const void *key, int len, uint32_t seed) {
+	DS_ProfEnter();
 	const uint8_t *data = (const uint8_t*)key;
 	const int nblocks = len / 4;
 	
@@ -1007,6 +994,7 @@ DS_API uint32_t DS_MurmurHash3(const void *key, int len, uint32_t seed) {
 	h1 ^= h1 >> 13;
 	h1 *= 0xc2b2ae35;
 	h1 ^= h1 >> 16;
+	DS_ProfExit();
 	return h1;
 } 
 
@@ -1065,7 +1053,6 @@ static inline bool DS_MapGetOrAddRawEx(DS_MapRaw *map, const void *key, DS_OUT v
 	if (100 * (map->length + 1) > 70 * map->capacity) {
 		// Grow the map
 
-		DS_ProfEnterN(Grow);
 		char *old_data = (char*)map->data;
 		int old_capacity = map->capacity;
 
@@ -1096,8 +1083,6 @@ static inline bool DS_MapGetOrAddRawEx(DS_MapRaw *map, const void *key, DS_OUT v
 		if (map->arena == DS_USE_HEAP) {
 			DS_Realloc(old_data, 0, DS_DEFAULT_ALIGNMENT); // free the old data if using the heap allocator
 		}
-
-		DS_ProfExitN(Grow);
 	}
 
 	uint32_t mask = (uint32_t)map->capacity - 1;
@@ -1138,7 +1123,8 @@ static inline bool DS_MapGetOrAddRawEx(DS_MapRaw *map, const void *key, DS_OUT v
 
 static inline bool DS_MapRemoveRaw(DS_MapRaw *map, const void *key, int K_size, int V_size, int elem_size, int key_offset, int val_offset) {
 	if (map->capacity == 0) return false;
-
+	DS_ProfEnter();
+	
 	uint32_t hash = DS_MurmurHash3((char*)key, K_size, 989898);
 	if (hash == 0) hash = 1;
 
@@ -1188,6 +1174,7 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw *map, const void *key, int K_size, 
 		index = (index + 1) & mask;
 	}
 
+	DS_ProfExit();
 	return ok;
 }
 
@@ -1202,39 +1189,45 @@ static inline bool DS_MapInsertRaw(DS_MapRaw *map, const void *key, DS_OUT void 
 	return added;
 }
 
-DS_API void DS_InitDefaultArena(DS_DefaultArena *arena, int block_size) {
-	DS_DefaultArena _arena = {0};
+DS_API void DS_InitArena(DS_Arena *arena, int block_size) {
+	DS_Arena _arena = {0};
 	_arena.block_size = block_size;
 	*arena = _arena;
 }
 
-DS_API void DS_DestroyDefaultArena(DS_DefaultArena *arena) {
-	for (DS_DefaultArenaBlockHeader *block = arena->first_block; block;) {
-		DS_DefaultArenaBlockHeader *next = block->next;
+DS_API void DS_DestroyArena(DS_Arena *arena) {
+	for (DS_ArenaBlockHeader *block = arena->first_block; block;) {
+		DS_ArenaBlockHeader *next = block->next;
 		DS_MemFree(block);
 		block = next;
 	}
-	DS_DebugFillGarbage(arena, sizeof(DS_DefaultArena));
+	DS_DebugFillGarbage(arena, sizeof(DS_Arena));
 }
 
-DS_API char *DS_DefaultArenaPush(DS_Arena *arena, int size, int alignment) {
+DS_API char *DS_ArenaPush(DS_Arena *arena, int size) {
+	return DS_ArenaPushEx(arena, size, DS_DEFAULT_ALIGNMENT);
+}
+
+DS_API char *DS_ArenaPushEx(DS_Arena *arena, int size, int alignment) {
+	DS_ProfEnter();
+	
 	bool alignment_is_power_of_2 = ((alignment) & ((alignment) - 1)) == 0;
 	DS_CHECK(alignment != 0 && alignment_is_power_of_2);
 	DS_CHECK(alignment <= DS_MAX_ALIGNMENT); // DS_Arena blocks get allocated using DS_MAX_ALIGNMENT, and so all allocations within an arena must conform to that.
 
-	DS_DefaultArenaBlockHeader *curr_block = arena->mark.block; // may be NULL
+	DS_ArenaBlockHeader *curr_block = arena->mark.block; // may be NULL
 	void *curr_ptr = arena->mark.ptr;
 
 	char *result_address = (char*)DS_AlignUpPow2((uintptr_t)curr_ptr, alignment);
 	int remaining_space = curr_block ? curr_block->size_including_header - (int)((uintptr_t)result_address - (uintptr_t)curr_block) : 0;
 
 	if (size > remaining_space) { // We need a new block!
-		int result_offset = DS_AlignUpPow2(sizeof(DS_DefaultArenaBlockHeader), alignment);
+		int result_offset = DS_AlignUpPow2(sizeof(DS_ArenaBlockHeader), alignment);
 		int new_block_size = result_offset + size;
 		if (arena->block_size > new_block_size) new_block_size = arena->block_size;
 
-		DS_DefaultArenaBlockHeader *new_block = NULL;
-		DS_DefaultArenaBlockHeader *next_block = NULL;
+		DS_ArenaBlockHeader *new_block = NULL;
+		DS_ArenaBlockHeader *next_block = NULL;
 
 		// If there is a block at the end of the list that we have used previously, but aren't using anymore, then try to start using that one.
 		if (curr_block && curr_block->next) {
@@ -1248,7 +1241,7 @@ DS_API char *DS_DefaultArenaPush(DS_Arena *arena, int size, int alignment) {
 
 		// Otherwise, insert a new block.
 		if (new_block == NULL) {
-			new_block = (DS_DefaultArenaBlockHeader*)DS_Realloc(NULL, new_block_size, DS_MAX_ALIGNMENT);
+			new_block = (DS_ArenaBlockHeader*)DS_Realloc(NULL, new_block_size, DS_MAX_ALIGNMENT);
 			new_block->size_including_header = new_block_size;
 			new_block->next = next_block;
 			
@@ -1261,14 +1254,16 @@ DS_API char *DS_DefaultArenaPush(DS_Arena *arena, int size, int alignment) {
 	}
 	
 	arena->mark.ptr = result_address + size;
+	DS_ProfExit();
 	return result_address;
 }
 
-DS_API void DS_DefaultArenaReset(DS_Arena *arena) {
+DS_API void DS_ArenaReset(DS_Arena *arena) {
+	DS_ProfEnter();
 	if (arena->first_block) {
 		// Free all blocks after the first block
-		for (DS_DefaultArenaBlockHeader *block = arena->first_block->next; block;) {
-			DS_DefaultArenaBlockHeader *next = block->next;
+		for (DS_ArenaBlockHeader *block = arena->first_block->next; block;) {
+			DS_ArenaBlockHeader *next = block->next;
 			DS_MemFree(block);
 			block = next;
 		}
@@ -1281,21 +1276,24 @@ DS_API void DS_DefaultArenaReset(DS_Arena *arena) {
 		}
 	}
 	arena->mark.block = arena->first_block;
-	arena->mark.ptr = (char*)arena->first_block + sizeof(DS_DefaultArenaBlockHeader);
+	arena->mark.ptr = (char*)arena->first_block + sizeof(DS_ArenaBlockHeader);
+	DS_ProfExit();
 }
 
-DS_API DS_ArenaMark DS_DefaultArenaGetMark(DS_Arena *arena) {
+DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena *arena) {
 	return arena->mark;
 }
 
-DS_API void DS_DefaultArenaSetMark(DS_Arena *arena, DS_ArenaMark mark) {
+DS_API void DS_ArenaSetMark(DS_Arena *arena, DS_ArenaMark mark) {
+	DS_ProfEnter();
 	if (mark.block == NULL) {
 		arena->mark.block = arena->first_block;
-		arena->mark.ptr = (char*)arena->first_block + sizeof(DS_DefaultArenaBlockHeader);
+		arena->mark.ptr = (char*)arena->first_block + sizeof(DS_ArenaBlockHeader);
 	}
 	else {
 		arena->mark = mark;
 	}
+	DS_ProfExit();
 }
 
 //#ifndef DS_REALLOC_OVERRIDE
