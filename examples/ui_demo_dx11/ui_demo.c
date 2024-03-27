@@ -6,7 +6,6 @@
 #pragma comment (lib, "d3dcompiler")
 
 #define COBJMACROS
-//#define WIN32_LEAN_AND_MEAN
 
 #include "fire_ds.h"
 
@@ -28,19 +27,10 @@ typedef STR OS_String;
 #include <stdlib.h>
 #include <stdio.h>
 
-// #pragma comment(lib, "user32")
-// #pragma comment(lib, "d3d11")
-// #pragma comment(lib, "d3dcompiler")
-
-//#include <windows.h>
-//#include <d3d11.h>
-//#include <d3dcompiler.h>
-
 #include <windows.h>
 #include <d3d11.h>
 #include <dxgi1_3.h>
 #include <d3dcompiler.h>
-//#include <dxgidebug.h>
 
 #include "fire_ui/fire_ui.h"
 #include "fire_ui/fire_ui_backend_dx11.h"
@@ -57,9 +47,6 @@ typedef struct {
 
 //// Globals ///////////////////////////////////////////////
 
-// static GPU_Graph *g_graphs[2];
-// static GPU_DescriptorArena *g_descriptor_arenas[2];
-// static int g_current_graph_idx = 0;
 static IDXGISwapChain* g_swapchain;
 static ID3D11RenderTargetView* g_framebufferRTV;
 
@@ -491,6 +478,4 @@ int main() {
 		
 		UpdateAndRender();
 	}
-
-	// TODO: cleanup resources
 }
