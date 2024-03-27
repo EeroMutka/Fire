@@ -2005,15 +2005,15 @@ OS_API bool OS_WindowPoll(OS_Arena *arena, OS_Inputs *inputs, OS_Window *window,
 	if (OS_current_cursor != OS_MouseCursor_Arrow) {
 		wchar_t *cursor_name;
 		switch (OS_current_cursor) {
-		case OS_MouseCursor_Arrow: cursor_name = IDC_ARROW; break;
-		case OS_MouseCursor_Hand: cursor_name = IDC_HAND; break;
-		case OS_MouseCursor_I_Beam: cursor_name = IDC_IBEAM; break;
-		case OS_MouseCursor_Crosshair: cursor_name = IDC_CROSS; break;
-		case OS_MouseCursor_ResizeH: cursor_name = IDC_SIZEWE; break;
-		case OS_MouseCursor_ResizeV: cursor_name = IDC_SIZENS; break;
-		case OS_MouseCursor_ResizeNESW: cursor_name = IDC_SIZENESW; break;
-		case OS_MouseCursor_ResizeNWSE: cursor_name = IDC_SIZENWSE; break;
-		case OS_MouseCursor_ResizeAll: cursor_name = IDC_SIZEALL; break;
+		case OS_MouseCursor_Arrow: cursor_name = (wchar_t*)IDC_ARROW; break;
+		case OS_MouseCursor_Hand: cursor_name = (wchar_t*)IDC_HAND; break;
+		case OS_MouseCursor_I_Beam: cursor_name = (wchar_t*)IDC_IBEAM; break;
+		case OS_MouseCursor_Crosshair: cursor_name = (wchar_t*)IDC_CROSS; break;
+		case OS_MouseCursor_ResizeH: cursor_name = (wchar_t*)IDC_SIZEWE; break;
+		case OS_MouseCursor_ResizeV: cursor_name = (wchar_t*)IDC_SIZENS; break;
+		case OS_MouseCursor_ResizeNESW: cursor_name = (wchar_t*)IDC_SIZENESW; break;
+		case OS_MouseCursor_ResizeNWSE: cursor_name = (wchar_t*)IDC_SIZENWSE; break;
+		case OS_MouseCursor_ResizeAll: cursor_name = (wchar_t*)IDC_SIZEALL; break;
 		case OS_MouseCursor_COUNT: break;
 		}
 		SetCursor(LoadCursorW(NULL, cursor_name));

@@ -82,7 +82,7 @@ int main() {
 	BUILD_InitProject(&ui_demo_dx11, "ui_demo_dx11", &opts);
 	BUILD_AddIncludeDir(&ui_demo_dx11, "../../"); // Repository root folder
 	
-	BUILD_AddSourceFile(&ui_demo_dx11, "../ui_demo_dx11/ui_demo.c");
+	BUILD_AddSourceFile(&ui_demo_dx11, "../ui_demo_dx11/ui_demo.cpp");
 	
 	projects[projects_count++] = &ui_demo_dx11;
 	

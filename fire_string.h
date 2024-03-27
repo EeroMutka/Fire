@@ -1047,6 +1047,8 @@ STR_API STR STR_ReplaceMulti(STR_ARENA *arena, STR str, STR_Array search_for, ST
 	builder.arena = arena;
 	
 	for (int i = 0; i < str.size;) {
+
+		bool replaced = false;
 		for (int j = 0; j < n; j++) {
 			STR search_for_j = ((STR*)search_for.data)[j];
 			if (i + search_for_j.size > str.size) continue;
@@ -1055,15 +1057,16 @@ STR_API STR STR_ReplaceMulti(STR_ARENA *arena, STR str, STR_Array search_for, ST
 				STR replace_with_j = ((STR*)replace_with.data)[j];
 				STR_PrintV(&builder, replace_with_j);
 				i += search_for_j.size;
-				goto continue_outer;
+				replaced = true;
+				break;
 			}
 		}
 
-		STR char_str = {&str.data[i], 1};
-		STR_PrintV(&builder, char_str);
-		i++;
-	
-	continue_outer:;
+		if (!replaced) {
+			STR char_str = {&str.data[i], 1};
+			STR_PrintV(&builder, char_str);
+			i++;
+		}
 	}
 	STR_ProfExit();
 	return builder.str;

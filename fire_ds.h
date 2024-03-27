@@ -55,7 +55,7 @@ char *DS_Realloc_Impl(char *old_ptr, int new_size, int new_alignment);
 #include <stdlib.h>
 static char *DS_Realloc_Impl(char *old_ptr, int new_size, int new_alignment) {
 	void *result = _aligned_realloc(old_ptr, new_size, new_alignment);
-	return result;
+	return (char*)result;
 }
 #endif
 

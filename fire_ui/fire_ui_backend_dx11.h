@@ -66,7 +66,7 @@ static UI_TextureID UI_DX11_CreateAtlas(int atlas_id, uint32_t width, uint32_t h
 	staging_desc.CPUAccessFlags     = D3D11_CPU_ACCESS_WRITE;
 	
 	ID3D11Texture2D *staging;
-	ID3D11Device_CreateTexture2D(UI_DX11_STATE.device, &staging_desc, NULL, &staging);
+	UI_DX11_STATE.device->CreateTexture2D(&staging_desc, NULL, &staging);
 
 	D3D11_TEXTURE2D_DESC texturedesc = {0};
 	texturedesc.Width              = width;
@@ -79,10 +79,10 @@ static UI_TextureID UI_DX11_CreateAtlas(int atlas_id, uint32_t width, uint32_t h
 	texturedesc.BindFlags          = D3D11_BIND_SHADER_RESOURCE;
 	
 	ID3D11Texture2D *texture;
-	ID3D11Device_CreateTexture2D(UI_DX11_STATE.device, &texturedesc, NULL, &texture);
+	UI_DX11_STATE.device->CreateTexture2D(&texturedesc, NULL, &texture);
 
 	ID3D11ShaderResourceView* textureSRV;
-	ID3D11Device_CreateShaderResourceView(UI_DX11_STATE.device, (ID3D11Resource*)texture, NULL, &textureSRV);
+	UI_DX11_STATE.device->CreateShaderResourceView(texture, NULL, &textureSRV);
 
 	UI_DX11_STATE.atlases[atlas_id] = texture;
 	UI_DX11_STATE.atlases_staging[atlas_id] = staging;
@@ -99,7 +99,7 @@ static void *UI_DX11_AtlasMapUntilFrameEnd(int atlas_id) {
 	D3D11_MAPPED_SUBRESOURCE *mapped = &UI_DX11_STATE.atlases_mapped[atlas_id];
 	if (mapped->pData == NULL) {
 		ID3D11Texture2D *staging = UI_DX11_STATE.atlases_staging[atlas_id];
-		ID3D11DeviceContext_Map(UI_DX11_STATE.devicecontext, (ID3D11Resource*)staging, 0, D3D11_MAP_WRITE, 0, mapped);
+		UI_DX11_STATE.devicecontext->Map(staging, 0, D3D11_MAP_WRITE, 0, mapped);
 		assert(mapped->pData != NULL);
 	}
 	return mapped->pData;
@@ -109,7 +109,7 @@ static void *UI_DX11_BufferMapUntilFrameEnd(int buffer_id) {
 	D3D11_MAPPED_SUBRESOURCE *mapped = &UI_DX11_STATE.buffers_mapped[buffer_id];
 	if (mapped->pData == NULL) {
 		ID3D11Buffer *buffer = UI_DX11_STATE.buffers[buffer_id];
-		ID3D11DeviceContext_Map(UI_DX11_STATE.devicecontext, (ID3D11Resource*)buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, mapped);
+		UI_DX11_STATE.devicecontext->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, mapped);
 		assert(mapped->pData != NULL);
 	}
 
@@ -124,7 +124,7 @@ static void UI_DX11_CreateBuffer(int buffer_id, uint32_t size_in_bytes, D3D11_BI
 	desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 
 	ID3D11Buffer* buffer;
-	ID3D11Device_CreateBuffer(UI_DX11_STATE.device, &desc, NULL, &buffer);
+	UI_DX11_STATE.device->CreateBuffer(&desc, NULL, &buffer);
 	UI_DX11_STATE.buffers[buffer_id] = buffer;
 }
 
@@ -148,7 +148,7 @@ static void UI_DX11_Init(UI_Backend *backend, ID3D11Device *device, ID3D11Device
 	ID3DBlob* vertexshaderCSO;
 	D3DCompile(UI_DX11_SHADER_SRC, sizeof(UI_DX11_SHADER_SRC), "VS", NULL, NULL, "vertex_shader", "vs_5_0", 0, 0, &vertexshaderCSO, NULL);
 
-	ID3D11Device_CreateVertexShader(device, ID3D10Blob_GetBufferPointer(vertexshaderCSO), ID3D10Blob_GetBufferSize(vertexshaderCSO), NULL, &state.vertexshader);
+	device->CreateVertexShader(vertexshaderCSO->GetBufferPointer(), vertexshaderCSO->GetBufferSize(), NULL, &state.vertexshader);
 
 	D3D11_INPUT_ELEMENT_DESC inputelementdesc[] = {
 		{  "POS", 0, DXGI_FORMAT_R32G32_FLOAT,   0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
@@ -156,14 +156,14 @@ static void UI_DX11_Init(UI_Backend *backend, ID3D11Device *device, ID3D11Device
 		{  "COL", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
 	};
 
-	ID3D11Device_CreateInputLayout(device, inputelementdesc, ARRAYSIZE(inputelementdesc), ID3D10Blob_GetBufferPointer(vertexshaderCSO), ID3D10Blob_GetBufferSize(vertexshaderCSO), &state.inputlayout);
+	device->CreateInputLayout(inputelementdesc, ARRAYSIZE(inputelementdesc), vertexshaderCSO->GetBufferPointer(), vertexshaderCSO->GetBufferSize(), &state.inputlayout);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
 
 	ID3DBlob* pixelshaderCSO;
 	D3DCompile(UI_DX11_SHADER_SRC, sizeof(UI_DX11_SHADER_SRC), "PS", NULL, NULL, "pixel_shader", "ps_5_0", 0, 0, &pixelshaderCSO, NULL);
 
-	ID3D11Device_CreatePixelShader(device, ID3D10Blob_GetBufferPointer(pixelshaderCSO), ID3D10Blob_GetBufferSize(pixelshaderCSO), NULL, &state.pixelshader);
+	device->CreatePixelShader(pixelshaderCSO->GetBufferPointer(), pixelshaderCSO->GetBufferSize(), NULL, &state.pixelshader);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
 	
@@ -173,7 +173,7 @@ static void UI_DX11_Init(UI_Backend *backend, ID3D11Device *device, ID3D11Device
 	samplerdesc.AddressV       = D3D11_TEXTURE_ADDRESS_WRAP;
 	samplerdesc.AddressW       = D3D11_TEXTURE_ADDRESS_WRAP;
 	samplerdesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-	ID3D11Device_CreateSamplerState(device, &samplerdesc, &state.samplerstate);
+	device->CreateSamplerState(&samplerdesc, &state.samplerstate);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
 	
@@ -197,7 +197,7 @@ static void UI_DX11_Init(UI_Backend *backend, ID3D11Device *device, ID3D11Device
 
 	D3D11_BLEND_DESC blend_state_desc = {0};
 	blend_state_desc.RenderTarget[0] = blend_desc;
-	ID3D11Device_CreateBlendState(device, &blend_state_desc, &state.blend_state);
+	device->CreateBlendState(&blend_state_desc, &state.blend_state);
 	
 	///////////////////////////////////////////////////////////////////////////////////////////////
 	
@@ -206,14 +206,14 @@ static void UI_DX11_Init(UI_Backend *backend, ID3D11Device *device, ID3D11Device
 	constantbufferdesc.Usage          = D3D11_USAGE_DYNAMIC; // Will be updated every frame
 	constantbufferdesc.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
 	constantbufferdesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	ID3D11Device_CreateBuffer(device, &constantbufferdesc, NULL, &state.constantbuffer);
+	device->CreateBuffer(&constantbufferdesc, NULL, &state.constantbuffer);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
 	
 	D3D11_RASTERIZER_DESC rasterizerdesc = {0};
 	rasterizerdesc.FillMode = D3D11_FILL_SOLID;
 	rasterizerdesc.CullMode = D3D11_CULL_BACK;
-	ID3D11Device_CreateRasterizerState(device, &rasterizerdesc, &state.rasterizerstate);
+	device->CreateRasterizerState(&rasterizerdesc, &state.rasterizerstate);
 
 	backend->create_vertex_buffer = UI_DX11_CreateVertexBuffer;
 	backend->create_index_buffer = UI_DX11_CreateIndexBuffer;
@@ -244,9 +244,9 @@ static void UI_DX11_EndFrame(UI_Outputs *outputs, ID3D11RenderTargetView* frameb
 		if (UI_DX11_STATE.atlases_mapped[i].pData) {
 			ID3D11Texture2D *staging = UI_DX11_STATE.atlases_staging[i];
 			ID3D11Texture2D *dest = UI_DX11_STATE.atlases[i];
-			ID3D11DeviceContext_Unmap(dc, (ID3D11Resource*)staging, 0);
+			dc->Unmap(staging, 0);
 			
-			ID3D11DeviceContext_CopyResource(dc, (ID3D11Resource*)dest, (ID3D11Resource*)staging);
+			dc->CopyResource(dest, staging);
 			
 			memset(&UI_DX11_STATE.atlases_mapped[i], 0, sizeof(UI_DX11_STATE.atlases_mapped[i]));
 		}
@@ -255,7 +255,7 @@ static void UI_DX11_EndFrame(UI_Outputs *outputs, ID3D11RenderTargetView* frameb
 	for (int i = 0; i < UI_MAX_BACKEND_BUFFERS; i++) {
 		if (UI_DX11_STATE.buffers_mapped[i].pData) {
 			ID3D11Buffer *buffer = UI_DX11_STATE.buffers[i];
-			ID3D11DeviceContext_Unmap(dc, (ID3D11Resource*)buffer, 0);
+			dc->Unmap(buffer, 0);
 			
 			memset(&UI_DX11_STATE.buffers_mapped[i], 0, sizeof(UI_DX11_STATE.buffers_mapped[i]));
 		}
@@ -267,28 +267,27 @@ static void UI_DX11_EndFrame(UI_Outputs *outputs, ID3D11RenderTargetView* frameb
 
 	D3D11_MAPPED_SUBRESOURCE constantbufferMSR;
 
-	ID3D11DeviceContext_Map(dc, (ID3D11Resource*)UI_DX11_STATE.constantbuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &constantbufferMSR);
+	dc->Map(UI_DX11_STATE.constantbuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &constantbufferMSR);
 	float *constants = (float*)constantbufferMSR.pData;
 	constants[0] = 1.f / (float)window_size[0];
 	constants[1] = 1.f / (float)window_size[1];
-	ID3D11DeviceContext_Unmap(dc, (ID3D11Resource*)UI_DX11_STATE.constantbuffer, 0);
+	dc->Unmap(UI_DX11_STATE.constantbuffer, 0);
 
-	ID3D11DeviceContext_IASetPrimitiveTopology(dc, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	ID3D11DeviceContext_IASetInputLayout(dc, UI_DX11_STATE.inputlayout);
+	dc->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	dc->IASetInputLayout(UI_DX11_STATE.inputlayout);
 
-	ID3D11DeviceContext_VSSetShader(dc, UI_DX11_STATE.vertexshader, NULL, 0);
-	ID3D11DeviceContext_VSSetConstantBuffers(dc, 0, 1, &UI_DX11_STATE.constantbuffer);
+	dc->VSSetShader(UI_DX11_STATE.vertexshader, NULL, 0);
+	dc->VSSetConstantBuffers(0, 1, &UI_DX11_STATE.constantbuffer);
 
-	ID3D11DeviceContext_RSSetViewports(dc, 1, &viewport);
-	ID3D11DeviceContext_RSSetState(dc, UI_DX11_STATE.rasterizerstate);
+	dc->RSSetViewports(1, &viewport);
+	dc->RSSetState(UI_DX11_STATE.rasterizerstate);
 
-	ID3D11DeviceContext_PSSetShader(dc, UI_DX11_STATE.pixelshader, NULL, 0);
-	ID3D11DeviceContext_PSSetSamplers(dc, 0, 1, &UI_DX11_STATE.samplerstate);
+	dc->PSSetShader(UI_DX11_STATE.pixelshader, NULL, 0);
+	dc->PSSetSamplers(0, 1, &UI_DX11_STATE.samplerstate);
 
-	ID3D11DeviceContext_OMSetRenderTargets(dc, 1, &framebufferRTV, NULL);
+	dc->OMSetRenderTargets(1, &framebufferRTV, NULL);
 
-	ID3D11DeviceContext_OMSetBlendState(dc, UI_DX11_STATE.blend_state, NULL, 0xffffffff);
-	//ID3D11DeviceContext_OMSetBlendState(dc, NULL, NULL, 0xffffffff);
+	dc->OMSetBlendState(UI_DX11_STATE.blend_state, NULL, 0xffffffff);
 
 	///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -300,17 +299,17 @@ static void UI_DX11_EndFrame(UI_Outputs *outputs, ID3D11RenderTargetView* frameb
 
 		if (draw_call->vertex_buffer_id != bound_vertex_buffer_id) {
 			bound_vertex_buffer_id = draw_call->vertex_buffer_id;
-			ID3D11DeviceContext_IASetVertexBuffers(dc, 0, 1, &UI_DX11_STATE.buffers[bound_vertex_buffer_id], &stride, &offset);
+			dc->IASetVertexBuffers(0, 1, &UI_DX11_STATE.buffers[bound_vertex_buffer_id], &stride, &offset);
 		}
 
 		if (draw_call->index_buffer_id != bound_index_buffer_id) {
 			bound_index_buffer_id = draw_call->index_buffer_id;
-			ID3D11DeviceContext_IASetIndexBuffer(dc, UI_DX11_STATE.buffers[bound_index_buffer_id], DXGI_FORMAT_R32_UINT, 0);
+			dc->IASetIndexBuffer(UI_DX11_STATE.buffers[bound_index_buffer_id], DXGI_FORMAT_R32_UINT, 0);
 		}
 		
 		ID3D11ShaderResourceView *textureSRV = (ID3D11ShaderResourceView*)draw_call->texture;
-		ID3D11DeviceContext_PSSetShaderResources(dc, 0, 1, &textureSRV);
-		ID3D11DeviceContext_DrawIndexed(dc, draw_call->index_count, draw_call->first_index, 0);
+		dc->PSSetShaderResources(0, 1, &textureSRV);
+		dc->DrawIndexed(draw_call->index_count, draw_call->first_index, 0);
 	}
 
 }

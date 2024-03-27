@@ -27,8 +27,14 @@ typedef STR UI_String;
 #define UI_ARENA DS_Arena
 #define UI_ARENA_ALLOCATE(ARENA, SIZE) (void*)DS_ArenaPush(ARENA, SIZE)
 
+#ifdef __cplusplus
+#define UI_LangAgnosticLiteral(T) T   // in C++, struct and union literals are of the form MyStructType{...}
+#else
+#define UI_LangAgnosticLiteral(T) (T) // in C, struct and union literals are of the form (MyStructType){...}
+#endif
+
 // * Retrieve an unique key for the macro usage site.
-#define UI_KEY()      (UI_Key){(uintptr_t)__FILE__ ^ (uintptr_t)__COUNTER__}
+#define UI_KEY()      UI_LangAgnosticLiteral(UI_Key){(uintptr_t)__FILE__ ^ (uintptr_t)__COUNTER__}
 #define UI_KEY1(A)    UI_HashKey(UI_KEY(), (A))
 #define UI_KEY2(A, B) UI_HashKey(UI_KEY1(A), (B))
 
@@ -38,12 +44,6 @@ typedef STR UI_String;
 #define UI_Abs(X) ((X) < 0 ? -(X) : (X))
 
 #define UI_INFINITE 10000000.f
-
-#ifdef __cplusplus
-#define UI_LangAgnosticLiteral(T) T   // in C++, struct and union literals are of the form MyStructType{...}
-#else
-#define UI_LangAgnosticLiteral(T) (T) // in C, struct and union literals are of the form (MyStructType){...}
-#endif
 
 typedef union {
 	struct { float x, y; };
@@ -72,7 +72,8 @@ typedef enum UI_Axis {
 	UI_Axis_Y,
 } UI_Axis;
 
-typedef enum UI_BoxFlags {
+typedef int UI_BoxFlags;
+typedef enum UI_BoxFlagBits {
 	UI_BoxFlag_DrawBorder = 1 << 0,
 	UI_BoxFlag_DrawText = 1 << 1,
 	UI_BoxFlag_DrawTransparentBackground = 1 << 2,
@@ -90,7 +91,7 @@ typedef enum UI_BoxFlags {
 	//UI_BoxFlag_HasComputedUnexpandedSizes = 1 << 14, // Internal flag
 	//UI_BoxFlag_HasComputedExpandedSizes = 1 << 15, // Internal flag
 	UI_BoxFlag_HasComputedRects = 1 << 16, // Internal flag
-} UI_BoxFlags;
+} UI_BoxFlagBits;
 
 typedef struct UI_Rect {
 	UI_Vec2 min, max;
@@ -104,7 +105,7 @@ typedef struct UI_Color {
 
 typedef struct UI_Text {
 	union {
-		UI_DS_Vec(uint8_t) text;
+		UI_DS_Vec(char) text;
 		UI_String str;
 	};
 	UI_DS_Vec(int) line_offsets;
@@ -124,7 +125,7 @@ typedef struct UI_CachedGlyph {
 } UI_CachedGlyph;
 
 typedef struct UI_Font {
-	const void *data;
+	const uint8_t *data;
 	float y_offset;
 	
 	UI_DS_Map(UI_CachedGlyphKey, UI_CachedGlyph) glyph_map;
@@ -177,7 +178,11 @@ struct UI_Box {
 	UI_Box *next[2]; // prev and next pointers
 	UI_Box *first_child[2]; // first and last child
 
-	UI_BoxFlags flags;
+	union {
+		UI_BoxFlags flags;
+		UI_BoxFlagBits flags_bits; // for debugger visualization
+	};
+
 	UI_String text;
 	UI_Size size[2];
 	UI_Vec2 offset;
@@ -202,6 +207,7 @@ typedef struct UI_Mark {
 	int line;
 	int col;
 } UI_Mark;
+#define UI_MARK  UI_LangAgnosticLiteral(UI_Mark)
 
 typedef struct UI_Selection {
 	UI_Mark range[2]; // These should be sorted so that range[0] represents a mark before range[1]. You can sort them using `UI_SelectionFixOrder`.
@@ -667,7 +673,7 @@ UI_API void UI_DrawRectLines(UI_Rect rect, float thickness, UI_Color color, UI_S
 UI_API void UI_DrawRectLinesRounded(UI_Rect rect, float thickness, float roundness, UI_Color color, UI_ScissorRect scissor);
 UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners *corners, float thickness, UI_ScissorRect scissor);
 
-UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignV align_v, UI_AlignH align_h, UI_Color color, UI_ScissorRect scissor);
+UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor);
 
 UI_API void UI_DrawSprite(UI_Rect rect, UI_Color color, UI_Rect uv_rect, UI_TextureID texture, UI_ScissorRect scissor);
 
@@ -694,7 +700,7 @@ UI_API UI_State UI_STATE;
 #define UI_GLYPH_PADDING 1
 #define UI_GLYPH_MAP_SIZE 1024
 
-static const UI_Vec2 UI_WHITE_PIXEL_UV = {.x = 0.5f/(float)UI_GLYPH_MAP_SIZE, .y=0.5f/(float)UI_GLYPH_MAP_SIZE};
+static const UI_Vec2 UI_WHITE_PIXEL_UV = {0.5f / (float)UI_GLYPH_MAP_SIZE, 0.5f / (float)UI_GLYPH_MAP_SIZE};
 
 UI_API inline bool UI_MarkGreaterThan(UI_Mark a, UI_Mark b) { return a.line > b.line || (a.line == b.line && a.col > b.col); }
 UI_API inline bool UI_MarkLessThan(UI_Mark a, UI_Mark b) { return a.line < b.line || (a.line == b.line && a.col < b.col); }
@@ -1024,10 +1030,10 @@ UI_API void UI_ApplyEditTextRequest(UI_Text *text, const UI_EditTextRequest *req
 
 UI_API void UI_EditTextSelectAll(const UI_Text *text, UI_Selection *selection) {
 	DS_ProfEnter();
-	selection->range[0] = (UI_Mark){0};
-	selection->range[1] = (UI_Mark){
-		.line = text->line_offsets.length,
-		.col = STR_RuneCount(UI_GetLineString(text->line_offsets.length, text)),
+	selection->range[0] = UI_MARK{0};
+	selection->range[1] = UI_MARK{
+		text->line_offsets.length,
+		STR_RuneCount(UI_GetLineString(text->line_offsets.length, text)),
 	};
 	selection->end = 1;
 	DS_ProfExit();
@@ -1207,7 +1213,7 @@ UI_API void UI_TextSet(UI_Text *text, UI_String value) {
 UI_API UI_Box *UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool *editing, UI_Selection *selection, UI_EditTextRequest *out_edit_request) {
 	DS_ProfEnter();
 	UI_FontUsage font = UI_PeekStyle()->font;
-	*out_edit_request = (UI_EditTextRequest){0};
+	memset(out_edit_request, 0, sizeof(*out_edit_request));
 
 	//UI_Key outer_key = UI_KEY1(inner_key);
 	UI_Box *outer = UI_AddBox(key, w, h, UI_BoxFlag_Selectable|UI_BoxFlag_DrawBorder|UI_BoxFlag_Clickable);
@@ -1429,8 +1435,8 @@ UI_API UI_Box *UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 	UI_Vec2 offset = {0.f, 0.f};
 
 	// We should automatically add either X or Y scrollbars
-	for (UI_Axis y = 1; y >= 0; y--) { // y is the direction of the scroll bar
-		UI_Axis x = (UI_Axis)(1 - y);
+	for (int y = 1; y >= 0; y--) { // y is the direction of the scroll bar
+		int x = 1 - y;
 		UI_Key y_key = UI_HashInt(UI_KEY1(key), y);
 
 		UI_Size size[2];
@@ -1566,8 +1572,8 @@ UI_API void UI_DrawBoxBackdrop(UI_Box *box) {
 		float r = 5.f;
 		{
 			float hovered = box->lazy_is_hovered * (1.f - box->lazy_is_holding_down); // We don't want to show the hover highlight when holding down
-			const UI_Color top = (UI_Color){255, 255, 255, (uint8_t)(hovered * 50.f)};
-			const UI_Color bot = (UI_Color){255, 255, 255, (uint8_t)(hovered * 10.f)};
+			const UI_Color top = UI_COLOR{255, 255, 255, (uint8_t)(hovered * 50.f)};
+			const UI_Color bot = UI_COLOR{255, 255, 255, (uint8_t)(hovered * 10.f)};
 			UI_DrawRectCorners corners = {
 				{top, top, bot, bot},
 				{top, top, bot, bot},
@@ -1575,8 +1581,8 @@ UI_API void UI_DrawBoxBackdrop(UI_Box *box) {
 			UI_DrawRectEx(box_rect, &corners, scissor);
 		}
 		{
-			const UI_Color top = (UI_Color){0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 100.f)};
-			const UI_Color bot = (UI_Color){0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 20.f)};
+			const UI_Color top = UI_COLOR{0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 100.f)};
+			const UI_Color bot = UI_COLOR{0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 20.f)};
 			UI_DrawRectCorners corners = {
 				{top, top, bot, bot},
 				{top, top, bot, bot},
@@ -1616,16 +1622,16 @@ UI_API void UI_DrawBox(UI_Box *box) {
 
 	if (box->flags & UI_BoxFlag_DrawText) {
 		UI_Vec2 text_pos = UI_AddV2(box->computed_position, box->style->text_padding);
-		UI_DrawText(box->text, box->style->font, text_pos, UI_AlignV_Upper, UI_AlignH_Left, box->style->text_color, scissor);
+		UI_DrawText(box->text, box->style->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, box->style->text_color, scissor);
 	}
 
 	// if editing text, draw the selection rect
 	if (UI_STATE.edit_text.editing_frame_idx == UI_STATE.frame_idx && UI_STATE.edit_text.draw_selection_from_box == box) {
 		UI_Selection sel = UI_STATE.edit_text.draw_selection_from_box_sel;
-		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, (UI_Color){255, 255, 255, 50}, scissor);
+		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 50}, scissor);
 		
 		UI_Mark end = sel.range[sel.end];
-		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, (UI_Color){255, 255, 255, 255}, scissor);
+		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 255}, scissor);
 	}
 
 	for (UI_Box *child = box->first_child[0]; child; child = child->next[1]) {
@@ -1951,12 +1957,12 @@ UI_API void UI_BeginFrame(const UI_Inputs *inputs, UI_Vec2 window_size) {
 	
 	UI_STATE.draw_next_vertex = 0;
 	UI_STATE.draw_next_index = 0;
-	UI_STATE.draw_vertices = UI_STATE.backend.buffer_map_until_frame_end(0);
-	UI_STATE.draw_indices = UI_STATE.backend.buffer_map_until_frame_end(1);
+	UI_STATE.draw_vertices = (UI_DrawVertex*)UI_STATE.backend.buffer_map_until_frame_end(0);
+	UI_STATE.draw_indices = (uint32_t*)UI_STATE.backend.buffer_map_until_frame_end(1);
 	UI_CHECK(UI_STATE.draw_vertices != NULL && UI_STATE.draw_indices != NULL);
 
 	UI_STATE.inputs = *inputs;
-	UI_STATE.outputs = (UI_Outputs){0};
+	memset(&UI_STATE.outputs, 0, sizeof(UI_STATE.outputs));
 	UI_STATE.window_size = window_size;
 
 	UI_CHECK(UI_STATE.box_stack.length == 1);
@@ -1973,7 +1979,7 @@ UI_API void UI_BeginFrame(const UI_Inputs *inputs, UI_Vec2 window_size) {
 	}
 
 	UI_STATE.imm_old = UI_STATE.imm_new;
-	UI_STATE.imm_new = (UI_ImmediateState){0};
+	memset(&UI_STATE.imm_new, 0, sizeof(UI_STATE.imm_new));
 	DS_MapInitA(&UI_STATE.imm_new.box_from_key, &UI_STATE.new_frame_arena);
 	DS_MapInitA(&UI_STATE.imm_new.data_from_key, &UI_STATE.new_frame_arena);
 	DS_VecInitA(&UI_STATE.imm_new.roots, &UI_STATE.new_frame_arena);
@@ -2050,7 +2056,7 @@ UI_API void UI_Deinit(void) {
 UI_API void UI_Init(DS_Arena *persistent_arena, const UI_Backend *backend) {
 	DS_ProfEnter();
 	
-	UI_STATE = (UI_State){0};
+	memset(&UI_STATE, 0, sizeof(UI_STATE));
 	UI_STATE.persistent_arena = persistent_arena;
 	UI_STATE.backend = *backend;
 	DS_InitArena(&UI_STATE.old_frame_arena, DS_KIB(4));
@@ -2066,7 +2072,9 @@ UI_API void UI_Init(DS_Arena *persistent_arena, const UI_Backend *backend) {
 
 		// pack a white rectangle into the atlas. See UI_WHITE_PIXEL_UV
 
-		stbrp_rect rect = {.w = 1, .h = 1};
+		stbrp_rect rect = {0};
+		rect.w = 1;
+		rect.h = 1;
 		stbtt_PackFontRangesPackRects(&UI_STATE.pack_context, &rect, 1);
 		UI_CHECK(rect.was_packed);
 		UI_CHECK(rect.x == 0 && rect.y == 0);
@@ -2082,7 +2090,7 @@ UI_API void UI_Init(DS_Arena *persistent_arena, const UI_Backend *backend) {
 	//UI_.atlas_staging_buffer = GPU_MakeBuffer(sizeof(uint32_t)*UI_GLYPH_MAP_SIZE*UI_GLYPH_MAP_SIZE, GPU_BufferFlag_CPU, NULL);
 	//memset(UI_.atlas_staging_buffer->data, 0, UI_.atlas_staging_buffer->size);
 	
-	UI_STATE.atlas_buffer_grayscale = DS_MemAlloc(sizeof(uint8_t)*UI_GLYPH_MAP_SIZE*UI_GLYPH_MAP_SIZE);
+	UI_STATE.atlas_buffer_grayscale = (uint8_t*)DS_MemAlloc(sizeof(uint8_t)*UI_GLYPH_MAP_SIZE*UI_GLYPH_MAP_SIZE);
 	memset(UI_STATE.atlas_buffer_grayscale, 0, UI_GLYPH_MAP_SIZE*UI_GLYPH_MAP_SIZE);
 	UI_STATE.pack_context.pixels = UI_STATE.atlas_buffer_grayscale;
 
@@ -2429,13 +2437,13 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 #define INVALID_GLYPH_COLOR UI_MAGENTA
 
 UI_API void UI_LoadFontFromData(UI_Font *font, const void *ttf_data, float y_offset) {
-	*font = (UI_Font){0};
+	memset(font, 0, sizeof(*font));
 	DS_MapInit(&font->glyph_map);
 	
-	font->data = ttf_data;
+	font->data = (const unsigned char*)ttf_data;
 	font->y_offset = y_offset;
 
-	int font_offset = stbtt_GetFontOffsetForIndex(ttf_data, 0);
+	int font_offset = stbtt_GetFontOffsetForIndex(font->data, 0);
 	UI_CHECK(stbtt_InitFont(&font->font_info, font->data, font_offset));
 }
 
@@ -2459,13 +2467,12 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t rune, UI_FontUsage font, int *o
 		
 		stbrp_rect rect = {0};
 		stbtt_packedchar packed_char;
-		stbtt_pack_range pack_range = {
-			.font_size                        = font.size,
-			.first_unicode_codepoint_in_range = 0,
-			.array_of_unicode_codepoints      = (int*)&rune,
-			.num_chars                        = 1,
-			.chardata_for_range               = &packed_char,
-		};
+		stbtt_pack_range pack_range = {0};
+		pack_range.font_size                        = font.size;
+		pack_range.first_unicode_codepoint_in_range = 0;
+		pack_range.array_of_unicode_codepoints      = (int*)&rune;
+		pack_range.num_chars                        = 1;
+		pack_range.chardata_for_range               = &packed_char;
 		
 		// GatherRects fills width & height fields of `rect`
 		if (stbtt_PackFontRangesGatherRects(&UI_STATE.pack_context, &font.font->font_info, &pack_range, 1, &rect) == 0) {
@@ -2976,9 +2983,13 @@ UI_API void UI_DrawPolyline(UI_Vec2 *points, int points_count, float thickness, 
 	float half_thickness = thickness * 0.5f;
 
 	UI_Vec2 start_dir, end_dir;
-	DS_Vec(UI_Vec2) line_normals = {.arena = UI_FrameArena()};
-	DS_Vec(float) distances = {.arena = UI_FrameArena()};
+
+	DS_Vec(UI_Vec2) line_normals = {0};
+	line_normals.arena = UI_FrameArena();
 	DS_VecResizeUndef(&line_normals, points_count - 1);
+	
+	DS_Vec(float) distances = {0};
+	distances.arena = UI_FrameArena();
 	DS_VecResizeUndef(&distances, points_count);
 
 	float total_distance = 0.f;
@@ -3134,7 +3145,7 @@ UI_API UI_Box *UI_ArrangersPush(UI_Key key, UI_Size w, UI_Size h) {
 UI_API void UI_ArrangersPop(UI_Box *box, UI_ArrangersRequest *out_edit_request) {
 	DS_ProfEnter();
 	UI_PopBox(box);
-	UI_BoxEx *ex = box->user_ptr; // may be NULL
+	UI_BoxEx *ex = (UI_BoxEx*)box->user_ptr; // may be NULL
 	UI_CHECK(ex && ex->arranger_set);
 
 	float box_origin_prev_frame = box->prev_frame ? box->prev_frame->computed_position.y : 0.f;
@@ -3202,10 +3213,12 @@ UI_API void UI_ArrangersPop(UI_Box *box, UI_ArrangersRequest *out_edit_request) 
 		i++;
 	}
 
-	*out_edit_request = (UI_ArrangersRequest){0};
+	UI_ArrangersRequest edit_request = {0};
 	if (dragging && UI_InputWasReleased(UI_Input_MouseLeft)) {
-		*out_edit_request = (UI_ArrangersRequest){dragging_index, target_index};
+		edit_request.move_from = dragging_index;
+		edit_request.move_to = target_index;
 	}
+	*out_edit_request = edit_request;
 	DS_ProfExit();
 }
 
@@ -3229,7 +3242,7 @@ UI_API void UI_Arranger(UI_Key key, UI_Size w, UI_Size h) {
 		UI_Box *elem = box;
 		for (; elem; elem = elem->parent) {
 			if (elem->parent && elem->parent->user_ptr) {
-				UI_BoxEx *ex = elem->parent->user_ptr;
+				UI_BoxEx *ex = (UI_BoxEx*)elem->parent->user_ptr;
 				if (ex->arranger_set) {
 					ex->arranger_set->dragging_elem = elem;
 					break;

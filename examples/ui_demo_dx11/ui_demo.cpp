@@ -6,6 +6,11 @@
 #pragma comment (lib, "d3dcompiler")
 
 #define COBJMACROS
+#include <windows.h>
+#include <d3d11.h>
+#include <dxgi1_3.h>
+#include <d3dcompiler.h>
+
 
 #include "fire_ds.h"
 
@@ -27,10 +32,6 @@ typedef STR OS_String;
 #include <stdlib.h>
 #include <stdio.h>
 
-#include <windows.h>
-#include <d3d11.h>
-#include <dxgi1_3.h>
-#include <d3dcompiler.h>
 
 #include "fire_ui/fire_ui.h"
 #include "fire_ui/fire_ui_backend_dx11.h"
@@ -349,12 +350,12 @@ static void UpdateAndRender() {
 	//// Render frame /////////////////////////////
 	
 	FLOAT clearcolor[4] = { 0.15f, 0.15f, 0.15f, 1.f };
-	ID3D11DeviceContext_ClearRenderTargetView(UI_DX11_STATE.devicecontext, g_framebufferRTV, clearcolor);
+	UI_DX11_STATE.devicecontext->ClearRenderTargetView(g_framebufferRTV, clearcolor);
 
 	UI_EndFrame(&g_ui_outputs);
 	UI_DX11_EndFrame(&g_ui_outputs, g_framebufferRTV, g_window_size);
 	
-	IDXGISwapChain1_Present(g_swapchain, 1, 0);
+	g_swapchain->Present(1, 0);
 }
 
 static void AddTreeSpecie(UI_Key key, STR name, STR information) {
@@ -375,19 +376,19 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
 	g_window_size[1] = height;
 
 	// Recreate swapchain
-	ID3D11Resource_Release((ID3D11Resource*)g_framebufferRTV);
+	g_framebufferRTV->Release();
 
-	IDXGISwapChain1_ResizeBuffers(g_swapchain, 0, 0, 0, DXGI_FORMAT_UNKNOWN, 0);
+	g_swapchain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, 0);
 	
 	ID3D11Texture2D* framebuffer;
-	IDXGISwapChain1_GetBuffer(g_swapchain, 0, &IID_ID3D11Texture2D, (void**)&framebuffer); // grab framebuffer from swapchain
+	g_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&framebuffer); // grab framebuffer from swapchain
 
 	D3D11_RENDER_TARGET_VIEW_DESC framebufferRTVdesc = {0};
 	framebufferRTVdesc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
 	framebufferRTVdesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-	ID3D11Device_CreateRenderTargetView(UI_DX11_STATE.device, (ID3D11Resource*)framebuffer, &framebufferRTVdesc, &g_framebufferRTV);
+	UI_DX11_STATE.device->CreateRenderTargetView(framebuffer, &framebufferRTVdesc, &g_framebufferRTV);
 	
-	ID3D11Resource_Release((ID3D11Resource*)framebuffer); // We don't need this handle anymore
+	framebuffer->Release(); // We don't need this handle anymore
 
 	UpdateAndRender();
 }
@@ -438,24 +439,24 @@ int main() {
 	ID3D11DeviceContext* dc;
 	D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG, featurelevels, ARRAYSIZE(featurelevels), D3D11_SDK_VERSION, &swapchaindesc, &g_swapchain, &device, NULL, &dc);
 
-	IDXGISwapChain1_GetDesc(g_swapchain, &swapchaindesc); // Update swapchaindesc with actual window size
-
+	g_swapchain->GetDesc(&swapchaindesc); // Update swapchaindesc with actual window size
+	
 	///////////////////////////////////////////////////////////////////////////////////////////////
 
 	ID3D11Texture2D* framebuffer;
-	IDXGISwapChain1_GetBuffer(g_swapchain, 0, &IID_ID3D11Texture2D, (void**)&framebuffer); // grab framebuffer from swapchain
+	g_swapchain->GetBuffer(0, _uuidof(ID3D11Texture2D), (void**)&framebuffer); // grab framebuffer from swapchain
 
 	D3D11_RENDER_TARGET_VIEW_DESC framebufferRTVdesc = {0};
 	framebufferRTVdesc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
 	framebufferRTVdesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-	ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource*)framebuffer, &framebufferRTVdesc, &g_framebufferRTV);
+	device->CreateRenderTargetView(framebuffer, &framebufferRTVdesc, &g_framebufferRTV);
 	
-	ID3D11Resource_Release((ID3D11Resource*)framebuffer); // We don't need this handle anymore
+	framebuffer->Release(); // We don't need this handle anymore
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
 	
 	UI_Backend ui_backend = {0};
-	UI_DX11_Init(&ui_backend, device, dc, (GPU_String){ui_shader_src.data, ui_shader_src.size});
+	UI_DX11_Init(&ui_backend, device, dc, GPU_String{ui_shader_src.data, ui_shader_src.size});
 	UI_Init(&persistent_arena, &ui_backend);
 
 	// NOTE: the font data must remain alive across the whole program lifetime!
@@ -471,7 +472,7 @@ int main() {
 		OS_ArenaReset(&os_temp_arena);
 		if (!OS_WindowPoll(&os_temp_arena, &window_inputs, &window, OnResizeWindow, NULL)) break;
 		
-		g_ui_inputs = (UI_Inputs){0};
+		g_ui_inputs = UI_Inputs{};
 		g_ui_inputs.base_font = &base_font;
 		g_ui_inputs.icons_font = &icons_font;
 		UI_OS_TranslateInputs(&g_ui_inputs , &window_inputs, &os_temp_arena);
