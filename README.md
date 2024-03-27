@@ -1,6 +1,6 @@
 # Fire Libraries
 
-***WARNING**: Although I use this code myself, it's still experimental and will go through lots more iteration!*
+***WARNING**: Although I use this code myself, it's still heavily work-in-progress, missing features and going through constant iteration!*
 
 This is a collection of easy-to-use programming libraries that are compatible with both C and C++. The following libraries are included:
 
