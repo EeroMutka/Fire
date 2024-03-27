@@ -60,6 +60,7 @@ typedef struct {
 // static GPU_Graph *g_graphs[2];
 // static GPU_DescriptorArena *g_descriptor_arenas[2];
 // static int g_current_graph_idx = 0;
+static IDXGISwapChain* g_swapchain;
 static ID3D11RenderTargetView* g_framebufferRTV;
 
 static UI_Inputs g_ui_inputs;
@@ -359,24 +360,14 @@ static void UpdateAndRender() {
 	}
 
 	//// Render frame /////////////////////////////
+	
+	FLOAT clearcolor[4] = { 0.15f, 0.15f, 0.15f, 1.f };
+	ID3D11DeviceContext_ClearRenderTargetView(UI_DX11_STATE.devicecontext, g_framebufferRTV, clearcolor);
 
 	UI_EndFrame(&g_ui_outputs);
 	UI_DX11_EndFrame(&g_ui_outputs, g_framebufferRTV, g_window_size);
-
-	//g_current_graph_idx = (g_current_graph_idx + 1) % 2;
-	//GPU_Graph *graph = g_graphs[g_current_graph_idx];
-	//GPU_GraphWait(graph);
-	//GPU_ResetDescriptorArena(g_descriptor_arenas[g_current_graph_idx]);
-
-	//GPU_Texture *backbuffer = GPU_GetBackbuffer(graph);
-	//if (backbuffer) {
-	//	GPU_OpClearColorF(graph, backbuffer, GPU_MIP_LEVEL_ALL, 0.15f, 0.15f, 0.15f, 1.f);
-	//
-	//	UI_DX11_EndFrame(&g_ui_outputs, graph]);
-	//	UI_OS_ApplyOutputs(&g_ui_outputs);
-	//
-	//	GPU_GraphSubmit(graph);
-	//}
+	
+	IDXGISwapChain1_Present(g_swapchain, 1, 0);
 }
 
 static void AddTreeSpecie(UI_Key key, STR name, STR information) {
@@ -392,8 +383,29 @@ static void DestroyTreeSpecie(TreeSpecie *tree) {
 	UI_TextFree(&tree->text);
 }
 
+static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
+	g_window_size[0] = width;
+	g_window_size[1] = height;
+
+	// Recreate swapchain
+	ID3D11Resource_Release((ID3D11Resource*)g_framebufferRTV);
+
+	IDXGISwapChain1_ResizeBuffers(g_swapchain, 0, 0, 0, DXGI_FORMAT_UNKNOWN, 0);
+	
+	ID3D11Texture2D* framebuffer;
+	IDXGISwapChain1_GetBuffer(g_swapchain, 0, &IID_ID3D11Texture2D, (void**)&framebuffer); // grab framebuffer from swapchain
+
+	D3D11_RENDER_TARGET_VIEW_DESC framebufferRTVdesc = {0};
+	framebufferRTVdesc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
+	framebufferRTVdesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	ID3D11Device_CreateRenderTargetView(UI_DX11_STATE.device, (ID3D11Resource*)framebuffer, &framebufferRTVdesc, &g_framebufferRTV);
+	
+	ID3D11Resource_Release((ID3D11Resource*)framebuffer); // We don't need this handle anymore
+
+	UpdateAndRender();
+}
+
 int main() {
-	//ID3D11RenderTargetView* rendertargetview;
 	OS_Init();
 
 	DS_VecInit(&g_trees);
@@ -422,11 +434,6 @@ int main() {
 	STR ui_shader_src;
 	UI_CHECK(OS_ReadEntireFile(&os_persistent_arena, ui_shader_filepath, &ui_shader_src));
 
-	//WNDCLASSA wndclass = {0, DefWindowProcA, 0, 0, 0, 0, 0, 0, 0, "MyWindowClass"};
-	//RegisterClassA(&wndclass);
-
-	//HWND window = CreateWindowExA(0, "MyWindowClass", "My window", WS_POPUP | WS_MAXIMIZE | WS_VISIBLE, 0, 0, 0, 0, NULL, NULL, NULL, NULL);
-	
 	D3D_FEATURE_LEVEL featurelevels[] = { D3D_FEATURE_LEVEL_11_0 };
 	
 	DXGI_SWAP_CHAIN_DESC swapchaindesc = {0};
@@ -441,123 +448,25 @@ int main() {
 	swapchaindesc.SwapEffect        = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 	
 	ID3D11Device* device;
-	IDXGISwapChain* swapchain;
 	ID3D11DeviceContext* dc;
-	D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG, featurelevels, ARRAYSIZE(featurelevels), D3D11_SDK_VERSION, &swapchaindesc, &swapchain, &device, NULL, &dc);
+	D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG, featurelevels, ARRAYSIZE(featurelevels), D3D11_SDK_VERSION, &swapchaindesc, &g_swapchain, &device, NULL, &dc);
 
-	IDXGISwapChain1_GetDesc(swapchain, &swapchaindesc); // Update swapchaindesc with actual window size
+	IDXGISwapChain1_GetDesc(g_swapchain, &swapchaindesc); // Update swapchaindesc with actual window size
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
-	
+
 	ID3D11Texture2D* framebuffer;
-	IDXGISwapChain1_GetBuffer(swapchain, 0, &IID_ID3D11Texture2D, (void**)&framebuffer); // grab framebuffer from swapchain
+	IDXGISwapChain1_GetBuffer(g_swapchain, 0, &IID_ID3D11Texture2D, (void**)&framebuffer); // grab framebuffer from swapchain
 
 	D3D11_RENDER_TARGET_VIEW_DESC framebufferRTVdesc = {0};
-	//framebufferRTVdesc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
 	framebufferRTVdesc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
 	framebufferRTVdesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-
 	ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource*)framebuffer, &framebufferRTVdesc, &g_framebufferRTV);
-
-	///////////////////////////////////////////////////////////////////////////////////////////////
-
-	ID3DBlob* vertexshaderCSO;
-	ID3D11VertexShader* vertexshader;
-	D3DCompileFromFile(L"../ui_demo_dx11/gpu.hlsl", NULL, NULL, "vertex_shader", "vs_5_0", 0, 0, &vertexshaderCSO, NULL);
 	
-	ID3D11Device_CreateVertexShader(device, ID3D10Blob_GetBufferPointer(vertexshaderCSO), ID3D10Blob_GetBufferSize(vertexshaderCSO), NULL, &vertexshader);
-
-	D3D11_INPUT_ELEMENT_DESC inputelementdesc[] = // maps to vertexdata struct in gpu.hlsl via semantic names ("POS", "NOR", "TEX", "COL")
-	{
-		{ "POS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,                            0, D3D11_INPUT_PER_VERTEX_DATA, 0 }, // float3 position
-		{ "COL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }, // float3 color
-	};
-
-	ID3D11InputLayout* inputlayout;
-
-	ID3D11Device_CreateInputLayout(device, inputelementdesc, ARRAYSIZE(inputelementdesc), ID3D10Blob_GetBufferPointer(vertexshaderCSO), ID3D10Blob_GetBufferSize(vertexshaderCSO), &inputlayout);
-
-	///////////////////////////////////////////////////////////////////////////////////////////////
-
-	ID3DBlob* pixelshaderCSO;
-	D3DCompileFromFile(L"../ui_demo_dx11/gpu.hlsl", NULL, NULL, "pixel_shader", "ps_5_0", 0, 0, &pixelshaderCSO, NULL);
-	
-	ID3D11PixelShader* pixelshader;
-	ID3D11Device_CreatePixelShader(device, ID3D10Blob_GetBufferPointer(pixelshaderCSO), ID3D10Blob_GetBufferSize(pixelshaderCSO), NULL, &pixelshader);
-
-	///////////////////////////////////////////////////////////////////////////////////////////////
-
-	D3D11_RASTERIZER_DESC rasterizerdesc = {0};
-	rasterizerdesc.FillMode = D3D11_FILL_SOLID;
-	rasterizerdesc.CullMode = D3D11_CULL_BACK;
-
-	ID3D11RasterizerState* rasterizerstate;
-	ID3D11Device_CreateRasterizerState(device, &rasterizerdesc, &rasterizerstate);
-	
-	///////////////////////////////////////////////////////////////////////////////////////////////
-
-	D3D11_SAMPLER_DESC samplerdesc = {0};
-	samplerdesc.Filter         = D3D11_FILTER_MIN_MAG_MIP_POINT;
-	samplerdesc.AddressU       = D3D11_TEXTURE_ADDRESS_WRAP;
-	samplerdesc.AddressV       = D3D11_TEXTURE_ADDRESS_WRAP;
-	samplerdesc.AddressW       = D3D11_TEXTURE_ADDRESS_WRAP;
-	samplerdesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-	ID3D11SamplerState* samplerstate;
-	ID3D11Device_CreateSamplerState(device, &samplerdesc, &samplerstate);
-	
-	///////////////////////////////////////////////////////////////////////////////////////////////
-
-	typedef struct { float test; } Constants;
-
-	D3D11_BUFFER_DESC constantbufferdesc = {0};
-	constantbufferdesc.ByteWidth      = (sizeof(Constants) + 0xf) & 0xfffffff0; // ensure constant buffer size is multiple of 16 bytes
-	constantbufferdesc.Usage          = D3D11_USAGE_DYNAMIC; // will be updated every frame
-	constantbufferdesc.BindFlags      = D3D11_BIND_CONSTANT_BUFFER;
-	constantbufferdesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-	ID3D11Buffer* constantbuffer;
-	ID3D11Device_CreateBuffer(device, &constantbufferdesc, NULL, &constantbuffer);
+	ID3D11Resource_Release((ID3D11Resource*)framebuffer); // We don't need this handle anymore
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
 	
-	float vertexdata[] = {
-		0.f, 0.f, 0.f,   1.f, 0.f, 0.f,
-		0.f, 1.f, 0.f,   1.f, 0.f, 0.f,
-		1.f, 0.f, 0.f,   1.f, 0.f, 0.f,
-	};
-	int indexdata[] = {0, 1, 2};
-
-	D3D11_BUFFER_DESC vertexbufferdesc = {0};
-	vertexbufferdesc.ByteWidth = sizeof(vertexdata);
-	vertexbufferdesc.Usage     = D3D11_USAGE_IMMUTABLE;
-	vertexbufferdesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-
-	D3D11_SUBRESOURCE_DATA vertexbufferSRD = { vertexdata };
-
-	ID3D11Buffer* vertexbuffer;
-	ID3D11Device_CreateBuffer(device, &vertexbufferdesc, &vertexbufferSRD, &vertexbuffer);
-	
-	///////////////////////////////////////////////////////////////////////////////////////////////
-	
-	D3D11_BUFFER_DESC indexbufferdesc = {0};
-	indexbufferdesc.ByteWidth = sizeof(indexdata);
-	indexbufferdesc.Usage     = D3D11_USAGE_IMMUTABLE;
-	indexbufferdesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-
-	D3D11_SUBRESOURCE_DATA indexbufferSRD = { indexdata };
-
-	ID3D11Buffer* indexbuffer;
-	ID3D11Device_CreateBuffer(device, &indexbufferdesc, &indexbufferSRD, &indexbuffer);
-
-	///////////////////////////////////////////////////////////////////////////////////////////////
-
-	UINT stride = 6 * sizeof(float);
-	UINT offset = 0;
-
-	D3D11_VIEWPORT viewport = {0.0f, 0.0f, (float)swapchaindesc.BufferDesc.Width, (float)swapchaindesc.BufferDesc.Height, 0.0f, 1.0f};
-
-	///////////////////////////////////////////////////////////////////////////////////////////////
-
 	UI_Backend ui_backend = {0};
 	UI_DX11_Init(&ui_backend, device, dc, (GPU_String){ui_shader_src.data, ui_shader_src.size});
 	UI_Init(&persistent_arena, &ui_backend);
@@ -573,91 +482,8 @@ int main() {
 
 	for (;;) {
 		OS_ArenaReset(&os_temp_arena);
-		if (!OS_WindowPoll(&os_temp_arena, &window_inputs, &window, NULL, NULL)) break;
-		
-		g_ui_inputs = (UI_Inputs){0};
-		g_ui_inputs.base_font = &base_font;
-		g_ui_inputs.icons_font = &icons_font;
-		UI_OS_TranslateInputs(&g_ui_inputs , &window_inputs, &os_temp_arena);
-
-		FLOAT clearcolor[4] = { 0.15f, 0.15f, 0.15f, 1.f };
-		ID3D11DeviceContext_ClearRenderTargetView(dc, g_framebufferRTV, clearcolor);
-		
-		UpdateAndRender();
-
-		///////////////////////////////////////////////////////////////////////////////////////////
-#if 0
-		D3D11_MAPPED_SUBRESOURCE constantbufferMSR;
-
-		ID3D11DeviceContext_Map(dc, (ID3D11Resource*)constantbuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &constantbufferMSR); // update constant buffer every frame
-		Constants* constants = (Constants*)constantbufferMSR.pData;
-		constants->test = 0.f;
-
-		ID3D11DeviceContext_Unmap(dc, (ID3D11Resource*)constantbuffer, 0);
-
-		ID3D11DeviceContext_ClearRenderTargetView(dc, g_framebufferRTV, clearcolor);
-		// ID3D11DeviceContext_ClearDepthStencilView(devicecontext, depthbufferDSV, D3D11_CLEAR_DEPTH, 1.0f, 0);
-
-		ID3D11DeviceContext_IASetPrimitiveTopology(dc, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		ID3D11DeviceContext_IASetInputLayout(dc, inputlayout);
-		ID3D11DeviceContext_IASetVertexBuffers(dc, 0, 1, &vertexbuffer, &stride, &offset);
-		ID3D11DeviceContext_IASetIndexBuffer(dc, indexbuffer, DXGI_FORMAT_R32_UINT, 0);
-
-		ID3D11DeviceContext_VSSetShader(dc, vertexshader, NULL, 0);
-		ID3D11DeviceContext_VSSetConstantBuffers(dc, 0, 1, &constantbuffer);
-
-		ID3D11DeviceContext_RSSetViewports(dc, 1, &viewport);
-		ID3D11DeviceContext_RSSetState(dc, rasterizerstate);
-
-		ID3D11DeviceContext_PSSetShader(dc, pixelshader, NULL, 0);
-		// ID3D11DeviceContext_PSSetShaderResources(devicecontext, 0, 1, &textureSRV);
-		ID3D11DeviceContext_PSSetSamplers(dc, 0, 1, &samplerstate);
-
-		ID3D11DeviceContext_OMSetRenderTargets(dc, 1, &g_framebufferRTV, NULL);
-		ID3D11DeviceContext_OMSetBlendState(dc, NULL, NULL, 0xffffffff); // use default blend mode (i.e. no blending)
-
-		///////////////////////////////////////////////////////////////////////////////////////////
-
-		ID3D11DeviceContext_DrawIndexed(dc, ARRAYSIZE(indexdata), 0, 0);
-
-		///////////////////////////////////////////////////////////////////////////////////////////
-#endif
-
-		IDXGISwapChain1_Present(swapchain, 1, 0);
-	}
-}
-
-#if 0
-
-static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
-	g_window_width = width;
-	g_window_height = height;
-	UpdateAndRender();
-}
-
-int main() {
-
-	OS_Inputs window_inputs = {0};
-	OS_Window window = OS_WindowCreate(g_window_width, g_window_height, OS_STR("Fire UI demo"));
-
-	GPU_Init(window.handle);
-	
-	GPU_RenderPass *main_renderpass = GPU_MakeRenderPass(&(GPU_RenderPassDesc){
-		.color_targets_count = 1,
-		.color_targets = GPU_SWAPCHAIN_COLOR_TARGET,
-	});
-
-	GPU_MakeSwapchainGraphs(2, &g_graphs[0]);
-	g_descriptor_arenas[0] = GPU_MakeDescriptorArena();
-	g_descriptor_arenas[1] = GPU_MakeDescriptorArena();
-
-	//// Main loop /////////////////////////////////////
-	
-	for (;;) {
-		OS_ArenaReset(&os_temp_arena);
-
 		if (!OS_WindowPoll(&os_temp_arena, &window_inputs, &window, OnResizeWindow, NULL)) break;
-
+		
 		g_ui_inputs = (UI_Inputs){0};
 		g_ui_inputs.base_font = &base_font;
 		g_ui_inputs.icons_font = &icons_font;
@@ -666,33 +492,5 @@ int main() {
 		UpdateAndRender();
 	}
 
-	GPU_WaitUntilIdle();
-	
-	//// Cleanup resources /////////////////////////////
-
-	UI_TextFree(&g_dummy_text);
-	UI_TextFree(&g_dummy_text_2);
-	UI_DestroyFont(&base_font);
-	UI_DestroyFont(&icons_font);
-	UI_Deinit();
-	UI_DX11_Deinit();
-
-	GPU_DestroyDescriptorArena(g_descriptor_arenas[0]);
-	GPU_DestroyDescriptorArena(g_descriptor_arenas[1]);
-	GPU_DestroyGraph(g_graphs[0]);
-	GPU_DestroyGraph(g_graphs[1]);
-	GPU_DestroyRenderPass(main_renderpass);
-	GPU_Deinit();
-
-	OS_DestroyArena(&os_persistent_arena);
-	OS_DestroyArena(&os_temp_arena);
-	DS_DestroyArena(&persistent_arena);
-	
-	for (int i = 0; i < g_trees.length; i++) DestroyTreeSpecie(&g_trees.data[i]);
-	DS_VecDestroy(&g_trees);
-
-	OS_Deinit();
-
-	return 0;
+	// TODO: cleanup resources
 }
-#endif

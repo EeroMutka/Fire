@@ -90,6 +90,11 @@ BUILD_API bool BUILD_CreateVisualStudioSolution(const char *project_directory, c
 // If the directory already exists or is successfully created, true is returned.
 BUILD_API bool BUILD_CreateDirectory(const char *directory);
 
+// String utilities; the returned strings will remain alive as long as the project remains alive
+BUILD_API char *BUILD_Concat2(BUILD_Project *project, const char *a, const char *b);
+BUILD_API char *BUILD_Concat3(BUILD_Project *project, const char *a, const char *b, const char *c);
+BUILD_API char *BUILD_Concat4(BUILD_Project *project, const char *a, const char *b, const char *c, const char *d);
+
 /* ---- end of the public API --------------------------------------------- */
 
 typedef struct { int block_size; struct BUILD_ArenaBlockHeader *first_block; void *block; void *ptr; } BUILD_Arena;
@@ -1204,6 +1209,24 @@ BUILD_API bool BUILD_CompileProject(BUILD_Project *project, const char *project_
 	return ok;
 }
 
+BUILD_API char *BUILD_Concat2(BUILD_Project *project, const char *a, const char *b) {
+	return BUILD_Concat4(project, a, b, NULL, NULL);
+}
+
+BUILD_API char *BUILD_Concat3(BUILD_Project *project, const char *a, const char *b, const char *c) {
+	return BUILD_Concat4(project, a, b, c, NULL);
+}
+
+BUILD_API char *BUILD_Concat4(BUILD_Project *project, const char *a, const char *b, const char *c, const char *d) {
+	BUILD_StrBuilder s = {&project->arena};
+	if (a) BUILD_Print1(&s, a);
+	if (b) BUILD_Print1(&s, b);
+	if (c) BUILD_Print1(&s, c);
+	if (d) BUILD_Print1(&s, d);
+	BUILD_ArrayPush(&s, 0); // null-terminate;
+	return s.data;
+}
+
 BUILD_API bool BUILD_CreateDirectory(const char *directory) {
 	BUILD_Arena arena;
 	BUILD_InitArena(&arena, 128);
@@ -1233,6 +1256,7 @@ BUILD_API bool BUILD_CreateVisualStudioSolution(const char *project_directory, c
 	
 	for (size_t i = 0; i < projects_count; i++) {
 		BUILD_Project *project = projects[i];
+		if (project == NULL) continue;
 
 		char *project_guid;
 		{ // Create new GUID

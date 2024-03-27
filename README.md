@@ -27,12 +27,9 @@ This is a collection of easy-to-use programming libraries that are compatible wi
 
 For now, you'll need Windows and [Visual Studio](https://visualstudio.microsoft.com/) installed to build and run the examples.
 
-1. Install the [Vulkan SDK](https://vulkan.lunarg.com/).
-2. Open `examples/gen_projects.c`. On the first line, change the value of VULKAN_SDK_PATH to your vulkan SDK installation path.
-3. Open `x64 Native Tools Command Prompt for VS <year>` from the Windows Start Menu. Within this terminal, `cd` into the `examples` folder.
-4. Run `cl gen_projects.c && gen_projects`.
-5. Open `.build/examples.sln` in Visual Studio and hit build!
-
+1. Open `x64 Native Tools Command Prompt for VS <year>` from the Windows Start Menu. Within this terminal, `cd` into the `examples` folder.
+2. Run `cl gen_projects.c && gen_projects`.
+3. Open `examples/.build/examples.sln` in Visual Studio and hit build!
 
 ## Examples
 

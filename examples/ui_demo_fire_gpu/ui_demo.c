@@ -398,7 +398,7 @@ int main() {
 	OS_InitArena(&os_persistent_arena, 4096);
 
 	OS_Inputs window_inputs = {0};
-	OS_Window window = OS_WindowCreate(g_window_size, g_window_height, OS_STR("Fire UI demo"));
+	OS_Window window = OS_WindowCreate(g_window_size, g_window_height, OS_STR("UI demo (Fire GPU)"));
 
 	GPU_Init(window.handle);
 	

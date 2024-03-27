@@ -9,6 +9,7 @@ typedef struct UI_GPU_State {
 	GPU_GraphicsPipeline *pipeline;
 	GPU_Sampler *sampler; // external, not owned
 	GPU_RenderPass *render_pass; // external, not owned
+	GPU_Buffer *buffers[UI_MAX_BACKEND_BUFFERS];
 
 	// per-frame state
 	bool atlas_is_mapped[2];
@@ -33,18 +34,17 @@ static void *UI_GPU_AtlasMapUntilFrameEnd(int atlas_id) {
 	return UI_GPU_STATE.atlas_staging_buffers[atlas_id]->data;
 }
 
-static void *UI_GPU_BufferMapUntilFrameEnd(UI_BufferID buffer_id) {
-	GPU_Buffer *buffer = (GPU_Buffer*)buffer_id;
-	return buffer->data;
+static void *UI_GPU_BufferMapUntilFrameEnd(int buffer_id) {
+	return UI_GPU_STATE.buffers[buffer_id]->data;
 }
 
-static UI_BufferID UI_GPU_CreateBuffer(uint32_t size_in_bytes) {
+static void UI_GPU_CreateBuffer(int buffer_id, uint32_t size_in_bytes) {
 	GPU_Buffer *buffer = GPU_MakeBuffer(size_in_bytes, GPU_BufferFlag_CPU|GPU_BufferFlag_GPU, NULL);
-	return (UI_BufferID)buffer;
+	UI_GPU_STATE.buffers[buffer_id] = buffer;
 }
 
-static void UI_GPU_DestroyBuffer(UI_BufferID buffer_id) {
-	GPU_DestroyBuffer((GPU_Buffer*)buffer_id);
+static void UI_GPU_DestroyBuffer(int buffer_id) {
+	GPU_DestroyBuffer(UI_GPU_STATE.buffers[buffer_id]);
 }
 
 static void UI_GPU_Init(UI_Backend *backend, GPU_RenderPass *render_pass, GPU_String shader_src) {
@@ -126,20 +126,20 @@ static void UI_GPU_EndFrame(UI_Outputs *outputs, GPU_Graph *graph, GPU_Descripto
 	UI_Vec2 pixel_size = {1.f / UI_STATE.window_size.x, 1.f / UI_STATE.window_size.y};
 	GPU_OpPushGraphicsConstants(graph, UI_GPU_STATE.pipeline_layout, &pixel_size, sizeof(pixel_size));
 
-	UI_BufferID vertex_buffer = UI_BUFFER_ID_NIL;
-	UI_BufferID index_buffer = UI_BUFFER_ID_NIL;
-
+	int vertex_buffer = -1;
+	int index_buffer = -1;
+	
 	for (int i = 0; i < outputs->draw_calls_count; i++) {
 		UI_DrawCall *draw_call = &outputs->draw_calls[i];
 		
-		if (draw_call->vertex_buffer != vertex_buffer) {
-			GPU_OpBindVertexBuffer(graph, (GPU_Buffer*)draw_call->vertex_buffer);
-			vertex_buffer = draw_call->vertex_buffer;
+		if (draw_call->vertex_buffer_id != vertex_buffer) {
+			vertex_buffer = draw_call->vertex_buffer_id;
+			GPU_OpBindVertexBuffer(graph, UI_GPU_STATE.buffers[vertex_buffer]);
 		}
 
-		if (draw_call->index_buffer != index_buffer) {
-			GPU_OpBindIndexBuffer(graph, (GPU_Buffer*)draw_call->index_buffer);
-			index_buffer = draw_call->index_buffer;
+		if (draw_call->index_buffer_id != index_buffer) {
+			index_buffer = draw_call->index_buffer_id;
+			GPU_OpBindIndexBuffer(graph, UI_GPU_STATE.buffers[index_buffer]);
 		}
 
 		GPU_OpBindDrawParams(graph, DS_VecGet(draw_params, i));
