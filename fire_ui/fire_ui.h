@@ -1268,8 +1268,7 @@ UI_API UI_Box *UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool 
 		}
 
 		if (UI_STATE.inputs.text_input_utf32_length > 0) {
-			STR_Builder text_input = {0};
-			text_input.arena = UI_FrameArena();
+			STR_Builder text_input = {UI_FrameArena()};
 			for (int i = 0; i < UI_STATE.inputs.text_input_utf32_length; i++) {
 				STR_PrintRune(&text_input, UI_STATE.inputs.text_input_utf32[i]);
 			}
@@ -2975,12 +2974,10 @@ UI_API void UI_DrawPolyline(UI_Vec2 *points, int points_count, float thickness, 
 
 	UI_Vec2 start_dir, end_dir;
 
-	DS_Vec(UI_Vec2) line_normals = {0};
-	line_normals.arena = UI_FrameArena();
+	DS_Vec(UI_Vec2) line_normals = {UI_FrameArena()};
 	DS_VecResizeUndef(&line_normals, points_count - 1);
 	
-	DS_Vec(float) distances = {0};
-	distances.arena = UI_FrameArena();
+	DS_Vec(float) distances = {UI_FrameArena()};
 	DS_VecResizeUndef(&distances, points_count);
 
 	float total_distance = 0.f;

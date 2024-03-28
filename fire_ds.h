@@ -251,7 +251,7 @@ DS_API uint32_t DS_MurmurHash3(const void *key, int len, uint32_t seed);
 DS_API uint64_t DS_MurmurHash64A(const void *key, int len, uint64_t seed);
 
 #define DS_Map(K, V) \
-	struct { struct{ uint32_t hash; K key; V value; } *data; int length; int capacity; DS_ArenaOrHeap *arena; }
+	struct { DS_ArenaOrHeap *arena; struct{ uint32_t hash; K key; V value; } *data; int length; int capacity; }
 typedef DS_Map(char, char) DS_MapRaw;
 
 #define DS_MapInit(MAP)                DS_MapInitRaw((DS_MapRaw*)(MAP), DS_USE_HEAP)
@@ -429,7 +429,7 @@ static inline void *DS_CloneSizeA(DS_Arena *arena, const void *value, int size, 
 
 // -- DS_Vec --------------------------------
 
-#define DS_Vec(T) struct { T *data; int length; int capacity; DS_ArenaOrHeap *arena; }
+#define DS_Vec(T) struct { DS_ArenaOrHeap *arena; T *data; int length; int capacity; }
 typedef DS_Vec(void) DS_VecRaw;
 
 #define DS_VecGet(VEC, INDEX)          (DS_VecBoundsCheck(VEC, INDEX), ((VEC).data)[INDEX])
@@ -451,9 +451,9 @@ typedef DS_Vec(void) DS_VecRaw;
 // You may pass `DS_USE_HEAP` into `ARENA`, in which case you must also call DS_VecDeinit on this vec
 #define DS_VecInitA(VEC, ARENA)        DS_VecInitRaw((DS_VecRaw*)(VEC), (ARENA))
 
-#define DS_VecPush(VEC, ELEM) do { \
+#define DS_VecPush(VEC, ...) do { \
 	DS_VecReserveRaw((DS_VecRaw*)(VEC), (VEC)->length + 1, DS_VecElemSize(*(VEC))); \
-	(VEC)->data[(VEC)->length++] = ELEM; } while (0)
+	(VEC)->data[(VEC)->length++] = __VA_ARGS__; } while (0)
 
 #define DS_VecPushN(VEC, ELEMS_DATA, ELEMS_LENGTH) (DS_VecTypecheck(VEC, ELEMS_DATA), DS_VecPushNRaw((DS_VecRaw*)(VEC), ELEMS_DATA, ELEMS_LENGTH, DS_VecElemSize(*VEC)))
 
@@ -503,14 +503,14 @@ DS_API void DS_VecResizeRaw(DS_VecRaw *array, int length, const void *value, int
 // -- Slot Allocator --------------------------------------------------------------------
 
 #define DS_SlotAllocator(T, N) struct { \
+	DS_ArenaOrHeap *arena; \
 	struct { union {T value; T *next_free_slot;} slots[N]; void *next_bucket; } *buckets[2]; /* first and last bucket */ \
 	T *first_free_elem; \
 	uint32_t last_bucket_end; \
 	uint32_t bucket_next_ptr_offset; \
 	uint32_t slot_size; \
 	uint32_t bucket_size; \
-	uint32_t num_slots_per_bucket; \
-	DS_ArenaOrHeap *arena; }
+	uint32_t num_slots_per_bucket; }
 
 typedef DS_SlotAllocator(char, 1) SlotAllocatorRaw;
 
@@ -540,18 +540,18 @@ typedef struct DS_BucketListIndex {
 } DS_BucketListIndex;
 
 #define DS_BucketList(T) struct { \
+	DS_Arena *arena; \
+	SlotAllocatorRaw *slot_allocator; \
 	struct {T dummy_T; void *dummy_ptr;} *buckets[2]; /* first and last bucket */ \
 	uint32_t last_bucket_end; \
-	uint32_t elems_per_bucket; \
-	DS_Arena *arena; \
-	SlotAllocatorRaw *slot_allocator; }
+	uint32_t elems_per_bucket; }
 
 typedef DS_BucketList(char) BucketListRaw;
 
 //#define BucketListInitUsingSlotAllocator(LIST, SLOT_ALLOCATOR) BucketListInitUsingSlotAllocatorRaw((BucketListRaw*)(LIST), (SlotAllocatorRaw*)(SLOT_ALLOCATOR), DS_BucketElemSize(LIST))
 
-#define DS_BucketListPush(LIST, ELEM) \
-	DS_BucketListPushRaw((BucketListRaw*)(LIST), (ELEM), DS_BucketElemSize(LIST), DS_BucketNextPtrOffset(LIST))
+#define DS_BucketListPush(LIST, ...) \
+	DS_BucketListPushRaw((BucketListRaw*)(LIST), (__VA_ARGS__), DS_BucketElemSize(LIST), DS_BucketNextPtrOffset(LIST))
 
 #define DS_ForBucketListEach(T, LIST, IT) \
 	struct DS_Concat(_dummy_, __LINE__) {void *bucket; uint32_t slot_index; T *elem;}; \

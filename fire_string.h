@@ -1018,8 +1018,7 @@ STR_API STR STR_Replace(STR_ARENA *arena, STR str, STR search_for, STR replace_w
 	if (search_for.size > str.size) return str;
 	STR_ProfEnter();
 	
-	STR_Builder builder = {0};
-	builder.arena = arena;
+	STR_Builder builder = {arena};
 
 	int last = str.size - search_for.size;
 
@@ -1043,8 +1042,7 @@ STR_API STR STR_ReplaceMulti(STR_ARENA *arena, STR str, STR_Array search_for, ST
 	STR_CHECK(search_for.size == replace_with.size);
 	int n = search_for.size;
 
-	STR_Builder builder = {0};
-	builder.arena = arena;
+	STR_Builder builder = {arena};
 	
 	for (int i = 0; i < str.size;) {
 
@@ -1181,8 +1179,7 @@ static void STR_PrintF_(STR_Builder *s, const char *fmt, va_list args) {
 }
 
 static char *StrForm_(STR_ARENA *arena, const char *fmt, va_list args, int *out_length) {
-	STR_Builder builder = {0};
-	builder.arena = arena;
+	STR_Builder builder = {arena};
 	STR_PrintF_(&builder, fmt, args);
 	*out_length = builder.str.size;
 	return (char*)builder.str.data;
@@ -1190,8 +1187,7 @@ static char *StrForm_(STR_ARENA *arena, const char *fmt, va_list args, int *out_
 
 STR_API char *STR_Form(STR_ARENA *arena, const char *fmt, ...) {
 	va_list args; va_start(args, fmt);
-	STR_Builder builder = {0};
-	builder.arena = arena;
+	STR_Builder builder = {arena};
 	STR_PrintF_(&builder, fmt, args);
 	STR_PrintRune(&builder, '\0');
 	va_end(args);
@@ -1200,8 +1196,7 @@ STR_API char *STR_Form(STR_ARENA *arena, const char *fmt, ...) {
 
 STR_API char *STR_FormTemp(const char *fmt, ...) {
 	va_list args; va_start(args, fmt);
-	STR_Builder builder = {0};
-	builder.arena = STR_ACTIVE_TEMP_ARENA;
+	STR_Builder builder = {STR_ACTIVE_TEMP_ARENA};
 	STR_PrintF_(&builder, fmt, args);
 	STR_PrintRune(&builder, '\0');
 	va_end(args);
@@ -1210,8 +1205,7 @@ STR_API char *STR_FormTemp(const char *fmt, ...) {
 
 STR_API STR STR_FormV(STR_ARENA *arena, const char *fmt, ...) {
 	va_list args; va_start(args, fmt);
-	STR_Builder builder = {0};
-	builder.arena = arena;
+	STR_Builder builder = {arena};
 	STR_PrintF_(&builder, fmt, args);
 	va_end(args);
 	return builder.str;
@@ -1219,8 +1213,7 @@ STR_API STR STR_FormV(STR_ARENA *arena, const char *fmt, ...) {
 
 STR_API STR STR_FormTempV(const char *fmt, ...) {
 	va_list args; va_start(args, fmt);
-	STR_Builder builder = {0};
-	builder.arena = STR_ACTIVE_TEMP_ARENA;
+	STR_Builder builder = {STR_ACTIVE_TEMP_ARENA};
 	STR_PrintF_(&builder, fmt, args);
 	va_end(args);
 	return builder.str;
@@ -1313,8 +1306,7 @@ STR_API STR OLD_APrint(STR_ARENA *arena, const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
 
-	STR_Builder builder = {0};
-	builder.arena = arena;
+	STR_Builder builder = {arena};
 	OLD_PrintVA(&builder, fmt, args);
 
 	va_end(args);

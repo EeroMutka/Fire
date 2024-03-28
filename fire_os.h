@@ -532,12 +532,12 @@ OS_API void OS_LockAndHideMouseCursor();
 
 #define OS_SANE_MAX_PATH 1024
 
-#define OS_Vec(T) struct { T *data; int length; int capacity; OS_Arena *arena; }
+#define OS_Vec(T) struct { OS_Arena *arena; T *data; int length; int capacity; }
 typedef OS_Vec(char) OS_VecRaw;
 
-#define OS_VecPush(VEC, ELEM) do { \
+#define OS_VecPush(VEC, ...) do { \
 	OS_VecReserveRaw((OS_VecRaw*)(VEC), (VEC)->length + 1, sizeof(*(VEC)->data)); \
-	(VEC)->data[(VEC)->length++] = ELEM; } while (0)
+	(VEC)->data[(VEC)->length++] = __VA_ARGS__; } while (0)
 
 static void OS_VecReserveRaw(OS_VecRaw *array, int capacity, int elem_size) {
 	int new_capacity = array->capacity;
@@ -864,44 +864,6 @@ OS_API void OS_DebugPrintString(OS_String str) {
 
 	OS_TempArenaEnd();
 }
-
-/*OS_API void OS_LogPrint(OS_Log *log, const char *fmt, ...) {
-if (log) {
-OS_Arena *temp = OS_TempArenaBegin();
-STR_Builder s = {.arena = temp};
-
-va_list va; va_start(va, fmt);
-PrintVA(&s, fmt, va);
-va_end(va);
-
-log->print(log, s.str);
-OS_TempArenaEnd();
-}
-}*/
-
-/*OS_API void OS_Print(const char *fmt, ...) {
-OS_Arena *temp = OS_TempArenaBegin();
-STR_Builder s = {.arena = temp};
-
-va_list va; va_start(va, fmt);
-PrintVA(&s, fmt, va);
-va_end(va);
-
-OS_PrintString(s.str);
-OS_TempArenaEnd();
-}*/
-
-/*OS_API void OS_DebugPrint(const char *fmt, ...) {
-OS_Arena *temp = OS_TempArenaBegin();
-STR_Builder s = {.arena = temp};
-
-va_list va; va_start(va, fmt);
-PrintVA(&s, fmt, va);
-va_end(va);
-
-OS_DebugPrintString(s.str);
-OS_TempArenaEnd();
-}*/
 
 // colored write to console
 // WriteConsoleOutputAttribute
@@ -1260,8 +1222,7 @@ OS_API bool OS_GetAllFilesInDirectory(OS_Arena *arena, OS_String directory, OS_F
 	OS_String match_str = {match_cstr, directory.size + 2};
 	wchar_t *match_wstr = OS_StrToWide(temp, match_str, 1, NULL);
 
-	OS_Vec(OS_FileInfo) file_infos = {0};
-	file_infos.arena = arena;
+	OS_Vec(OS_FileInfo) file_infos = {arena};
 
 	WIN32_FIND_DATAW find_info;
 	HANDLE handle = FindFirstFileW(match_wstr, &find_info);
@@ -1508,16 +1469,14 @@ OS_API bool OS_RunCommand(OS_String *args, uint32_t args_count, uint32_t *out_ex
 	// https://stackoverflow.com/questions/1291291/how-to-accept-command-line-args-ending-in-backslash
 	// https://daviddeley.com/autohotkey/parameters/parameters.htm#WINCRULESDOC
 
-	OS_Vec(char) cmd_string_buf = {0};
-	cmd_string_buf.arena = temp;
+	OS_Vec(char) cmd_string_buf = {temp};
 
 	for (uint32_t i = 0; i < args_count; i++) {
 		OS_String arg = args[i];
 
 		bool contains_space = false;
 
-		OS_Vec(char) arg_string = {0};
-		arg_string.arena = temp;
+		OS_Vec(char) arg_string = {temp};
 
 		for (intptr_t j = 0; j < arg.size; j++) {
 			char c = arg.data[j];
