@@ -2873,8 +2873,13 @@ UI_API void UI_DrawCircle(UI_Vec2 p, float radius, int segments, UI_Color color,
 }
 
 UI_API void UI_DrawRect(UI_Rect rect, UI_Color color, UI_ScissorRect scissor) {
-	UI_DrawRectCorners corners = {{color, color, color, color}, {0, 0, 0, 0}};
-	UI_DrawRectEx(rect, &corners, scissor);
+	uint32_t first_vert;
+	UI_DrawVertex *v = UI_AddVertices(4, &first_vert);
+	v[0] = UI_DRAW_VERTEX{{rect.min.x, rect.min.y}, UI_WHITE_PIXEL_UV, color};
+	v[1] = UI_DRAW_VERTEX{{rect.max.x, rect.min.y}, UI_WHITE_PIXEL_UV, color};
+	v[2] = UI_DRAW_VERTEX{{rect.max.x, rect.max.y}, UI_WHITE_PIXEL_UV, color};
+	v[3] = UI_DRAW_VERTEX{{rect.min.x, rect.max.y}, UI_WHITE_PIXEL_UV, color};
+	UI_AddQuadIndicesAndClip(first_vert, first_vert+1, first_vert+2, first_vert+3, UI_TEXTURE_ID_NIL, scissor);
 }
 
 UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, UI_ScissorRect scissor) {
@@ -2898,7 +2903,6 @@ UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners *corners, UI_Sc
 	inset_corners[3] = UI_AddV2(UI_VEC2{rect.min.x, rect.max.y}, UI_VEC2{corners->roundness[3], -corners->roundness[3]});
 	if (inset_corners[0].x > inset_corners[2].x) return; // discard invalid rects
 	if (inset_corners[0].y > inset_corners[2].y) return; // discard invalid rects
-	//DS_ProfEnter();
 
 	const int corner_vertex_count = 2;
 	
@@ -2951,8 +2955,6 @@ UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners *corners, UI_Sc
 	}
 
 	UI_AddQuadIndicesAndClip(inset_corner_verts, inset_corner_verts+1, inset_corner_verts+2, inset_corner_verts+3, UI_TEXTURE_ID_NIL, scissor);
-
-	//DS_ProfExit();
 }
 
 UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color, UI_ScissorRect scissor) {
