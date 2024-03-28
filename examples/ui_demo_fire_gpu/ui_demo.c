@@ -435,8 +435,8 @@ int main() {
 
 	GPU_WaitUntilIdle();
 	
-	//// Cleanup resources /////////////////////////////
-
+	//// Cleanup ///////////////////////////////////////
+	
 	UI_FontDeinit(&base_font);
 	UI_FontDeinit(&icons_font);
 	

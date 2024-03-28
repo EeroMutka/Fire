@@ -100,7 +100,7 @@ typedef DS_DefaultArenaMark DS_ArenaMark;
 
 #define DS_USE_HEAP (DS_Arena*)(-1)
 
-// DS_ArenaOrHeap is used to mark arena parameters, where you may also pass DS_USE_HEAP.
+// DS_ArenaOrHeap is used to mark arena parameters where you may pass DS_USE_HEAP.
 // When using DS_USE_HEAP, you must also remember call the appropriate deinitialization function that frees the memory.
 typedef DS_Arena DS_ArenaOrHeap;
 

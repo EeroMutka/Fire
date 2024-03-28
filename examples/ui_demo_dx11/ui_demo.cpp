@@ -408,8 +408,6 @@ int main() {
 	UI_TextInit(&persist, &g_dummy_text, STR_(""));
 	UI_TextInit(&persist, &g_dummy_text_2, STR_(""));
 
-	// TODO: make OS arena compatible with DS arena...
-
 	OS_Inputs window_inputs = {0};
 	OS_Window window = OS_WindowCreate(1200, 900, OS_STR("UI demo (DX11)"));
 
