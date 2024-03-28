@@ -146,7 +146,7 @@ static void UI_DX11_DestroyBuffer(int buffer_id) {
 	UI_DX11_STATE.buffers[buffer_id] = NULL;
 }
 
-static void UI_DX11_Init(UI_Backend *backend, ID3D11Device *device, ID3D11DeviceContext *device_context, GPU_String shader_src) {
+static void UI_DX11_Init(UI_Backend *backend, ID3D11Device *device, ID3D11DeviceContext *device_context) {
 	UI_DX11_State state = {0};
 	state.device = device;
 	state.device_context = device_context;

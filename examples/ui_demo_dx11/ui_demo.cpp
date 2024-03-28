@@ -411,10 +411,6 @@ int main() {
 	OS_Inputs window_inputs = {0};
 	OS_Window window = OS_WindowCreate(1200, 900, OS_STR("UI demo (DX11)"));
 
-	STR ui_shader_filepath = STR_("../../fire_ui/fire_ui_backend_fire_gpu_shader.glsl");
-	STR ui_shader_src;
-	UI_CHECK(OS_ReadEntireFile(&persist, ui_shader_filepath, &ui_shader_src));
-
 	D3D_FEATURE_LEVEL dx_feature_levels[] = { D3D_FEATURE_LEVEL_11_0 };
 	
 	DXGI_SWAP_CHAIN_DESC swapchain_desc = {0};
@@ -449,7 +445,7 @@ int main() {
 	///////////////////////////////////////////////////////////////////////////////////////////////
 	
 	UI_Backend ui_backend = {0};
-	UI_DX11_Init(&ui_backend, device, device_context, GPU_String{ui_shader_src.data, ui_shader_src.size});
+	UI_DX11_Init(&ui_backend, device, device_context);
 	UI_Init(&persist, &ui_backend);
 
 	// NOTE: the font data must remain alive across the whole program lifetime!
