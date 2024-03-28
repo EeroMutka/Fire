@@ -473,14 +473,12 @@ typedef DS_Vec(void) DS_VecRaw;
 // Reset the array to a default state and free its memory if using the heap allocator.
 #define DS_VecDeinit(VEC)             DS_VecDeinitRaw((DS_VecRaw*)(VEC), DS_VecElemSize(*VEC))
 
-/*
-Magical array iteration macro
-e.g.
-DS_Vec(float) foo;
-DS_ForVecEach(float, &foo, it) {
-    printf("foo at index %d has the value of %f\n", it.i, it.elem);
-}
-*/
+// Magical array iteration macro.
+// e.g.
+// DS_Vec(float) foo;
+// DS_ForVecEach(float, &foo, it) {
+//     printf("foo at index %d has the value of %f\n", it.i, it.elem);
+// }
 #define DS_ForVecEach(T, VEC, IT) \
 	(void)((T*)0 == (VEC)->data); /* Trick the compiler into checking that T is the same as the elem type of VEC */ \
 	struct DS_Concat(_dummy_, __LINE__) {int i; T *ptr;}; /* Declaring new struct types in for-loop initializers is not standard C */ \
