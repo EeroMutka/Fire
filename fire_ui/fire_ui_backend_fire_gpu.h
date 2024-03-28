@@ -1,5 +1,40 @@
 // This file is part of the Fire UI library, see "fire_ui.h"
 
+const char UI_GPU_SHADER_SRC[] = ""
+	"layout(push_constant) uniform Constants {\n"
+	"	vec2 pixel_size;\n"
+	"} constants;\n"
+	"\n"
+	"#ifdef GPU_STAGE_VERTEX\n"
+	"	layout (location = 0) in vec2 vs_position;\n"
+	"	layout (location = 1) in vec2 vs_uv;\n"
+	"	layout (location = 2) in vec4 vs_color;\n"
+	"\n"
+	"	layout(location = 0) out vec2 fs_uv;\n"
+	"	layout(location = 1) out vec4 fs_color;\n"
+	"\n"
+	"	void main() {\n"
+	"		// Transform vertices from screen space to clip space\n"
+	"		gl_Position = vec4(2.*vs_position*constants.pixel_size - 1., 0., 1);\n"
+	"		fs_uv = vs_uv;\n"
+	"		fs_color = vs_color;\n"
+	"	}\n"
+	"\n"
+	"#else\n"
+	"	GPU_BINDING(TEXTURE) texture2D TEXTURE;\n"
+	"	GPU_BINDING(SAMPLER_LINEAR_REPEAT) sampler SAMPLER_LINEAR_REPEAT;\n"
+	"\n"
+	"	layout(location = 0) in vec2 fs_uv;\n"
+	"	layout(location = 1) in vec4 fs_color;\n"
+	"\n"
+	"	layout (location = 0) out vec4 out_color;\n"
+	"\n"
+	"	void main() {\n"
+	"		out_color = fs_color * texture(sampler2D(TEXTURE, SAMPLER_LINEAR_REPEAT), fs_uv);\n"
+	"	}\n"
+	"\n"
+	"#endif\n";
+
 typedef struct UI_GPU_State {
 	GPU_Texture *atlases[2];
 	GPU_Buffer *atlas_staging_buffers[2];
@@ -47,7 +82,7 @@ static void UI_GPU_DestroyBuffer(int buffer_id) {
 	GPU_DestroyBuffer(UI_GPU_STATE.buffers[buffer_id]);
 }
 
-static void UI_GPU_Init(UI_Backend *backend, GPU_RenderPass *render_pass, GPU_String shader_src) {
+static void UI_GPU_Init(UI_Backend *backend, GPU_RenderPass *render_pass) {
 	UI_GPU_State state = {0};
 	state.render_pass = render_pass;
 
@@ -63,10 +98,12 @@ static void UI_GPU_Init(UI_Backend *backend, GPU_RenderPass *render_pass, GPU_St
 	GPU_GraphicsPipelineDesc desc = {0};
 	desc.render_pass = render_pass;
 	desc.layout = state.pipeline_layout;
-	desc.vs.glsl = shader_src;
+	desc.vs.glsl.data = UI_GPU_SHADER_SRC;
+	desc.vs.glsl.length = sizeof(UI_GPU_SHADER_SRC)-1;
 	desc.fs.accesses.data = fs_accesses;
 	desc.fs.accesses.length = GPU_ArrayCount(fs_accesses);
-	desc.fs.glsl = shader_src;
+	desc.fs.glsl.data = UI_GPU_SHADER_SRC;
+	desc.fs.glsl.length = sizeof(UI_GPU_SHADER_SRC)-1;
 	desc.vertex_input_formats.data = vertex_input_formats;
 	desc.vertex_input_formats.length = GPU_ArrayCount(vertex_input_formats);
 	desc.enable_blending = true;

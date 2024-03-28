@@ -100,6 +100,10 @@ typedef DS_DefaultArenaMark DS_ArenaMark;
 
 #define DS_USE_HEAP (DS_Arena*)(-1)
 
+// DS_ArenaOrHeap is used to mark arena parameters, where you may also pass DS_USE_HEAP.
+// When using DS_USE_HEAP, you must also remember call the appropriate deinitialization function that frees the memory.
+typedef DS_Arena DS_ArenaOrHeap;
+
 // Results in a compile-error if `elem` does not match the array's element type
 #define DS_VecTypecheck(array, elem) (void)((array)->data == elem)
 
@@ -247,7 +251,7 @@ DS_API uint32_t DS_MurmurHash3(const void *key, int len, uint32_t seed);
 DS_API uint64_t DS_MurmurHash64A(const void *key, int len, uint64_t seed);
 
 #define DS_Map(K, V) \
-	struct { struct{ uint32_t hash; K key; V value; } *data; int length; int capacity; DS_Arena *arena; }
+	struct { struct{ uint32_t hash; K key; V value; } *data; int length; int capacity; DS_ArenaOrHeap *arena; }
 typedef DS_Map(char, char) DS_MapRaw;
 
 #define DS_MapInit(MAP)                DS_MapInitRaw((DS_MapRaw*)(MAP), DS_USE_HEAP)
@@ -425,8 +429,7 @@ static inline void *DS_CloneSizeA(DS_Arena *arena, const void *value, int size, 
 
 // -- DS_Vec --------------------------------
 
-// `arena` may be DS_USE_HEAP
-#define DS_Vec(T) struct { T *data; int length; int capacity; DS_Arena *arena; }
+#define DS_Vec(T) struct { T *data; int length; int capacity; DS_ArenaOrHeap *arena; }
 typedef DS_Vec(void) DS_VecRaw;
 
 #define DS_VecGet(VEC, INDEX)          (DS_VecBoundsCheck(VEC, INDEX), ((VEC).data)[INDEX])
@@ -444,6 +447,8 @@ typedef DS_Vec(void) DS_VecRaw;
 #define DS_VecReserve(VEC, CAPACITY)   DS_VecReserveRaw((DS_VecRaw*)(VEC), CAPACITY, DS_VecElemSize(*VEC))
 
 #define DS_VecInit(VEC)                DS_VecInitRaw((DS_VecRaw*)(VEC), DS_USE_HEAP)
+
+// You may pass `DS_USE_HEAP` into `ARENA`, in which case you must also call DS_VecDeinit on this vec
 #define DS_VecInitA(VEC, ARENA)        DS_VecInitRaw((DS_VecRaw*)(VEC), (ARENA))
 
 #define DS_VecPush(VEC, ELEM) do { \
@@ -505,7 +510,7 @@ DS_API void DS_VecResizeRaw(DS_VecRaw *array, int length, const void *value, int
 	uint32_t slot_size; \
 	uint32_t bucket_size; \
 	uint32_t num_slots_per_bucket; \
-	DS_Arena *arena; /* may be DS_USE_HEAP */ }
+	DS_ArenaOrHeap *arena; }
 
 typedef DS_SlotAllocator(char, 1) SlotAllocatorRaw;
 

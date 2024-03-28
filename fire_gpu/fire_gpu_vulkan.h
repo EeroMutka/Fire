@@ -776,6 +776,7 @@ static void GPU_SetBinding(GPU_DescriptorSet *set, uint32_t binding, void *value
 	if (value == NULL) {
 		GPU_TODO(); // We should figure out what to do with passing NULL descriptor to cubemap textures, as vulkan gives a validation error if the nil image has the wrong image view type
 		
+		
 		//switch (kind) {
 		//case GPU_ResourceKind_Buffer:  { value = FGPU.nil_storage_buffer; } break;
 		//case GPU_ResourceKind_Sampler: { value = FGPU.nil_sampler; } break;

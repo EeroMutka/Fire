@@ -92,7 +92,12 @@ static UI_TextureID UI_DX11_CreateAtlas(int atlas_id, uint32_t width, uint32_t h
 }
 
 static void UI_DX11_DestroyAtlas(int atlas_id) {
-	__debugbreak();
+	UI_DX11_STATE.atlases[atlas_id]->Release();
+	UI_DX11_STATE.atlases[atlas_id] = NULL;
+	UI_DX11_STATE.atlases_staging[atlas_id]->Release();
+	UI_DX11_STATE.atlases_staging[atlas_id] = NULL;
+	UI_DX11_STATE.atlases_srv[atlas_id]->Release();
+	UI_DX11_STATE.atlases_srv[atlas_id] = NULL;
 }
 
 static void *UI_DX11_AtlasMapUntilFrameEnd(int atlas_id) {
@@ -137,7 +142,8 @@ static void UI_DX11_CreateIndexBuffer(int buffer_id, uint32_t size_in_bytes) {
 }
 
 static void UI_DX11_DestroyBuffer(int buffer_id) {
-	__debugbreak();
+	UI_DX11_STATE.buffers[buffer_id]->Release();
+	UI_DX11_STATE.buffers[buffer_id] = NULL;
 }
 
 static void UI_DX11_Init(UI_Backend *backend, ID3D11Device *device, ID3D11DeviceContext *device_context, GPU_String shader_src) {
@@ -146,7 +152,7 @@ static void UI_DX11_Init(UI_Backend *backend, ID3D11Device *device, ID3D11Device
 	state.device_context = device_context;
 	
 	ID3DBlob* vertexshaderCSO;
-	D3DCompile(UI_DX11_SHADER_SRC, sizeof(UI_DX11_SHADER_SRC), "VS", NULL, NULL, "vertex_shader", "vs_5_0", 0, 0, &vertexshaderCSO, NULL);
+	D3DCompile(UI_DX11_SHADER_SRC, sizeof(UI_DX11_SHADER_SRC)-1, "VS", NULL, NULL, "vertex_shader", "vs_5_0", 0, 0, &vertexshaderCSO, NULL);
 
 	device->CreateVertexShader(vertexshaderCSO->GetBufferPointer(), vertexshaderCSO->GetBufferSize(), NULL, &state.vertex_shader);
 
@@ -161,7 +167,7 @@ static void UI_DX11_Init(UI_Backend *backend, ID3D11Device *device, ID3D11Device
 	///////////////////////////////////////////////////////////////////////////////////////////////
 
 	ID3DBlob* pixelshaderCSO;
-	D3DCompile(UI_DX11_SHADER_SRC, sizeof(UI_DX11_SHADER_SRC), "PS", NULL, NULL, "pixel_shader", "ps_5_0", 0, 0, &pixelshaderCSO, NULL);
+	D3DCompile(UI_DX11_SHADER_SRC, sizeof(UI_DX11_SHADER_SRC)-1, "PS", NULL, NULL, "pixel_shader", "ps_5_0", 0, 0, &pixelshaderCSO, NULL);
 
 	device->CreatePixelShader(pixelshaderCSO->GetBufferPointer(), pixelshaderCSO->GetBufferSize(), NULL, &state.pixel_shader);
 
@@ -221,7 +227,14 @@ static void UI_DX11_Init(UI_Backend *backend, ID3D11Device *device, ID3D11Device
 }
 
 static void UI_DX11_Deinit(void) {
-	// TODO
+	UI_DX11_STATE.vertex_shader->Release();
+	UI_DX11_STATE.pixel_shader->Release();
+	UI_DX11_STATE.input_layout->Release();
+	UI_DX11_STATE.raster_state->Release();
+	UI_DX11_STATE.sampler_state->Release();
+	UI_DX11_STATE.constant_buffer->Release();
+	UI_DX11_STATE.blend_state->Release();
+	memset(&UI_DX11_STATE, 0, sizeof(UI_DX11_STATE));
 }
 
 static void UI_DX11_BeginFrame(void) {}

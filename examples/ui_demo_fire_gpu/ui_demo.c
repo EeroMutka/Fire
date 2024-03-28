@@ -3,8 +3,9 @@
 #define STR_USE_FIRE_DS_ARENA
 #include "fire_string.h"
 
+#define OS_USE_FIRE_DS_ARENA
 #define OS_STRING_OVERRIDE
-typedef STR OS_String;
+#define OS_String STR
 #include "fire_os.h"
 
 #include "fire_gpu/fire_gpu.h"
@@ -364,38 +365,31 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
 	UpdateAndRender();
 }
 
-static void AddTreeSpecie(UI_Key key, STR name, STR information) {
+static void AddTreeSpecie(DS_Arena *arena, UI_Key key, STR name, STR information) {
 	TreeSpecie tree = {0};
 	tree.name = name;
 	tree.show = false;
 	tree.key = key;
-	UI_TextInit(&tree.text, information);
+	UI_TextInit(arena, &tree.text, information);
 	DS_VecPush(&g_trees, tree);
-}
-
-static void TreeSpecieDeinit(TreeSpecie *tree) {
-	UI_TextDeinit(&tree->text);
 }
 
 int main() {
 	OS_Init();
 
-	DS_VecInit(&g_trees);
-	AddTreeSpecie(UI_KEY(), STR_("Pine"), STR_("Pine trees can live up to 1000 years."));
-	AddTreeSpecie(UI_KEY(), STR_("Oak"), STR_("Oak is commonly used in construction and furniture."));
-	AddTreeSpecie(UI_KEY(), STR_("Maple"), STR_("Maple trees are typically 10 to 45 meters tall."));
-	AddTreeSpecie(UI_KEY(), STR_("Birch"), STR_("Birch is most commonly found in the Northern hemisphere."));
-	AddTreeSpecie(UI_KEY(), STR_("Cedar"), STR_("Cedar wood is a natural repellent to moths."));
+	DS_Arena persist, temp;
+	DS_ArenaInit(&persist, 4096);
+	DS_ArenaInit(&temp, 4096);
 
-	UI_TextInit(&g_dummy_text, STR_(""));
-	UI_TextInit(&g_dummy_text_2, STR_(""));
+	DS_VecInitA(&g_trees, &persist);
+	AddTreeSpecie(&persist, UI_KEY(), STR_("Pine"), STR_("Pine trees can live up to 1000 years."));
+	AddTreeSpecie(&persist, UI_KEY(), STR_("Oak"), STR_("Oak is commonly used in construction and furniture."));
+	AddTreeSpecie(&persist, UI_KEY(), STR_("Maple"), STR_("Maple trees are typically 10 to 45 meters tall."));
+	AddTreeSpecie(&persist, UI_KEY(), STR_("Birch"), STR_("Birch is most commonly found in the Northern hemisphere."));
+	AddTreeSpecie(&persist, UI_KEY(), STR_("Cedar"), STR_("Cedar wood is a natural repellent to moths."));
 
-	DS_Arena persistent_arena;
-	DS_ArenaInit(&persistent_arena, 4096);
-
-	OS_Arena os_temp_arena, os_persistent_arena;
-	OS_ArenaInit(&os_temp_arena, 4096);
-	OS_ArenaInit(&os_persistent_arena, 4096);
+	UI_TextInit(&persist, &g_dummy_text, STR_(""));
+	UI_TextInit(&persist, &g_dummy_text_2, STR_(""));
 
 	OS_Inputs window_inputs = {0};
 	OS_Window window = OS_WindowCreate(g_window_width, g_window_height, OS_STR("UI demo (Fire GPU)"));
@@ -411,34 +405,30 @@ int main() {
 	g_descriptor_arenas[0] = GPU_MakeDescriptorArena();
 	g_descriptor_arenas[1] = GPU_MakeDescriptorArena();
 
-	STR ui_shader_filepath = STR_("../../fire_ui/fire_ui_backend_fire_gpu_shader.glsl");
-	STR ui_shader_src;
-	UI_CHECK(OS_ReadEntireFile(&os_persistent_arena, ui_shader_filepath, &ui_shader_src));
-
 	UI_Backend ui_backend = {0};
-	UI_GPU_Init(&ui_backend, main_renderpass, (GPU_String){ui_shader_src.data, ui_shader_src.size});
-	UI_Init(&persistent_arena, &ui_backend);
+	UI_GPU_Init(&ui_backend, main_renderpass);
+	UI_Init(&persist, &ui_backend);
 
 	// NOTE: the font data must remain alive across the whole program lifetime!
 	STR roboto_mono_ttf, icons_ttf;
-	assert(OS_ReadEntireFile(&os_persistent_arena, STR_("../../fire_ui/resources/roboto_mono.ttf"), &roboto_mono_ttf));
-	assert(OS_ReadEntireFile(&os_persistent_arena, STR_("../../fire_ui/resources/fontello/font/fontello.ttf"), &icons_ttf));
+	assert(OS_ReadEntireFile(&persist, STR_("../../fire_ui/resources/roboto_mono.ttf"), &roboto_mono_ttf));
+	assert(OS_ReadEntireFile(&persist, STR_("../../fire_ui/resources/fontello/font/fontello.ttf"), &icons_ttf));
 
 	UI_Font base_font, icons_font;
-	UI_LoadFontFromData(&base_font, roboto_mono_ttf.data, -4.f);
-	UI_LoadFontFromData(&icons_font, icons_ttf.data, -2.f);
+	UI_FontInit(&base_font, roboto_mono_ttf.data, -4.f);
+	UI_FontInit(&icons_font, icons_ttf.data, -2.f);
 
 	//// Main loop /////////////////////////////////////
 	
 	for (;;) {
-		OS_ArenaReset(&os_temp_arena);
+		DS_ArenaReset(&temp);
 
-		if (!OS_WindowPoll(&os_temp_arena, &window_inputs, &window, OnResizeWindow, NULL)) break;
+		if (!OS_WindowPoll(&temp, &window_inputs, &window, OnResizeWindow, NULL)) break;
 
 		g_ui_inputs = (UI_Inputs){0};
 		g_ui_inputs.base_font = &base_font;
 		g_ui_inputs.icons_font = &icons_font;
-		UI_OS_TranslateInputs(&g_ui_inputs, &window_inputs, &os_temp_arena);
+		UI_OS_TranslateInputs(&g_ui_inputs, &window_inputs, &temp);
 		
 		UpdateAndRender();
 	}
@@ -447,10 +437,9 @@ int main() {
 	
 	//// Cleanup resources /////////////////////////////
 
-	UI_TextDeinit(&g_dummy_text);
-	UI_TextDeinit(&g_dummy_text_2);
-	UI_DestroyFont(&base_font);
-	UI_DestroyFont(&icons_font);
+	UI_FontDeinit(&base_font);
+	UI_FontDeinit(&icons_font);
+	
 	UI_Deinit();
 	UI_GPU_Deinit();
 
@@ -461,12 +450,8 @@ int main() {
 	GPU_DestroyRenderPass(main_renderpass);
 	GPU_Deinit();
 
-	OS_ArenaDeinit(&os_persistent_arena);
-	OS_ArenaDeinit(&os_temp_arena);
-	DS_ArenaDeinit(&persistent_arena);
-	
-	for (int i = 0; i < g_trees.length; i++) TreeSpecieDeinit(&g_trees.data[i]);
-	DS_VecDeinit(&g_trees);
+	DS_ArenaDeinit(&persist);
+	DS_ArenaDeinit(&temp);
 
 	OS_Deinit();
 

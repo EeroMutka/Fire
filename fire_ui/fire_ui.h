@@ -23,10 +23,6 @@
 
 typedef STR UI_String;
 
-// TODO: custom arenas?
-#define UI_ARENA DS_Arena
-#define UI_ARENA_ALLOCATE(ARENA, SIZE) (void*)DS_ArenaPush(ARENA, SIZE)
-
 #ifdef __cplusplus
 #define UI_LangAgnosticLiteral(T) T   // in C++, struct and union literals are of the form MyStructType{...}
 #else
@@ -50,10 +46,6 @@ typedef union {
 	float _[2];
 } UI_Vec2;
 #define UI_VEC2  UI_LangAgnosticLiteral(UI_Vec2)
-
-// These are identical to DS_Vec and DS_Map in fire_ds.h
-#define UI_DS_Vec(T) struct { T *data; int length; int capacity; UI_ARENA *arena; }
-#define UI_DS_Map(K, V) struct { struct{ uint32_t hash; K key; V value; } *data; int length; int capacity; UI_ARENA *arena; }
 
 typedef struct UI_Size {
 	// The maximum of size_px and the calculated size using size_ratio_fit is taken as the unexpanded_size.
@@ -105,10 +97,10 @@ typedef struct UI_Color {
 
 typedef struct UI_Text {
 	union {
-		UI_DS_Vec(char) text;
+		DS_Vec(char) text;
 		UI_String str;
 	};
-	UI_DS_Vec(int) line_offsets;
+	DS_Vec(int) line_offsets;
 } UI_Text;
 
 typedef struct UI_CachedGlyphKey {
@@ -128,8 +120,8 @@ typedef struct UI_Font {
 	const uint8_t *data;
 	float y_offset;
 	
-	UI_DS_Map(UI_CachedGlyphKey, UI_CachedGlyph) glyph_map;
-	UI_DS_Map(UI_CachedGlyphKey, UI_CachedGlyph) glyph_map_old;
+	DS_Map(UI_CachedGlyphKey, UI_CachedGlyph) glyph_map;
+	DS_Map(UI_CachedGlyphKey, UI_CachedGlyph) glyph_map_old;
 	
 	stbtt_fontinfo font_info;
 } UI_Font;
@@ -261,9 +253,9 @@ typedef struct UI_ImmediateState {
 	
 	UI_Key active_edit_text_box;
 
-	UI_DS_Vec(UI_Box*) roots;
-	UI_DS_Map(UI_Key, UI_Box*) box_from_key;
-	UI_DS_Map(UI_Key, UI_Data) data_from_key;
+	DS_Vec(UI_Box*) roots;
+	DS_Map(UI_Key, UI_Box*) box_from_key;
+	DS_Map(UI_Key, UI_Data) data_from_key;
 } UI_ImmediateState;
 
 typedef enum UI_Input {
@@ -363,14 +355,14 @@ typedef struct UI_EditTextRequest {
 } UI_EditTextRequest;
 
 typedef struct UI_State {
-	UI_ARENA *persistent_arena;
+	DS_Arena *persistent_arena;
 	UI_Backend backend;
 
 	UI_Font *base_font;
 	UI_Font *icons_font;
 
-	UI_ARENA old_frame_arena;
-	UI_ARENA new_frame_arena;
+	DS_Arena old_frame_arena;
+	DS_Arena new_frame_arena;
 
 	UI_ImmediateState imm_old; // input for this frame
 	UI_ImmediateState imm_new; // output that is built this frame
@@ -405,8 +397,8 @@ typedef struct UI_State {
 
 	UI_Box *deepest_hovered_box_prev_frame; // NULL by default
 	
-	UI_DS_Vec(UI_Box*) box_stack;
-	UI_DS_Vec(UI_Style*) style_stack;
+	DS_Vec(UI_Box*) box_stack;
+	DS_Vec(UI_Style*) style_stack;
 	
 	bool frame_has_split_atlas;
 
@@ -416,7 +408,7 @@ typedef struct UI_State {
 	uint32_t draw_next_vertex;
 	uint32_t draw_next_index;
 	UI_TextureID draw_active_texture;
-	UI_DS_Vec(UI_DrawCall) draw_calls;
+	DS_Vec(UI_DrawCall) draw_calls;
 	
 	struct {
 		float scrollbar_origin_before_press;
@@ -487,7 +479,7 @@ UI_API inline bool UI_InputWasPressed(UI_Input input)          { return UI_STATE
 UI_API inline bool UI_InputWasPressedOrRepeat(UI_Input input)  { return UI_STATE.inputs.input_states[input] & UI_InputState_WasPressedOrRepeat; }
 UI_API inline bool UI_InputWasReleased(UI_Input input)         { return UI_STATE.inputs.input_states[input] & UI_InputState_WasReleased;   }
 
-UI_API inline UI_ARENA *UI_FrameArena(void) { return &UI_STATE.new_frame_arena; }
+UI_API inline DS_Arena *UI_FrameArena(void) { return &UI_STATE.new_frame_arena; }
 
 UI_API inline bool UI_MarkEquals(UI_Mark a, UI_Mark b)        { return a.line == b.line && a.col == b.col; }
 
@@ -514,7 +506,7 @@ UI_API inline UI_Vec2 UI_RectSize(UI_Rect rect) { UI_Vec2 x = {rect.max.x - rect
  `resources_directory` is the path of the `resources` folder that is shipped with FUI.
  FUI will load the default fonts from this folder during `UI_Init`, as well as the shader.
 */
-UI_API void UI_Init(UI_ARENA *persistent_arena, const UI_Backend *backend);
+UI_API void UI_Init(DS_Arena *persistent_arena, const UI_Backend *backend);
 UI_API void UI_Deinit(void);
 
 UI_API void UI_BeginFrame(const UI_Inputs *inputs, UI_Vec2 window_size);
@@ -566,8 +558,7 @@ UI_API bool UI_EditDouble(UI_Key key, UI_Size w, UI_Size h, double *value);
 
 UI_API bool UI_IsEditTextActive(UI_Key box);
 
-// TODO: cleanup UI_Text, ideally get rid of it.
-UI_API void UI_TextInit(UI_Text *text, UI_String initial_value);
+UI_API void UI_TextInit(DS_ArenaOrHeap *arena, UI_Text *text, UI_String initial_value);
 UI_API void UI_TextDeinit(UI_Text *text);
 UI_API void UI_TextSet(UI_Text *text, UI_String value);
 
@@ -653,8 +644,8 @@ UI_API void UI_FreeTextureArea(int64_t key);
 
 // `ttf_data` should be a pointer to a TTF font file data. It is NOT copied internally,
 // and must therefore remain valid across the whole lifetime of the font!
-UI_API void UI_LoadFontFromData(UI_Font *font, const void *ttf_data, float y_offset);
-UI_API void UI_DestroyFont(UI_Font *font);
+UI_API void UI_FontInit(UI_Font *font, const void *ttf_data, float y_offset);
+UI_API void UI_FontDeinit(UI_Font *font);
 
 // -- Drawing ----------------------
 
@@ -1196,9 +1187,9 @@ static void UI_EditTextRequestReplaceRange(UI_Selection *selection, UI_Mark from
 	selection->range[1] = mark;
 }
 
-UI_API void UI_TextInit(UI_Text *text, UI_String initial_value) {
+UI_API void UI_TextInit(DS_ArenaOrHeap *arena, UI_Text *text, UI_String initial_value) {
 	memset(text, 0, sizeof(*text));
-	DS_VecInit(&text->str);
+	DS_VecInitA(&text->str, arena);
 	UI_TextSet(text, initial_value);
 }
 
@@ -2105,8 +2096,8 @@ UI_API void UI_Init(DS_Arena *persistent_arena, const UI_Backend *backend) {
 		// UI_CHECK(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_("/roboto_mono.ttf")), &roboto_mono_ttf));
 		// UI_CHECK(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_("/fontello/font/fontello.ttf")), &icons_ttf));
 
-		// UI_LoadFontFromData(&UI_.base_font, roboto_mono_ttf.data, -4.f);
-		// UI_LoadFontFromData(&UI_.icons_font, icons_ttf.data, -2.f);
+		// UI_FontInit(&UI_.base_font, roboto_mono_ttf.data, -4.f);
+		// UI_FontInit(&UI_.icons_font, icons_ttf.data, -2.f);
 	}
 
 	DS_VecInitA(&UI_STATE.style_stack, UI_STATE.persistent_arena);
@@ -2436,7 +2427,7 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 #define INVALID_GLYPH '?'
 #define INVALID_GLYPH_COLOR UI_MAGENTA
 
-UI_API void UI_LoadFontFromData(UI_Font *font, const void *ttf_data, float y_offset) {
+UI_API void UI_FontInit(UI_Font *font, const void *ttf_data, float y_offset) {
 	memset(font, 0, sizeof(*font));
 	DS_MapInit(&font->glyph_map);
 	
@@ -2447,7 +2438,7 @@ UI_API void UI_LoadFontFromData(UI_Font *font, const void *ttf_data, float y_off
 	UI_CHECK(stbtt_InitFont(&font->font_info, font->data, font_offset));
 }
 
-UI_API void UI_DestroyFont(UI_Font *font) {
+UI_API void UI_FontDeinit(UI_Font *font) {
 	DS_MapDeinit(&font->glyph_map);
 }
 

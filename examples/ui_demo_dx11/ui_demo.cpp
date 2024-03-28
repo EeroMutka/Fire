@@ -11,14 +11,14 @@
 #include <dxgi1_3.h>
 #include <d3dcompiler.h>
 
-
 #include "fire_ds.h"
 
 #define STR_USE_FIRE_DS_ARENA
 #include "fire_string.h"
 
+#define OS_USE_FIRE_DS_ARENA
 #define OS_STRING_OVERRIDE
-typedef STR OS_String;
+#define OS_String STR
 #include "fire_os.h"
 
 #include "fire_gpu/fire_gpu.h"
@@ -359,17 +359,13 @@ static void UpdateAndRender() {
 	g_swapchain->Present(1, 0);
 }
 
-static void AddTreeSpecie(UI_Key key, STR name, STR information) {
+static void AddTreeSpecie(DS_Arena *arena, UI_Key key, STR name, STR information) {
 	TreeSpecie tree = {0};
 	tree.name = name;
 	tree.show = false;
 	tree.key = key;
-	UI_TextInit(&tree.text, information);
+	UI_TextInit(arena, &tree.text, information);
 	DS_VecPush(&g_trees, tree);
-}
-
-static void TreeSpecieDeinit(TreeSpecie *tree) {
-	UI_TextDeinit(&tree->text);
 }
 
 static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
@@ -377,6 +373,7 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
 	g_window_size[1] = height;
 
 	// Recreate swapchain
+
 	g_framebuffer_rtv->Release();
 
 	g_swapchain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, 0);
@@ -397,31 +394,28 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
 int main() {
 	OS_Init();
 
-	DS_VecInit(&g_trees);
-	AddTreeSpecie(UI_KEY(), STR_("Pine"), STR_("Pine trees can live up to 1000 years."));
-	AddTreeSpecie(UI_KEY(), STR_("Oak"), STR_("Oak is commonly used in construction and furniture."));
-	AddTreeSpecie(UI_KEY(), STR_("Maple"), STR_("Maple trees are typically 10 to 45 meters tall."));
-	AddTreeSpecie(UI_KEY(), STR_("Birch"), STR_("Birch is most commonly found in the Northern hemisphere."));
-	AddTreeSpecie(UI_KEY(), STR_("Cedar"), STR_("Cedar wood is a natural repellent to moths."));
+	DS_Arena persist, temp;
+	DS_ArenaInit(&persist, 4096);
+	DS_ArenaInit(&temp, 4096);
 
-	UI_TextInit(&g_dummy_text, STR_(""));
-	UI_TextInit(&g_dummy_text_2, STR_(""));
-
-	DS_Arena persistent_arena;
-	DS_ArenaInit(&persistent_arena, 4096);
-
-	OS_Arena os_persistent_arena;
-	OS_ArenaInit(&os_persistent_arena, 4096);
+	DS_VecInitA(&g_trees, &persist);
+	AddTreeSpecie(&persist, UI_KEY(), STR_("Pine"), STR_("Pine trees can live up to 1000 years."));
+	AddTreeSpecie(&persist, UI_KEY(), STR_("Oak"), STR_("Oak is commonly used in construction and furniture."));
+	AddTreeSpecie(&persist, UI_KEY(), STR_("Maple"), STR_("Maple trees are typically 10 to 45 meters tall."));
+	AddTreeSpecie(&persist, UI_KEY(), STR_("Birch"), STR_("Birch is most commonly found in the Northern hemisphere."));
+	AddTreeSpecie(&persist, UI_KEY(), STR_("Cedar"), STR_("Cedar wood is a natural repellent to moths."));
 	
-	OS_Arena os_temp_arena;
-	OS_ArenaInit(&os_temp_arena, 4096);
+	UI_TextInit(&persist, &g_dummy_text, STR_(""));
+	UI_TextInit(&persist, &g_dummy_text_2, STR_(""));
+
+	// TODO: make OS arena compatible with DS arena...
 
 	OS_Inputs window_inputs = {0};
 	OS_Window window = OS_WindowCreate(1200, 900, OS_STR("UI demo (DX11)"));
 
 	STR ui_shader_filepath = STR_("../../fire_ui/fire_ui_backend_fire_gpu_shader.glsl");
 	STR ui_shader_src;
-	UI_CHECK(OS_ReadEntireFile(&os_persistent_arena, ui_shader_filepath, &ui_shader_src));
+	UI_CHECK(OS_ReadEntireFile(&persist, ui_shader_filepath, &ui_shader_src));
 
 	D3D_FEATURE_LEVEL dx_feature_levels[] = { D3D_FEATURE_LEVEL_11_0 };
 	
@@ -437,8 +431,8 @@ int main() {
 	swapchain_desc.SwapEffect        = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 	
 	ID3D11Device* device;
-	ID3D11DeviceContext* dc;
-	D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG, dx_feature_levels, ARRAYSIZE(dx_feature_levels), D3D11_SDK_VERSION, &swapchain_desc, &g_swapchain, &device, NULL, &dc);
+	ID3D11DeviceContext* device_context;
+	D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG, dx_feature_levels, ARRAYSIZE(dx_feature_levels), D3D11_SDK_VERSION, &swapchain_desc, &g_swapchain, &device, NULL, &device_context);
 
 	g_swapchain->GetDesc(&swapchain_desc); // Update swapchain_desc with actual window size
 	
@@ -457,27 +451,43 @@ int main() {
 	///////////////////////////////////////////////////////////////////////////////////////////////
 	
 	UI_Backend ui_backend = {0};
-	UI_DX11_Init(&ui_backend, device, dc, GPU_String{ui_shader_src.data, ui_shader_src.size});
-	UI_Init(&persistent_arena, &ui_backend);
+	UI_DX11_Init(&ui_backend, device, device_context, GPU_String{ui_shader_src.data, ui_shader_src.size});
+	UI_Init(&persist, &ui_backend);
 
 	// NOTE: the font data must remain alive across the whole program lifetime!
 	STR roboto_mono_ttf, icons_ttf;
-	assert(OS_ReadEntireFile(&os_persistent_arena, STR_("../../fire_ui/resources/roboto_mono.ttf"), &roboto_mono_ttf));
-	assert(OS_ReadEntireFile(&os_persistent_arena, STR_("../../fire_ui/resources/fontello/font/fontello.ttf"), &icons_ttf));
+	assert(OS_ReadEntireFile(&persist, STR_("../../fire_ui/resources/roboto_mono.ttf"), &roboto_mono_ttf));
+	assert(OS_ReadEntireFile(&persist, STR_("../../fire_ui/resources/fontello/font/fontello.ttf"), &icons_ttf));
 
 	UI_Font base_font, icons_font;
-	UI_LoadFontFromData(&base_font, roboto_mono_ttf.data, -4.f);
-	UI_LoadFontFromData(&icons_font, icons_ttf.data, -2.f);
+	UI_FontInit(&base_font, roboto_mono_ttf.data, -4.f);
+	UI_FontInit(&icons_font, icons_ttf.data, -2.f);
 
 	for (;;) {
-		OS_ArenaReset(&os_temp_arena);
-		if (!OS_WindowPoll(&os_temp_arena, &window_inputs, &window, OnResizeWindow, NULL)) break;
+		DS_ArenaReset(&temp);
+		if (!OS_WindowPoll(&temp, &window_inputs, &window, OnResizeWindow, NULL)) break;
 		
 		g_ui_inputs = UI_Inputs{};
 		g_ui_inputs.base_font = &base_font;
 		g_ui_inputs.icons_font = &icons_font;
-		UI_OS_TranslateInputs(&g_ui_inputs , &window_inputs, &os_temp_arena);
+		UI_OS_TranslateInputs(&g_ui_inputs, &window_inputs, &temp);
 		
 		UpdateAndRender();
 	}
+
+	UI_FontDeinit(&base_font);
+	UI_FontDeinit(&icons_font);
+
+	UI_Deinit();
+	UI_DX11_Deinit();
+
+	g_framebuffer_rtv->Release();
+	g_swapchain->Release();
+	device->Release();
+	device_context->Release();
+
+	DS_ArenaDeinit(&persist);
+	DS_ArenaDeinit(&temp);
+
+	OS_Deinit();
 }

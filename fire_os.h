@@ -322,11 +322,31 @@ typedef struct OS_ArenaMark {
 	char *ptr;
 } OS_ArenaMark;
 
-typedef struct OS_Arena {
+typedef struct OS_DefaultArena {
 	int block_size;
 	OS_ArenaBlockHeader *first_block; // may be NULL
 	OS_ArenaMark mark;
-} OS_Arena;
+} OS_DefaultArena;
+
+#ifdef OS_USE_FIRE_DS_ARENA
+#define OS_CUSTOM_ARENA
+#define OS_Arena DS_Arena
+#define OS_ArenaInit_Custom(arena, block_size)      DS_ArenaInit(arena, block_size)
+#define OS_ArenaDeinit_Custom(arena)                DS_ArenaDeinit(arena)
+#define OS_ArenaPush_Custom(arena, size, alignment) DS_ArenaPushEx(arena, size, alignment)
+#define OS_ArenaReset_Custom(arena)                 DS_ArenaReset(arena)
+#endif
+
+#ifdef OS_CUSTOM_ARENA
+// If you want to implement your own custom arena, you must provide definitions for the following:
+// - OS_Arena
+// - void OS_ArenaInit_Custom(OS_Arena *arena, int block_size)
+// - void OS_ArenaDeinit_Custom(OS_Arena *arena)
+// - char *OS_ArenaPush_Custom(OS_Arena *arena, int size, int alignment)
+// - void OS_ArenaReset_Custom(OS_Arena *arena)
+#else
+typedef OS_DefaultArena OS_Arena;
+#endif
 
 OS_API void OS_Init(void);
 OS_API void OS_Deinit(void);
@@ -535,20 +555,32 @@ static void OS_VecReserveRaw(OS_VecRaw *array, int capacity, int elem_size) {
 #define OS_AlignUpPow2(x, p) (((x) + (p) - 1) & ~((p) - 1)) // e.g. (x=30, p=16) -> 32
 
 OS_API void OS_ArenaInit(OS_Arena *arena, int block_size) {
+#ifdef OS_CUSTOM_ARENA
+	OS_ArenaInit_Custom(arena, block_size);
+#else
 	OS_Arena _arena = {0};
 	_arena.block_size = block_size;
 	*arena = _arena;
+#endif
 }
 
 OS_API void OS_ArenaDeinit(OS_Arena *arena) {
+#ifdef OS_CUSTOM_ARENA
+	OS_ArenaDeinit_Custom(arena);
+#else
 	for (OS_ArenaBlockHeader *block = arena->first_block; block;) {
 		OS_ArenaBlockHeader *next = block->next;
 		free(block);
 		block = next;
 	}
+#endif
 }
 
 OS_API char *OS_ArenaPush(OS_Arena *arena, int size/*, int alignment*/) {
+#ifdef OS_CUSTOM_ARENA
+	char *result = OS_ArenaPush_Custom(arena, size, sizeof(void*));
+	return result;
+#else
 	int alignment = sizeof(void*);
 	bool alignment_is_power_of_2 = ((alignment) & ((alignment) - 1)) == 0;
 	OS_CHECK(alignment != 0 && alignment_is_power_of_2);
@@ -593,11 +625,16 @@ OS_API char *OS_ArenaPush(OS_Arena *arena, int size/*, int alignment*/) {
 
 	arena->mark.ptr = result_address + size;
 	return result_address;
+#endif
 }
 
 OS_API void OS_ArenaReset(OS_Arena *arena) {
+#ifdef OS_CUSTOM_ARENA
+	OS_ArenaReset_Custom(arena);
+#else
 	arena->mark.block = arena->first_block;
 	arena->mark.ptr = (char*)arena->first_block + sizeof(OS_ArenaBlockHeader);
+#endif
 }
 
 OS_API bool OS_WriteEntireFile(OS_String file_path, OS_String data) {
