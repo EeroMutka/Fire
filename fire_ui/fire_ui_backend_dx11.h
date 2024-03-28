@@ -310,6 +310,7 @@ static void UI_DX11_EndFrame(UI_Outputs *outputs, ID3D11RenderTargetView* frameb
 		}
 		
 		ID3D11ShaderResourceView *texture_srv = (ID3D11ShaderResourceView*)draw_call->texture;
+		assert(texture_srv != NULL);
 		dc->PSSetShaderResources(0, 1, &texture_srv);
 		dc->DrawIndexed(draw_call->index_count, draw_call->first_index, 0);
 	}

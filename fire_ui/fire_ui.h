@@ -400,7 +400,7 @@ typedef struct UI_State {
 	DS_Vec(UI_Box*) box_stack;
 	DS_Vec(UI_Style*) style_stack;
 	
-	bool frame_has_split_atlas;
+	//bool frame_has_split_atlas;
 
 	// Draw state
 	uint32_t *draw_indices; // NULL by default
@@ -1949,7 +1949,10 @@ UI_API void UI_BeginFrame(const UI_Inputs *inputs, UI_Vec2 window_size) {
 	UI_STATE.draw_next_index = 0;
 	UI_STATE.draw_vertices = (UI_DrawVertex*)UI_STATE.backend.buffer_map_until_frame_end(0);
 	UI_STATE.draw_indices = (uint32_t*)UI_STATE.backend.buffer_map_until_frame_end(1);
-	UI_CHECK(UI_STATE.draw_vertices != NULL && UI_STATE.draw_indices != NULL);
+	UI_STATE.draw_active_texture = UI_STATE.atlases[0];
+	UI_CHECK(UI_STATE.draw_active_texture != UI_TEXTURE_ID_NIL);
+	UI_CHECK(UI_STATE.draw_vertices != NULL);
+	UI_CHECK(UI_STATE.draw_indices != NULL);
 
 	UI_STATE.inputs = *inputs;
 	memset(&UI_STATE.outputs, 0, sizeof(UI_STATE.outputs));
@@ -1977,7 +1980,7 @@ UI_API void UI_BeginFrame(const UI_Inputs *inputs, UI_Vec2 window_size) {
 	
 	UI_STATE.frame_idx += 1;
 
-	UI_STATE.frame_has_split_atlas = false;
+	//UI_STATE.frame_has_split_atlas = false;
 	DS_VecInitA(&UI_STATE.draw_calls, &UI_STATE.new_frame_arena);
 	//UI_.atlas_needs_reupload = false;
 

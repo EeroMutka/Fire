@@ -15,9 +15,6 @@
 #ifndef OS_INCLUDED
 #define OS_INCLUDED
 
-// It seems like a good idea to make the working directory visible and explicit, as opposed to the traditional way of having it
-// be hidden state. As a fallback, you can still use CWD which will use the current working directory.
-
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -57,11 +54,9 @@ typedef enum {
 
 typedef int OS_ConsoleAttributeFlags;
 
-//typedef struct Semaphore Semaphore;
 typedef struct OS_Mutex { uint64_t os_specific[5]; } OS_Mutex;
 typedef struct OS_ConditionVar {
 	uint64_t os_specific;
-	//OS_Mutex mutex;
 } OS_ConditionVar;
 
 typedef struct { void *handle; } OS_DirectoryWatch;
@@ -282,8 +277,6 @@ typedef enum OS_InputStateFlag {
 	OS_InputStateFlag_WasPressedOrRepeat = 1 << 2,
 	OS_InputStateFlag_WasReleased = 1 << 3,
 } OS_InputStateFlag;
-
-// #define OS_MAX_INPUT_CHARACTERS 8
 
 typedef struct OS_Inputs {
 	// if we do keep a public list of `OS_Input` states, and in general keep the ABI public,
