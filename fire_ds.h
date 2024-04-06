@@ -43,11 +43,11 @@
 #define DS_MAX_ALIGNMENT     sizeof(void*[2]) // this should be the alignment of the largest SIMD type.
 
 #ifdef DS_USE_CUSTOM_REALLOC
-char *DS_Realloc_Impl(char *old_ptr, int new_size, int new_alignment);
+char* DS_Realloc_Impl(char* old_ptr, int new_size, int new_alignment);
 #else
 #include <stdlib.h>
-static char *DS_Realloc_Impl(char *old_ptr, int new_size, int new_alignment) {
-	void *result = _aligned_realloc(old_ptr, new_size, new_alignment);
+static char* DS_Realloc_Impl(char* old_ptr, int new_size, int new_alignment) {
+	void* result = _aligned_realloc(old_ptr, new_size, new_alignment);
 	return (char*)result;
 }
 #endif
@@ -56,17 +56,17 @@ static char *DS_Realloc_Impl(char *old_ptr, int new_size, int new_alignment) {
 
 typedef struct DS_DefaultArenaBlockHeader {
 	int size_including_header;
-	struct DS_DefaultArenaBlockHeader *next; // may be NULL
+	struct DS_DefaultArenaBlockHeader* next; // may be NULL
 } DS_DefaultArenaBlockHeader;
 
 typedef struct DS_DefaultArenaMark {
-	DS_DefaultArenaBlockHeader *block; // If the arena has no blocks allocated yet, then we mark the beginning of the arena by setting this member to NULL.
-	char *ptr;
+	DS_DefaultArenaBlockHeader* block; // If the arena has no blocks allocated yet, then we mark the beginning of the arena by setting this member to NULL.
+	char* ptr;
 } DS_DefaultArenaMark;
 
 typedef struct DS_DefaultArena {
 	int block_size;
-	DS_DefaultArenaBlockHeader *first_block; // may be NULL
+	DS_DefaultArenaBlockHeader* first_block; // may be NULL
 	DS_DefaultArenaMark mark;
 } DS_DefaultArena;
 
@@ -124,6 +124,13 @@ typedef DS_Arena DS_ArenaOrHeap;
 #define DS_BucketNextPtrPadding(LIST) ((uintptr_t)&(LIST)->buckets[0]->dummy_ptr - (uintptr_t)(LIST)->buckets[0] - DS_BucketElemSize(LIST))
 #define DS_BucketNextPtrOffset(LIST) ((LIST)->elems_per_bucket * DS_BucketElemSize(LIST) + DS_BucketNextPtrPadding(LIST))
 
+#ifdef __cplusplus
+template<typename T> static inline T* DS_Clone__(DS_Arena* a, const T& v) { T* x = (T*)DS_ArenaPush(a, sizeof(T)); *x = v; return x; }
+#define DS_Clone_(T, ARENA, VALUE) DS_Clone__<T>(ARENA, VALUE)
+#else
+#define DS_Clone_(T, ARENA, VALUE) ((T*)0 == &(VALUE), (T*)DS_CloneSize(ARENA, &(VALUE), sizeof(VALUE)))
+#endif
+
 // -------------------------------------------------------------------
 
 // `p` must be a power of 2.
@@ -153,8 +160,8 @@ static inline void DS_VecBoundsCheck_(bool x) { DS_CHECK(x); }
 	list[1] = elem; \
 	}
 
-static inline void *DS_ListPopFront_(void **p_list, void *next) {
-	void *first = *p_list;
+static inline void* DS_ListPopFront_(void** p_list, void* next) {
+	void* first = *p_list;
 	*p_list = next;
 	return first;
 }
@@ -166,36 +173,33 @@ static inline void *DS_ListPopFront_(void **p_list, void *next) {
 
 /*
 Remove a node from doubly-linked list, e.g.
-    struct Node { Node *next[2]; };
-    Node *list[2] = ...;
-    Node *node = ...;
-    DS_DoublyListRemove(node, list, next);
+	struct Node { Node *next[2]; };
+	Node *list[2] = ...;
+	Node *node = ...;
+	DS_DoublyListRemove(node, list, next);
 */
 #define DS_DoublyListRemove(list, elem, next_name)   DS_DoublyListRemove_(list, elem, next_name)
 
 /*
 Push a node to the end of doubly-linked list, e.g.
-    struct Node { Node *next[2]; };
-    Node *list[2] = ...;
-    Node *node = ...;
-    DS_DoublyListPushBack(node, list, next);
+	struct Node { Node *next[2]; };
+	Node *list[2] = ...;
+	Node *node = ...;
+	DS_DoublyListPushBack(node, list, next);
 */
 #define DS_DoublyListPushBack(list, elem, next_name)  DS_DoublyListPushBack_(list, elem, next_name)
 
 /*
 Remove the first node of a singly linked list, e.g.
 	struct Node { Node *next; };
-    Node *list = ...;
-    Node *first = DS_ListPopFront(&list, next);
+	Node *list = ...;
+	Node *first = DS_ListPopFront(&list, next);
 */
 #define DS_ListPopFront(list, next_name)  DS_ListPopFront_(list, (*list)->next_name)
 
 #define DS_ListPushFront(list, elem, next_name) {(elem)->next_name = *(list); *(list) = (elem);}
 
-#define DS_Clone(T, arena, value)   ((T*)0 == &(value), (T*)DS_CloneSize(arena, &(value), sizeof(T)))
-
-// TODO: add proper alignment to New
-//#define New(T, ARENA, ...) (T*)DS_CloneSize((ARENA), &(T){__VA_ARGS__}, sizeof(T))
+#define DS_Clone(T, ARENA, VALUE) DS_Clone_(T, ARENA, VALUE)
 #define DS_New(T, ARENA) (T*)DS_Clone(T, (ARENA), DS_LangAgnosticLiteral(T){0})
 
 #ifndef DS_DebugFillGarbage
@@ -247,8 +251,8 @@ Remove the first node of a singly linked list, e.g.
 // 
 
 // Basic hash functions
-DS_API uint32_t DS_MurmurHash3(const void *key, int len, uint32_t seed);
-DS_API uint64_t DS_MurmurHash64A(const void *key, int len, uint64_t seed);
+DS_API uint32_t DS_MurmurHash3(const void* key, int len, uint32_t seed);
+DS_API uint64_t DS_MurmurHash64A(const void* key, int len, uint64_t seed);
 
 #define DS_Map(K, V) \
 	struct { DS_ArenaOrHeap *arena; struct{ uint32_t hash; K key; V value; } *data; int length; int capacity; }
@@ -365,26 +369,26 @@ typedef DS_Set(char) DS_SetRaw;
 	DS_MapDeinitRaw((DS_MapRaw*)(SET), DS_MapElemSize(SET))
 
 // * Return true if the key was newly added.
-static inline bool DS_MapGetOrAddRaw(DS_MapRaw *map, const void *key, DS_OUT void **out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
-static inline bool DS_MapGetOrAddRawEx(DS_MapRaw *map, const void *key, DS_OUT void **out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset, uint32_t hash);
+static inline bool DS_MapGetOrAddRaw(DS_MapRaw* map, const void* key, DS_OUT void** out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
+static inline bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset, uint32_t hash);
 
 // * Returns true if the key was found and removed.
-static inline bool DS_MapRemoveRaw(DS_MapRaw *map, const void *key, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
+static inline bool DS_MapRemoveRaw(DS_MapRaw* map, const void* key, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
 
 // * Returns true if the key was newly added
-static inline bool DS_MapInsertRaw(DS_MapRaw *map, const void *key, DS_OUT void *val, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
+static inline bool DS_MapInsertRaw(DS_MapRaw* map, const void* key, DS_OUT void* val, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
 
 // * Returns true if the key was found.
-static inline bool DS_MapFindRaw(DS_MapRaw *map, const void *key, DS_OUT void *out_val, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
+static inline bool DS_MapFindRaw(DS_MapRaw* map, const void* key, DS_OUT void* out_val, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
 
 // * Returns the address of the value if the key was found, otherwise NULL.
-static inline void *DS_MapFindPtrRaw(DS_MapRaw *map, const void *key, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
+static inline void* DS_MapFindPtrRaw(DS_MapRaw* map, const void* key, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
 
-static inline bool DS_MapIter(DS_MapRaw *map, int *i, void **out_key, void **out_value, int key_offset, int val_offset, int elem_size) {
-	char *elem_base;
+static inline bool DS_MapIter(DS_MapRaw* map, int* i, void** out_key, void** out_value, int key_offset, int val_offset, int elem_size) {
+	char* elem_base;
 	for (;;) {
 		if (*i >= map->capacity) return false;
-		
+
 		elem_base = (char*)map->data + (*i) * elem_size;
 		if (*(uint32_t*)elem_base == 0) {
 			*i = *i + 1;
@@ -401,21 +405,21 @@ static inline bool DS_MapIter(DS_MapRaw *map, int *i, void **out_key, void **out
 
 // -- Arena interface --------------------------------
 
-DS_API void DS_ArenaInit(DS_Arena *arena, int block_size);
-DS_API void DS_ArenaDeinit(DS_Arena *arena);
+DS_API void DS_ArenaInit(DS_Arena* arena, int block_size);
+DS_API void DS_ArenaDeinit(DS_Arena* arena);
 
-DS_API char *DS_ArenaPush(DS_Arena *arena, int size);
-DS_API char *DS_ArenaPushZero(DS_Arena *arena, int size);
-DS_API char *DS_ArenaPushEx(DS_Arena *arena, int size, int alignment);
+DS_API char* DS_ArenaPush(DS_Arena* arena, int size);
+DS_API char* DS_ArenaPushZero(DS_Arena* arena, int size);
+DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment);
 
-DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena *arena);
-DS_API void DS_ArenaSetMark(DS_Arena *arena, DS_ArenaMark mark);
-DS_API void DS_ArenaReset(DS_Arena *arena);
+DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena* arena);
+DS_API void DS_ArenaSetMark(DS_Arena* arena, DS_ArenaMark mark);
+DS_API void DS_ArenaReset(DS_Arena* arena);
 
 // -- Memory allocation --------------------------------
 
-static char *DS_Realloc(const void *old_ptr, int new_size, int new_alignment) {
-	char *result = DS_Realloc_Impl((char*)old_ptr, new_size, new_alignment);
+static char* DS_Realloc(const void* old_ptr, int new_size, int new_alignment) {
+	char* result = DS_Realloc_Impl((char*)old_ptr, new_size, new_alignment);
 	DS_CHECK(((uintptr_t)result & (new_alignment - 1)) == 0); // check that the alignment is correct
 	return result;
 }
@@ -424,8 +428,8 @@ static char *DS_Realloc(const void *old_ptr, int new_size, int new_alignment) {
 #define DS_MemAlloc(SIZE)              DS_Realloc(NULL, SIZE, DS_DEFAULT_ALIGNMENT)
 #define DS_MemFree(PTR)                DS_Realloc(PTR, 0, 1)
 
-static inline void *DS_CloneSize(DS_Arena *arena, const void *value, int size) { void *p = DS_ArenaPush(arena, size); return memcpy(p, value, size); }
-static inline void *DS_CloneSizeA(DS_Arena *arena, const void *value, int size, int align) { void *p = DS_ArenaPushEx(arena, size, align); return memcpy(p, value, size); }
+static inline void* DS_CloneSize(DS_Arena* arena, const void* value, int size) { void* p = DS_ArenaPush(arena, size); return memcpy(p, value, size); }
+static inline void* DS_CloneSizeA(DS_Arena* arena, const void* value, int size, int align) { void* p = DS_ArenaPushEx(arena, size, align); return memcpy(p, value, size); }
 
 // -- DS_Vec --------------------------------
 
@@ -490,15 +494,15 @@ typedef DS_Vec(void) DS_VecRaw;
 	for (struct DS_Concat(_dummy_, __LINE__) IT = {0, (VEC)->data}; IT.i < (VEC)->length; IT.i++, IT.ptr++)
 
 
-DS_API int DS_VecPushRaw(DS_VecRaw *array, const void *elem, int elem_size);
-DS_API int DS_VecPushNRaw(DS_VecRaw *array, const void *elems, int n, int elem_size);
-DS_API void DS_VecInsertRaw(DS_VecRaw *array, int at, const void *elem, int elem_size);
-DS_API void DS_VecInsertNRaw(DS_VecRaw *array, int at, const void *elems, int n, int elem_size);
-DS_API void DS_VecRemoveRaw(DS_VecRaw *array, int i, int elem_size);
-DS_API void DS_VecRemoveNRaw(DS_VecRaw *array, int i, int n, int elem_size);
-DS_API void DS_VecPopRaw(DS_VecRaw *array, DS_OUT void *out_elem, int elem_size);
-DS_API void DS_VecReserveRaw(DS_VecRaw *array, int capacity, int elem_size);
-DS_API void DS_VecResizeRaw(DS_VecRaw *array, int length, const void *value, int elem_size); // set value to NULL to not initialize the memory
+DS_API int DS_VecPushRaw(DS_VecRaw* array, const void* elem, int elem_size);
+DS_API int DS_VecPushNRaw(DS_VecRaw* array, const void* elems, int n, int elem_size);
+DS_API void DS_VecInsertRaw(DS_VecRaw* array, int at, const void* elem, int elem_size);
+DS_API void DS_VecInsertNRaw(DS_VecRaw* array, int at, const void* elems, int n, int elem_size);
+DS_API void DS_VecRemoveRaw(DS_VecRaw* array, int i, int elem_size);
+DS_API void DS_VecRemoveNRaw(DS_VecRaw* array, int i, int n, int elem_size);
+DS_API void DS_VecPopRaw(DS_VecRaw* array, DS_OUT void* out_elem, int elem_size);
+DS_API void DS_VecReserveRaw(DS_VecRaw* array, int capacity, int elem_size);
+DS_API void DS_VecResizeRaw(DS_VecRaw* array, int length, const void* value, int elem_size); // set value to NULL to not initialize the memory
 
 // -- Slot Allocator --------------------------------------------------------------------
 
@@ -535,7 +539,7 @@ typedef DS_SlotAllocator(char, 1) SlotAllocatorRaw;
 // -- Bucket List --------------------------------------------------------------------
 
 typedef struct DS_BucketListIndex {
-	void *bucket;
+	void* bucket;
 	uint32_t slot_index;
 } DS_BucketListIndex;
 
@@ -569,7 +573,7 @@ typedef DS_BucketList(char) BucketListRaw;
 
 // -- IMPLEMENTATION ------------------------------------------------------------------
 
-static inline bool DS_SlotAllocatorIter(SlotAllocatorRaw *allocator, void **bucket, uint32_t *slot_index, void **elem) {
+static inline bool DS_SlotAllocatorIter(SlotAllocatorRaw* allocator, void** bucket, uint32_t* slot_index, void** elem) {
 	if (*bucket == allocator->buckets[1] && *slot_index == allocator->last_bucket_end) {
 		return false; // we're finished
 	}
@@ -585,7 +589,7 @@ static inline bool DS_SlotAllocatorIter(SlotAllocatorRaw *allocator, void **buck
 	return true;
 }
 
-static inline bool DS_BucketListIter(BucketListRaw *list, void **bucket, uint32_t *slot_index, void **elem, int elem_size, int next_bucket_ptr_offset) {
+static inline bool DS_BucketListIter(BucketListRaw* list, void** bucket, uint32_t* slot_index, void** elem, int elem_size, int next_bucket_ptr_offset) {
 	if (*bucket == list->buckets[1] && *slot_index == list->last_bucket_end) {
 		return false; // we're finished
 	}
@@ -601,9 +605,9 @@ static inline bool DS_BucketListIter(BucketListRaw *list, void **bucket, uint32_
 	return true;
 }
 
-static inline void DS_SlotAllocatorInitRaw(SlotAllocatorRaw *allocator,
+static inline void DS_SlotAllocatorInitRaw(SlotAllocatorRaw* allocator,
 	uint32_t bucket_next_ptr_offset, uint32_t slot_size, uint32_t bucket_size,
-	uint32_t num_slots_per_bucket, DS_Arena *arena)
+	uint32_t num_slots_per_bucket, DS_Arena* arena)
 {
 	DS_ProfEnter();
 	SlotAllocatorRaw result = {0};
@@ -616,9 +620,9 @@ static inline void DS_SlotAllocatorInitRaw(SlotAllocatorRaw *allocator,
 	DS_ProfExit();
 }
 
-static inline void *DS_TakeSlotRaw(SlotAllocatorRaw *allocator) {
+static inline void* DS_TakeSlotRaw(SlotAllocatorRaw* allocator) {
 	DS_ProfEnter();
-	void *result = NULL;
+	void* result = NULL;
 	DS_CHECK(allocator->arena != NULL); // Did you forget to call DS_SlotAllocatorInit?
 
 	if (allocator->first_free_elem) {
@@ -629,17 +633,18 @@ static inline void *DS_TakeSlotRaw(SlotAllocatorRaw *allocator) {
 	else {
 		// Allocate from the end
 
-		void *bucket = allocator->buckets[1];
+		void* bucket = allocator->buckets[1];
 
 		if (bucket == NULL || allocator->last_bucket_end == allocator->num_slots_per_bucket) {
 			// We need to allocate a new bucket
 			if (allocator->arena == DS_USE_HEAP) __debugbreak(); // TODO
 
-			void *new_bucket = DS_ArenaPush(allocator->arena, allocator->bucket_size);
+			void* new_bucket = DS_ArenaPush(allocator->arena, allocator->bucket_size);
 			if (bucket) {
 				// set the `next` pointer of the previous bucket to point to the new bucket
 				*(void**)((char*)bucket + allocator->bucket_next_ptr_offset) = new_bucket;
-			} else {
+			}
+			else {
 				// set the `first bucket` pointer to point to the new bucket
 				memcpy(&allocator->buckets[0], &new_bucket, sizeof(void*));
 				*(void**)((char*)new_bucket + allocator->bucket_next_ptr_offset) = NULL;
@@ -651,27 +656,27 @@ static inline void *DS_TakeSlotRaw(SlotAllocatorRaw *allocator) {
 		}
 
 		uint32_t slot_idx = allocator->last_bucket_end++;
-		result = (char*)bucket + allocator->slot_size*slot_idx;
+		result = (char*)bucket + allocator->slot_size * slot_idx;
 	}
 
 	DS_ProfExit();
 	return result;
 }
 
-static inline void DS_FreeSlotRaw(SlotAllocatorRaw *allocator, void *slot) {
+static inline void DS_FreeSlotRaw(SlotAllocatorRaw* allocator, void* slot) {
 	// It'd be nice to provide some debug checking thing to detect double frees
 	DS_CHECK(allocator->first_free_elem != (char*)slot);
-	
+
 	*(char**)((char*)slot) = allocator->first_free_elem;
 	allocator->first_free_elem = (char*)slot;
 }
 
-static inline DS_BucketListIndex DS_BucketListGetEndRaw(BucketListRaw *list) {
-	DS_BucketListIndex index = {list->buckets[1], list->last_bucket_end};
+static inline DS_BucketListIndex DS_BucketListGetEndRaw(BucketListRaw* list) {
+	DS_BucketListIndex index = { list->buckets[1], list->last_bucket_end };
 	return index;
 }
 
-static inline void DS_BucketListSetEndRaw(BucketListRaw *list, DS_BucketListIndex end) {
+static inline void DS_BucketListSetEndRaw(BucketListRaw* list, DS_BucketListIndex end) {
 	memcpy(&list->buckets[1], &end.bucket, sizeof(void*));
 	list->last_bucket_end = end.slot_index;
 }
@@ -685,11 +690,11 @@ static inline void DS_BucketListSetEndRaw(BucketListRaw *list, DS_BucketListInde
 //	*list = result;
 //}
 
-static inline void DS_BucketListDeinitRaw(BucketListRaw *list, int next_bucket_ptr_offset) {
+static inline void DS_BucketListDeinitRaw(BucketListRaw* list, int next_bucket_ptr_offset) {
 	DS_ProfEnter();
-	void *bucket = list->buckets[0];
-	for (;bucket;) {
-		void *next_bucket = *(void**)((char*)bucket + next_bucket_ptr_offset);
+	void* bucket = list->buckets[0];
+	for (; bucket;) {
+		void* next_bucket = *(void**)((char*)bucket + next_bucket_ptr_offset);
 
 		if (list->slot_allocator) {
 			DS_FreeSlotRaw(list->slot_allocator, bucket);
@@ -707,13 +712,13 @@ static inline void DS_BucketListDeinitRaw(BucketListRaw *list, int next_bucket_p
 	DS_ProfExit();
 }
 
-static inline void *DS_BucketListPushRaw(BucketListRaw *list, void *elem, int elem_size, int next_bucket_ptr_offset) {
+static inline void* DS_BucketListPushRaw(BucketListRaw* list, void* elem, int elem_size, int next_bucket_ptr_offset) {
 	DS_ProfEnter();
-	void *bucket = list->buckets[1];
+	void* bucket = list->buckets[1];
 
 	if (bucket == NULL || list->last_bucket_end == list->elems_per_bucket) {
 		// We need to allocate a new bucket. Or take an existing one from the end (only possible if DS_BucketListSetEnd has been used).
-		void *new_bucket = NULL;
+		void* new_bucket = NULL;
 
 		// There may be an unused bucket at the end that we can use instead of allocating a new one.
 		// First try to use that.
@@ -733,11 +738,12 @@ static inline void *DS_BucketListPushRaw(BucketListRaw *list, void *elem, int el
 				new_bucket = DS_ArenaPush(list->arena, bucket_size);
 			}
 		}
-		
+
 		if (bucket) {
 			// set the `next` pointer of the previous bucket to point to the new bucket
 			*(void**)((char*)bucket + next_bucket_ptr_offset) = new_bucket;
-		} else {
+		}
+		else {
 			// set the `first bucket` pointer to point to the new bucket
 			memcpy(&list->buckets[0], &new_bucket, sizeof(void*));
 			*(void**)((char*)new_bucket + next_bucket_ptr_offset) = NULL;
@@ -749,27 +755,27 @@ static inline void *DS_BucketListPushRaw(BucketListRaw *list, void *elem, int el
 	}
 
 	uint32_t slot_idx = list->last_bucket_end++;
-	void *result = (char*)bucket + elem_size*slot_idx;
+	void* result = (char*)bucket + elem_size * slot_idx;
 	memcpy(result, elem, elem_size);
 	DS_ProfExit();
 	return result;
 }
 
-DS_API void DS_VecReserveRaw(DS_VecRaw *array, int capacity, int elem_size) {
+DS_API void DS_VecReserveRaw(DS_VecRaw* array, int capacity, int elem_size) {
 	DS_ProfEnter();
 	DS_CHECK(array->arena != NULL); // Have you called DS_VecInit?
-	
+
 	int new_capacity = array->capacity;
 	while (capacity > new_capacity) {
 		new_capacity = new_capacity == 0 ? 8 : new_capacity * 2;
 	}
-	
+
 	if (new_capacity != array->capacity) {
 		if (array->arena == DS_USE_HEAP) {
 			array->data = DS_Realloc(array->data, new_capacity * elem_size, DS_DEFAULT_ALIGNMENT);
 		}
 		else {
-			void *new_data = DS_ArenaPushEx(array->arena, new_capacity * elem_size, DS_DEFAULT_ALIGNMENT);
+			void* new_data = DS_ArenaPushEx(array->arena, new_capacity * elem_size, DS_DEFAULT_ALIGNMENT);
 			memcpy(new_data, array->data, array->length * elem_size);
 			DS_DebugFillGarbage(array->data, array->length * elem_size); // fill the old data with garbage to potentially catch errors
 			array->data = new_data;
@@ -781,33 +787,33 @@ DS_API void DS_VecReserveRaw(DS_VecRaw *array, int capacity, int elem_size) {
 	DS_ProfExit();
 }
 
-DS_API void DS_VecRemoveRaw(DS_VecRaw *array, int i, int elem_size) { DS_VecRemoveNRaw(array, i, 1, elem_size); }
+DS_API void DS_VecRemoveRaw(DS_VecRaw* array, int i, int elem_size) { DS_VecRemoveNRaw(array, i, 1, elem_size); }
 
-DS_API void DS_VecRemoveNRaw(DS_VecRaw *array, int i, int n, int elem_size) {
+DS_API void DS_VecRemoveNRaw(DS_VecRaw* array, int i, int n, int elem_size) {
 	DS_ProfEnter();
 	DS_CHECK(i + n <= array->length);
 
-	char *dst = (char*)array->data + i * elem_size;
-	char *src = dst + elem_size * n;
+	char* dst = (char*)array->data + i * elem_size;
+	char* src = dst + elem_size * n;
 	memmove(dst, src, ((char*)array->data + array->length * elem_size) - src);
 
 	array->length -= n;
 	DS_ProfExit();
 }
 
-DS_API void DS_VecInsertRaw(DS_VecRaw *array, int at, const void *elem, int elem_size) {
+DS_API void DS_VecInsertRaw(DS_VecRaw* array, int at, const void* elem, int elem_size) {
 	DS_ProfEnter();
 	DS_VecInsertNRaw(array, at, elem, 1, elem_size);
 	DS_ProfExit();
 }
 
-DS_API void DS_VecInsertNRaw(DS_VecRaw *array, int at, const void *elems, int n, int elem_size) {
+DS_API void DS_VecInsertNRaw(DS_VecRaw* array, int at, const void* elems, int n, int elem_size) {
 	DS_ProfEnter();
 	DS_CHECK(at <= array->length);
 	DS_VecReserveRaw(array, array->length + n, elem_size);
 
 	// Move existing elements forward
-	char *offset = (char*)array->data + at * elem_size;
+	char* offset = (char*)array->data + at * elem_size;
 	memmove(offset + n * elem_size, offset, (array->length - at) * elem_size);
 
 	memcpy(offset, elems, n * elem_size);
@@ -815,7 +821,7 @@ DS_API void DS_VecInsertNRaw(DS_VecRaw *array, int at, const void *elems, int n,
 	DS_ProfExit();
 }
 
-DS_API int DS_VecPushNRaw(DS_VecRaw *array, const void *elems, int n, int elem_size) {
+DS_API int DS_VecPushNRaw(DS_VecRaw* array, const void* elems, int n, int elem_size) {
 	DS_ProfEnter();
 	DS_VecReserveRaw(array, array->length + n, elem_size);
 
@@ -827,7 +833,7 @@ DS_API int DS_VecPushNRaw(DS_VecRaw *array, const void *elems, int n, int elem_s
 	return result;
 }
 
-DS_API void DS_VecResizeRaw(DS_VecRaw *array, int length, DS_OUT const void *value, int elem_size) {
+DS_API void DS_VecResizeRaw(DS_VecRaw* array, int length, DS_OUT const void* value, int elem_size) {
 	DS_ProfEnter();
 	DS_VecReserveRaw(array, length, elem_size);
 
@@ -841,13 +847,13 @@ DS_API void DS_VecResizeRaw(DS_VecRaw *array, int length, DS_OUT const void *val
 	DS_ProfExit();
 }
 
-DS_API void DS_VecInitRaw(DS_VecRaw *array, DS_Arena *arena) {
+DS_API void DS_VecInitRaw(DS_VecRaw* array, DS_Arena* arena) {
 	DS_VecRaw empty = {0};
 	*array = empty;
 	array->arena = arena;
 }
 
-DS_API void DS_VecDeinitRaw(DS_VecRaw *array, int elem_size) {
+DS_API void DS_VecDeinitRaw(DS_VecRaw* array, int elem_size) {
 	DS_ProfEnter();
 	DS_DebugFillGarbage(array->data, array->capacity * elem_size);
 	if (array->arena == DS_USE_HEAP) {
@@ -858,7 +864,7 @@ DS_API void DS_VecDeinitRaw(DS_VecRaw *array, int elem_size) {
 	DS_ProfExit();
 }
 
-DS_API int DS_VecPushRaw(DS_VecRaw *array, const void *elem, int elem_size) {
+DS_API int DS_VecPushRaw(DS_VecRaw* array, const void* elem, int elem_size) {
 	DS_ProfEnter();
 	DS_VecReserveRaw(array, array->length + 1, elem_size);
 
@@ -867,7 +873,7 @@ DS_API int DS_VecPushRaw(DS_VecRaw *array, const void *elem, int elem_size) {
 	return array->length++;
 }
 
-DS_API void DS_VecPopRaw(DS_VecRaw *array, DS_OUT void *out_elem, int elem_size) {
+DS_API void DS_VecPopRaw(DS_VecRaw* array, DS_OUT void* out_elem, int elem_size) {
 	DS_ProfEnter();
 	DS_CHECK(array->length >= 1);
 	array->length--;
@@ -877,18 +883,18 @@ DS_API void DS_VecPopRaw(DS_VecRaw *array, DS_OUT void *out_elem, int elem_size)
 	DS_ProfExit();
 }
 
-static inline void DS_MapInitRaw(DS_MapRaw *map, DS_Arena *arena) {
+static inline void DS_MapInitRaw(DS_MapRaw* map, DS_Arena* arena) {
 	DS_MapRaw empty = {0};
 	*map = empty;
 	map->arena = arena;
 }
 
-static inline void DS_MapClearRaw(DS_MapRaw *map, int elem_size) {
+static inline void DS_MapClearRaw(DS_MapRaw* map, int elem_size) {
 	memset(map->data, 0, map->capacity * elem_size);
 	map->length = 0;
 }
 
-static inline void DS_MapDeinitRaw(DS_MapRaw *map, int elem_size) {
+static inline void DS_MapDeinitRaw(DS_MapRaw* map, int elem_size) {
 	DS_ProfEnter();
 	DS_DebugFillGarbage(map->data, map->capacity * elem_size);
 	if (map->arena == DS_USE_HEAP) {
@@ -907,26 +913,26 @@ static inline void DS_MapDeinitRaw(DS_MapRaw *map, int elem_size) {
 #endif
 
 // See https://github.com/aappleby/smhasher/blob/master/src/MurmurHash2.cpp
-static uint64_t DS_MurmurHash64A(const void *key, int len, uint64_t seed) {
+static uint64_t DS_MurmurHash64A(const void* key, int len, uint64_t seed) {
 	DS_ProfEnter();
 	const uint64_t m = 0xc6a4a7935bd1e995LLU;
 	const int r = 47;
 
 	uint64_t h = seed ^ (len * m);
 
-	const uint64_t *data = (const uint64_t*)key;
-	const uint64_t *end = data + (len/8);
+	const uint64_t* data = (const uint64_t*)key;
+	const uint64_t* end = data + (len / 8);
 
 	while (data != end) {
 		uint64_t k = *data++;
-		k *= m; 
-		k ^= k >> r; 
+		k *= m;
+		k ^= k >> r;
 		k *= m;
 		h ^= k;
-		h *= m; 
+		h *= m;
 	}
 
-	const unsigned char *data2 = (const unsigned char*)data;
+	const unsigned char* data2 = (const unsigned char*)data;
 
 	switch (len & 7) {
 	case 7: h ^= ((uint64_t)data2[6]) << 48;
@@ -947,11 +953,11 @@ static uint64_t DS_MurmurHash64A(const void *key, int len, uint64_t seed) {
 }
 
 // See https://github.com/aappleby/smhasher/blob/master/src/DS_MurmurHash3.cpp
-DS_API uint32_t DS_MurmurHash3(const void *key, int len, uint32_t seed) {
+DS_API uint32_t DS_MurmurHash3(const void* key, int len, uint32_t seed) {
 	DS_ProfEnter();
-	const uint8_t *data = (const uint8_t*)key;
+	const uint8_t* data = (const uint8_t*)key;
 	const int nblocks = len / 4;
-	
+
 	uint32_t h1 = seed;
 
 	const uint32_t c1 = 0xcc9e2d51;
@@ -959,7 +965,7 @@ DS_API uint32_t DS_MurmurHash3(const void *key, int len, uint32_t seed) {
 
 	// body
 
-	const uint32_t *blocks = (const uint32_t*)(data + nblocks*4);
+	const uint32_t* blocks = (const uint32_t*)(data + nblocks * 4);
 	for (int i = -nblocks; i; i++) {
 		uint32_t k1 = blocks[i];
 
@@ -969,19 +975,19 @@ DS_API uint32_t DS_MurmurHash3(const void *key, int len, uint32_t seed) {
 
 		h1 ^= k1;
 		h1 = DS_ROTL32(h1, 13);
-		h1 = h1*5 + 0xe6546b64;
+		h1 = h1 * 5 + 0xe6546b64;
 	}
 
 	// tail
 
-	const uint8_t *tail = (const uint8_t*)(data + nblocks*4);
+	const uint8_t* tail = (const uint8_t*)(data + nblocks * 4);
 
 	uint32_t k1 = 0;
-	switch(len & 3) {
+	switch (len & 3) {
 	case 3: k1 ^= tail[2] << 16;
 	case 2: k1 ^= tail[1] << 8;
 	case 1: k1 ^= tail[0];
-		k1 *= c1; k1 = DS_ROTL32(k1,15); k1 *= c2; h1 ^= k1;
+		k1 *= c1; k1 = DS_ROTL32(k1, 15); k1 *= c2; h1 ^= k1;
 	};
 
 	// finalization
@@ -994,12 +1000,12 @@ DS_API uint32_t DS_MurmurHash3(const void *key, int len, uint32_t seed) {
 	h1 ^= h1 >> 16;
 	DS_ProfExit();
 	return h1;
-} 
+}
 
-static inline void *DS_MapFindPtrRaw(DS_MapRaw *map, const void *key, int K_size, int V_size, int elem_size, int key_offset, int val_offset) {
+static inline void* DS_MapFindPtrRaw(DS_MapRaw* map, const void* key, int K_size, int V_size, int elem_size, int key_offset, int val_offset) {
 	if (map->capacity == 0) return NULL;
 	DS_ProfEnter();
-	
+
 	// TODO: it'd be nice to use an integer hash function for small keys... just not sure how to implement that in an ergonomic way.
 	// Maybe just ask for the hash?
 
@@ -1009,9 +1015,9 @@ static inline void *DS_MapFindPtrRaw(DS_MapRaw *map, const void *key, int K_size
 	uint32_t mask = (uint32_t)map->capacity - 1;
 	uint32_t index = hash & mask;
 
-	void *found = NULL;
+	void* found = NULL;
 	for (;;) {
-		char *elem = (char*)map->data + index * elem_size;
+		char* elem = (char*)map->data + index * elem_size;
 		uint32_t elem_hash = *(uint32_t*)elem;
 		if (elem_hash == 0) break;
 
@@ -1027,9 +1033,9 @@ static inline void *DS_MapFindPtrRaw(DS_MapRaw *map, const void *key, int K_size
 	return found;
 }
 
-static inline bool DS_MapFindRaw(DS_MapRaw *map, const void *key, DS_OUT void *out_val, int K_size, int V_size, int elem_size, int key_offset, int val_offset) {
+static inline bool DS_MapFindRaw(DS_MapRaw* map, const void* key, DS_OUT void* out_val, int K_size, int V_size, int elem_size, int key_offset, int val_offset) {
 	DS_ProfEnter();
-	void *ptr = DS_MapFindPtrRaw(map, key, K_size, V_size, elem_size, key_offset, val_offset);
+	void* ptr = DS_MapFindPtrRaw(map, key, K_size, V_size, elem_size, key_offset, val_offset);
 	if (ptr) {
 		if (out_val) memcpy(out_val, ptr, V_size);
 	}
@@ -1037,41 +1043,41 @@ static inline bool DS_MapFindRaw(DS_MapRaw *map, const void *key, DS_OUT void *o
 	return ptr != NULL;
 }
 
-static inline bool DS_MapGetOrAddRaw(DS_MapRaw *map, const void *key, DS_OUT void **out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset) {
+static inline bool DS_MapGetOrAddRaw(DS_MapRaw* map, const void* key, DS_OUT void** out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset) {
 	uint32_t hash = DS_MurmurHash3((char*)key, K_size, 989898);
 	if (hash == 0) hash = 1;
 	bool result = DS_MapGetOrAddRawEx(map, key, out_val_ptr, K_size, V_size, elem_size, key_offset, val_offset, hash);
 	return result;
 }
 
-static inline bool DS_MapGetOrAddRawEx(DS_MapRaw *map, const void *key, DS_OUT void **out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset, uint32_t hash) {
+static inline bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset, uint32_t hash) {
 	DS_ProfEnter();
 	DS_CHECK(map->arena != NULL); // Have you called DS_MapInit?
-	
+
 	if (100 * (map->length + 1) > 70 * map->capacity) {
 		// Grow the map
 
-		char *old_data = (char*)map->data;
+		char* old_data = (char*)map->data;
 		int old_capacity = map->capacity;
 
 		map->capacity = old_capacity == 0 ? 8 : old_capacity * 2;
 		map->length = 0;
 
-		void *new_data = map->arena == DS_USE_HEAP ?
-			DS_Realloc(NULL, map->capacity * elem_size, DS_DEFAULT_ALIGNMENT):
+		void* new_data = map->arena == DS_USE_HEAP ?
+			DS_Realloc(NULL, map->capacity * elem_size, DS_DEFAULT_ALIGNMENT) :
 			DS_ArenaPush(map->arena, map->capacity * elem_size);
 
 		memcpy(&map->data, &new_data, sizeof(void*));
 		memset(map->data, 0, map->capacity * elem_size); // set hash values to 0
 
 		for (int i = 0; i < old_capacity; i++) {
-			char *elem = old_data + elem_size * i;
+			char* elem = old_data + elem_size * i;
 			uint32_t elem_hash = *(uint32_t*)elem;
-			void *elem_key = elem + key_offset;
-			void *elem_val = elem + val_offset;
+			void* elem_key = elem + key_offset;
+			void* elem_val = elem + val_offset;
 
 			if (elem_hash != 0) {
-				void *new_val_ptr;
+				void* new_val_ptr;
 				DS_MapGetOrAddRawEx(map, elem_key, &new_val_ptr, K_size, V_size, elem_size, key_offset, val_offset, elem_hash);
 				memcpy(new_val_ptr, elem_val, V_size);
 			}
@@ -1089,17 +1095,17 @@ static inline bool DS_MapGetOrAddRawEx(DS_MapRaw *map, const void *key, DS_OUT v
 	bool added_new = false;
 
 	for (;;) {
-		char *elem_base = (char*)map->data + idx * elem_size;
-		
-		uint32_t *elem_hash = (uint32_t*)elem_base;
-		char *elem_key = elem_base + key_offset;
-		char *elem_val = elem_base + val_offset;
+		char* elem_base = (char*)map->data + idx * elem_size;
+
+		uint32_t* elem_hash = (uint32_t*)elem_base;
+		char* elem_key = elem_base + key_offset;
+		char* elem_val = elem_base + val_offset;
 
 		if (*elem_hash == 0) {
 			// We found an empty slot
 			memcpy(elem_key, key, K_size);
 			*elem_hash = hash;
-			
+
 			if (out_val_ptr) *out_val_ptr = elem_val;
 			map->length++;
 			added_new = true;
@@ -1119,10 +1125,10 @@ static inline bool DS_MapGetOrAddRawEx(DS_MapRaw *map, const void *key, DS_OUT v
 	return added_new;
 }
 
-static inline bool DS_MapRemoveRaw(DS_MapRaw *map, const void *key, int K_size, int V_size, int elem_size, int key_offset, int val_offset) {
+static inline bool DS_MapRemoveRaw(DS_MapRaw* map, const void* key, int K_size, int V_size, int elem_size, int key_offset, int val_offset) {
 	if (map->capacity == 0) return false;
 	DS_ProfEnter();
-	
+
 	uint32_t hash = DS_MurmurHash3((char*)key, K_size, 989898);
 	if (hash == 0) hash = 1;
 
@@ -1134,9 +1140,9 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw *map, const void *key, int K_size, 
 
 	bool ok = true;
 	for (;;) {
-		char *elem_base = (char*)map->data + index * elem_size;
+		char* elem_base = (char*)map->data + index * elem_size;
 		uint32_t elem_hash = *(uint32_t*)elem_base;
-		
+
 		if (elem_hash == 0) {
 			// Empty slot, the key does not exist in the map
 			ok = false;
@@ -1152,8 +1158,8 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw *map, const void *key, int K_size, 
 			// First remove all elements directly after this element from the map, then add them back to the map, starting from the first one to the right.
 			for (;;) {
 				index = (index + 1) & mask;
-				
-				char *shifting_elem_base = (char*)map->data + index*elem_size;
+
+				char* shifting_elem_base = (char*)map->data + index * elem_size;
 				uint32_t shifting_elem_hash = *(uint32_t*)shifting_elem_base;
 				if (shifting_elem_hash == 0) break;
 
@@ -1161,7 +1167,7 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw *map, const void *key, int K_size, 
 				memset(shifting_elem_base, 0, elem_size);
 				map->length--;
 
-				void *new_val_ptr;
+				void* new_val_ptr;
 				DS_MapGetOrAddRawEx(map, temp + key_offset, &new_val_ptr, K_size, V_size, elem_size, key_offset, val_offset, shifting_elem_hash);
 				memcpy(new_val_ptr, temp + val_offset, V_size);
 			}
@@ -1176,18 +1182,18 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw *map, const void *key, int K_size, 
 	return ok;
 }
 
-static inline bool DS_MapInsertRaw(DS_MapRaw *map, const void *key, DS_OUT void *val,
+static inline bool DS_MapInsertRaw(DS_MapRaw* map, const void* key, DS_OUT void* val,
 	int K_size, int V_size, int elem_size, int key_offset, int val_offset)
 {
 	DS_ProfEnter();
-	void *val_ptr;
+	void* val_ptr;
 	bool added = DS_MapGetOrAddRaw(map, key, &val_ptr, K_size, V_size, elem_size, key_offset, val_offset);
 	memcpy(val_ptr, val, V_size);
 	DS_ProfExit();
 	return added;
 }
 
-DS_API void DS_ArenaInit(DS_Arena *arena, int block_size) {
+DS_API void DS_ArenaInit(DS_Arena* arena, int block_size) {
 #ifdef DS_CUSTOM_ARENA
 	DS_ArenaInit_Custom(arena, block_size);
 #else
@@ -1197,12 +1203,12 @@ DS_API void DS_ArenaInit(DS_Arena *arena, int block_size) {
 #endif
 }
 
-DS_API void DS_ArenaDeinit(DS_Arena *arena) {
+DS_API void DS_ArenaDeinit(DS_Arena* arena) {
 #ifdef DS_CUSTOM_ARENA
 	DS_ArenaDeinit_Custom(arena);
 #else
-	for (DS_DefaultArenaBlockHeader *block = arena->first_block; block;) {
-		DS_DefaultArenaBlockHeader *next = block->next;
+	for (DS_DefaultArenaBlockHeader* block = arena->first_block; block;) {
+		DS_DefaultArenaBlockHeader* next = block->next;
 		DS_MemFree(block);
 		block = next;
 	}
@@ -1210,31 +1216,31 @@ DS_API void DS_ArenaDeinit(DS_Arena *arena) {
 #endif
 }
 
-DS_API char *DS_ArenaPush(DS_Arena *arena, int size) {
+DS_API char* DS_ArenaPush(DS_Arena* arena, int size) {
 	return DS_ArenaPushEx(arena, size, DS_DEFAULT_ALIGNMENT);
 }
 
-DS_API char *DS_ArenaPushZero(DS_Arena *arena, int size) {
-	char *ptr = DS_ArenaPushEx(arena, size, DS_DEFAULT_ALIGNMENT);
+DS_API char* DS_ArenaPushZero(DS_Arena* arena, int size) {
+	char* ptr = DS_ArenaPushEx(arena, size, DS_DEFAULT_ALIGNMENT);
 	memset(ptr, 0, size);
 	return ptr;
 }
 
-DS_API char *DS_ArenaPushEx(DS_Arena *arena, int size, int alignment) {
+DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment) {
 #ifdef DS_CUSTOM_ARENA
-	char *result = DS_ArenaPush_Custom(arena, size, alignment)
-	return result;
+	char* result = DS_ArenaPush_Custom(arena, size, alignment)
+		return result;
 #else
 	DS_ProfEnter();
-	
-	bool alignment_is_power_of_2 = ((alignment) & ((alignment) - 1)) == 0;
+
+	bool alignment_is_power_of_2 = ((alignment) & ((alignment)-1)) == 0;
 	DS_CHECK(alignment != 0 && alignment_is_power_of_2);
 	DS_CHECK(alignment <= DS_MAX_ALIGNMENT); // DS_Arena blocks get allocated using DS_MAX_ALIGNMENT, and so all allocations within an arena must conform to that.
 
-	DS_DefaultArenaBlockHeader *curr_block = arena->mark.block; // may be NULL
-	void *curr_ptr = arena->mark.ptr;
+	DS_DefaultArenaBlockHeader* curr_block = arena->mark.block; // may be NULL
+	void* curr_ptr = arena->mark.ptr;
 
-	char *result_address = (char*)DS_AlignUpPow2((uintptr_t)curr_ptr, alignment);
+	char* result_address = (char*)DS_AlignUpPow2((uintptr_t)curr_ptr, alignment);
 	int remaining_space = curr_block ? curr_block->size_including_header - (int)((uintptr_t)result_address - (uintptr_t)curr_block) : 0;
 
 	if (size > remaining_space) { // We need a new block!
@@ -1242,13 +1248,13 @@ DS_API char *DS_ArenaPushEx(DS_Arena *arena, int size, int alignment) {
 		int new_block_size = result_offset + size;
 		if (arena->block_size > new_block_size) new_block_size = arena->block_size;
 
-		DS_DefaultArenaBlockHeader *new_block = NULL;
-		DS_DefaultArenaBlockHeader *next_block = NULL;
+		DS_DefaultArenaBlockHeader* new_block = NULL;
+		DS_DefaultArenaBlockHeader* next_block = NULL;
 
 		// If there is a block at the end of the list that we have used previously, but aren't using anymore, then try to start using that one.
 		if (curr_block && curr_block->next) {
 			next_block = curr_block->next;
-			
+
 			int next_block_remaining_space = next_block->size_including_header - result_offset;
 			if (size <= next_block_remaining_space) {
 				new_block = next_block; // Next block has enough space, let's use it!
@@ -1260,7 +1266,7 @@ DS_API char *DS_ArenaPushEx(DS_Arena *arena, int size, int alignment) {
 			new_block = (DS_DefaultArenaBlockHeader*)DS_Realloc(NULL, new_block_size, DS_MAX_ALIGNMENT);
 			new_block->size_including_header = new_block_size;
 			new_block->next = next_block;
-			
+
 			if (curr_block) curr_block->next = new_block;
 			else arena->first_block = new_block;
 		}
@@ -1268,27 +1274,27 @@ DS_API char *DS_ArenaPushEx(DS_Arena *arena, int size, int alignment) {
 		arena->mark.block = new_block;
 		result_address = (char*)new_block + result_offset;
 	}
-	
+
 	arena->mark.ptr = result_address + size;
 	return result_address;
 	DS_ProfExit();
 #endif
 }
 
-DS_API void DS_ArenaReset(DS_Arena *arena) {
+DS_API void DS_ArenaReset(DS_Arena* arena) {
 #ifdef DS_CUSTOM_ARENA
 	DS_ArenaReset_Custom(arena);
 #else
 	DS_ProfEnter();
 	if (arena->first_block) {
 		// Free all blocks after the first block
-		for (DS_DefaultArenaBlockHeader *block = arena->first_block->next; block;) {
-			DS_DefaultArenaBlockHeader *next = block->next;
+		for (DS_DefaultArenaBlockHeader* block = arena->first_block->next; block;) {
+			DS_DefaultArenaBlockHeader* next = block->next;
 			DS_MemFree(block);
 			block = next;
 		}
 		arena->first_block->next = NULL;
-		
+
 		// Free the first block too if it's larger than the regular block size
 		if (arena->first_block->size_including_header > arena->block_size) {
 			DS_MemFree(arena->first_block);
@@ -1301,7 +1307,7 @@ DS_API void DS_ArenaReset(DS_Arena *arena) {
 #endif
 }
 
-DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena *arena) {
+DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena* arena) {
 #ifdef DS_CUSTOM_ARENA
 	DS_ArenaMark result = DS_ArenaGetMark_Custom(arena);
 	return result;
@@ -1310,7 +1316,7 @@ DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena *arena) {
 #endif
 }
 
-DS_API void DS_ArenaSetMark(DS_Arena *arena, DS_ArenaMark mark) {
+DS_API void DS_ArenaSetMark(DS_Arena* arena, DS_ArenaMark mark) {
 #ifdef DS_CUSTOM_ARENA
 	DS_ArenaSetMark_Custom(arena, mark);
 #else
@@ -1333,7 +1339,7 @@ DS_API void DS_ArenaSetMark(DS_Arena *arena, DS_ArenaMark mark) {
 // #include <Windows.h> // TODO: remove
 #include <stdlib.h>
 
-void *DS_Realloc_Impl(void *old_ptr, int new_size, int new_alignment) {
+void* DS_Realloc_Impl(void* old_ptr, int new_size, int new_alignment) {
 	//static bool inside_allocation_validation = false;
 	//static DS_Set(void*) DS_alive_allocations = {.arena = DS_USE_HEAP};
 	//
@@ -1354,22 +1360,22 @@ void *DS_Realloc_Impl(void *old_ptr, int new_size, int new_alignment) {
 	// void *result = buffer + buffer_offset;
 	// buffer_offset += new_size;
 	// buffer_offset = DS_AlignUpPow2_(buffer_offset, 8);
-	
+
 #if 0 // debug
-	#define DS_AlignUpPow2_(x, p) (((x) + (p) - 1) & ~((p) - 1)) // e.g. (x=30, p=16) -> 32
-	void *result = NULL;
+#define DS_AlignUpPow2_(x, p) (((x) + (p) - 1) & ~((p) - 1)) // e.g. (x=30, p=16) -> 32
+	void* result = NULL;
 	if (new_size > 0) {
 		new_size = DS_AlignUpPow2_(new_size, 8); // lets do this just to make sure the resulting pointer will be aligned well
 #if 1
 		// protect after
-		char *pages = VirtualAlloc(NULL, new_size + 4096, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+		char* pages = VirtualAlloc(NULL, new_size + 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 		uint32_t old_protect;
 		BOOL ok = VirtualProtect(pages + DS_AlignUpPow2_(new_size, 4096), 4096, PAGE_NOACCESS, &old_protect);
 		assert(ok == 1 && old_protect == PAGE_READWRITE);
 		result = pages + (DS_AlignUpPow2_(new_size, 4096) - new_size);
 #else
 		// protect before
-		char *pages = VirtualAlloc(NULL, new_size + 4096, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+		char* pages = VirtualAlloc(NULL, new_size + 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 		uint32_t old_protect;
 		BOOL ok = VirtualProtect(pages, 4096, PAGE_NOACCESS, &old_protect);
 		assert(ok == 1 && old_protect == PAGE_READWRITE);
@@ -1378,8 +1384,8 @@ void *DS_Realloc_Impl(void *old_ptr, int new_size, int new_alignment) {
 	}
 #endif
 
-	void *result = _aligned_realloc(old_ptr, new_size, new_alignment);
-	
+	void* result = _aligned_realloc(old_ptr, new_size, new_alignment);
+
 	//if (result != NULL && !inside_allocation_validation) {
 	//	DS_CHECK(result != NULL);
 	//	inside_allocation_validation = true;
