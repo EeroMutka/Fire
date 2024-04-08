@@ -143,9 +143,8 @@ static void UI_GPU_EndFrame(UI_Outputs *outputs, GPU_Graph *graph, GPU_Descripto
 	
 	GPU_OpPrepareRenderPass(graph, UI_GPU_STATE.render_pass);
 
-	DS_Vec(uint32_t) draw_params = {0};
-	draw_params.arena = UI_FrameArena();
-	DS_VecReserve(&draw_params, outputs->draw_calls_count);
+	DS_DynArray(uint32_t) draw_params = {UI_FrameArena()};
+	DS_ArrReserve(&draw_params, outputs->draw_calls_count);
 
 	for (int i = 0; i < outputs->draw_calls_count; i++) {
 		UI_DrawCall *draw_call = &outputs->draw_calls[i];
@@ -155,7 +154,7 @@ static void UI_GPU_EndFrame(UI_Outputs *outputs, GPU_Graph *graph, GPU_Descripto
 		GPU_FinalizeDescriptorSet(desc_set);
 
 		uint32_t draw_params_idx = GPU_OpPrepareDrawParams(graph, UI_GPU_STATE.pipeline, desc_set);
-		DS_VecPush(&draw_params, draw_params_idx);
+		DS_ArrPush(&draw_params, draw_params_idx);
 	}
 
 	GPU_OpBeginRenderPass(graph);
@@ -179,7 +178,7 @@ static void UI_GPU_EndFrame(UI_Outputs *outputs, GPU_Graph *graph, GPU_Descripto
 			GPU_OpBindIndexBuffer(graph, UI_GPU_STATE.buffers[index_buffer]);
 		}
 
-		GPU_OpBindDrawParams(graph, DS_VecGet(draw_params, i));
+		GPU_OpBindDrawParams(graph, DS_ArrGet(draw_params, i));
 		GPU_OpDrawIndexed(graph, draw_call->index_count, 1, draw_call->first_index, 0, 0);
 	}
 

@@ -104,7 +104,7 @@ typedef struct GPU_BindingInfo {
 } GPU_BindingInfo;
 
 typedef struct GPU_PipelineLayout {
-	DS_Vec(GPU_BindingInfo) bindings;
+	DS_DynArray(GPU_BindingInfo) bindings;
 	//uint32_t bindings_count;
 	VkDescriptorSetLayout descriptor_set_layout;
 	VkPipelineLayout vk_handle;
@@ -132,7 +132,7 @@ typedef struct GPU_DescriptorSet {
 	GPU_DescriptorArena *descriptor_arena; // may be NULL
 	VkDescriptorPool global_descriptor_pool; // may be NULL
 	GPU_PipelineLayout *pipeline_layout;
-	DS_Vec(GPU_BindingValue) bindings; // Has same order as the descriptors in the descriptor set layout
+	DS_DynArray(GPU_BindingValue) bindings; // Has same order as the descriptors in the descriptor set layout
 	VkDescriptorSet vk_handle;
 } GPU_DescriptorSet;
 
@@ -157,7 +157,7 @@ typedef struct GPU_RenderPass {
 typedef struct GPU_GraphicsPipeline {
 	//GPU_Entity base; // Must be the first member, as we outwards-cast in GPU_ReleaseGraphicsPipeline()
 	GPU_PipelineLayout *layout;
-	DS_Vec(GPU_Access) accesses; // TODO: turn into BucketList
+	DS_DynArray(GPU_Access) accesses; // TODO: turn into BucketList
 	GPU_RenderPass *render_pass;
 	VkPipeline vk_handle;
 } GPU_GraphicsPipeline;
@@ -165,7 +165,7 @@ typedef struct GPU_GraphicsPipeline {
 typedef struct GPU_ComputePipeline {
 	//GPU_Entity base; // Must be the first member, as we outwards-cast in GPU_ReleaseComputePipeline()
 	GPU_PipelineLayout *layout;
-	DS_Vec(GPU_Access) accesses; // TODO: turn into BucketList
+	DS_DynArray(GPU_Access) accesses; // TODO: turn into BucketList
 	VkPipeline vk_handle;
 } GPU_ComputePipeline;
 
@@ -176,7 +176,7 @@ typedef struct GPU_ComputePipeline {
 typedef struct GPU_IndexAllocator {
 	// The value of an element in `buffer` is the next free index, or INDEX_ALLOCATOR_FREELIST_END if the last free index,
 	// or INDEX_ALLOCATOR_ALIVE_SLOT if currently alive
-	DS_Vec(uint32_t) buffer;
+	DS_DynArray(uint32_t) buffer;
 	uint32_t first_free_index;
 	uint32_t ceiling;
 } GPU_IndexAllocator;
@@ -303,11 +303,11 @@ typedef struct GPU_Graph {
 		GPU_DescriptorSet *draw_descriptor_set;	// may be NULL
 
 		GPU_RenderPass *preparing_render_pass;	 // may be NULL
-		DS_Vec(GPU_DrawParams) prepared_draw_params;
+		DS_DynArray(GPU_DrawParams) prepared_draw_params;
 
 		// Accessed resources
-		DS_Vec(GPU_TextureImpl*) textures;
-		DS_Vec(GPU_BufferImpl*) buffers;
+		DS_DynArray(GPU_TextureImpl*) textures;
+		DS_DynArray(GPU_BufferImpl*) buffers;
 	} builder_state;
 
 	// only used when the graph is made with GPU_MakeSwapchainGraph
@@ -326,16 +326,16 @@ GPU_Context FGPU; // :GLSLangInitNote
 
 // ----------------------------------------------------------------------------
 
-typedef DS_Vec(char) GPU_StrBuilder;
+typedef DS_DynArray(char) GPU_StrBuilder;
 
-#define GPU_PrintL(BUILDER, STRING_LITERAL) DS_VecPushN(BUILDER, STRING_LITERAL, sizeof(STRING_LITERAL)-1)
+#define GPU_PrintL(BUILDER, STRING_LITERAL) DS_ArrPushN(BUILDER, STRING_LITERAL, sizeof(STRING_LITERAL)-1)
 
 static void GPU_PrintS(GPU_StrBuilder *builder, GPU_String str) {
-	DS_VecPushN(builder, str.data, (int)str.length);
+	DS_ArrPushN(builder, str.data, (int)str.length);
 }
 
 static void GPU_PrintC(GPU_StrBuilder *builder, const char *str) {
-	DS_VecPushN(builder, str, (int)strlen(str));
+	DS_ArrPushN(builder, str, (int)strlen(str));
 }
 
 static GPU_String GPU_ParseUntil(GPU_String *remaining, char until_character) {
@@ -659,7 +659,7 @@ GPU_API void GPU_DestroySampler(GPU_Sampler *sampler) {
 
 GPU_API GPU_PipelineLayout *GPU_InitPipelineLayout() {
 	GPU_PipelineLayout *layout = &GPU_NewEntity()->pipeline_layout;
-	DS_VecInit(&layout->bindings);
+	DS_ArrInit(&layout->bindings, DS_HEAP);
 	//BucketListInitUsingDS_SlotAllocator(&layout->bindings, &FGPU.entities);
 	return layout;
 }
@@ -668,7 +668,7 @@ static GPU_Binding GPU_AddBinding(GPU_PipelineLayout *layout, const char *name, 
 	GPU_Binding binding = (uint32_t)layout->bindings.length;
 		
 	GPU_BindingInfo binding_info = {kind, image_format, name};
-	DS_VecPush(&layout->bindings, binding_info);
+	DS_ArrPush(&layout->bindings, binding_info);
 	//BucketListIndex end = BucketListGetEnd(&layout->bindings);
 	//BucketListPush(&layout->bindings, &binding_info);
 	//layout->bindings_count++;
@@ -687,7 +687,7 @@ GPU_API GPU_Binding GPU_StorageImageBinding(GPU_PipelineLayout *layout, const ch
 
 GPU_API void GPU_DestroyPipelineLayout(GPU_PipelineLayout *layout) {
 	if (layout) {
-		DS_VecDeinit(&layout->bindings);
+		DS_ArrDeinit(&layout->bindings);
 		vkDestroyPipelineLayout(FGPU.device, layout->vk_handle, NULL);
 		vkDestroyDescriptorSetLayout(FGPU.device, layout->descriptor_set_layout, NULL);
 		GPU_FreeEntity((GPU_Entity*)layout);
@@ -700,12 +700,11 @@ GPU_API void GPU_FinalizePipelineLayout(GPU_PipelineLayout *layout) {
 	GPU_Check(layout->descriptor_set_layout == 0);
 	DS_ArenaMark T = DS_ArenaGetMark(&FGPU.temp_arena);
 
-	DS_Vec(VkDescriptorSetLayoutBinding) vk_bindings = {0};
-	vk_bindings.arena = &FGPU.temp_arena;
-	DS_VecResizeUndef(&vk_bindings, layout->bindings.length);
+	DS_DynArray(VkDescriptorSetLayoutBinding) vk_bindings = {&FGPU.temp_arena};
+	DS_ArrResizeUndef(&vk_bindings, layout->bindings.length);
 		
 	uint32_t i = 0;
-	DS_ForVecEach(GPU_BindingInfo, &layout->bindings, it) {
+	DS_ForArrEach(GPU_BindingInfo, &layout->bindings, it) {
 		VkDescriptorSetLayoutBinding vk_binding = {0};
 		vk_binding.binding = i;
 		vk_binding.descriptorCount = 1;
@@ -718,7 +717,7 @@ GPU_API void GPU_FinalizePipelineLayout(GPU_PipelineLayout *layout) {
 		case GPU_ResourceKind_StorageImage: { vk_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; } break;
 		}
 
-		DS_VecSet(vk_bindings, i, vk_binding);
+		DS_ArrSet(vk_bindings, i, vk_binding);
 		i++;
 	}
 		
@@ -749,11 +748,11 @@ GPU_API GPU_DescriptorSet *GPU_InitDescriptorSet(GPU_DescriptorArena *descriptor
 	GPU_DescriptorSet *set;
 	if (descriptor_arena) {
 		set = DS_New(GPU_DescriptorSet, &descriptor_arena->arena);
-		DS_VecInitA(&set->bindings, &descriptor_arena->arena);
+		DS_ArrInit(&set->bindings, &descriptor_arena->arena);
 	}
 	else {
 		set = &GPU_NewEntity()->descriptor_set;
-		DS_VecInit(&set->bindings);
+		DS_ArrInit(&set->bindings, DS_HEAP);
 	}
 	set->descriptor_arena = descriptor_arena;
 	set->pipeline_layout = pipeline_layout;
@@ -765,7 +764,7 @@ GPU_API void GPU_DestroyDescriptorSet(GPU_DescriptorSet *set) {
 	if (set) {
 		GPU_Check(set->descriptor_arena == NULL);
 		GPU_Check(set->global_descriptor_pool != NULL);
-		DS_VecDeinit(&set->bindings);
+		DS_ArrDeinit(&set->bindings);
 		GPU_CheckVK(vkFreeDescriptorSets(FGPU.device, set->global_descriptor_pool, 1, &set->vk_handle));
 	}
 }
@@ -785,7 +784,7 @@ static void GPU_SetBinding(GPU_DescriptorSet *set, uint32_t binding, void *value
 		//}
 	}
 
-	GPU_BindingInfo binding_info = DS_VecGet(set->pipeline_layout->bindings, binding);
+	GPU_BindingInfo binding_info = DS_ArrGet(set->pipeline_layout->bindings, binding);
 	GPU_Check(binding_info.kind == kind);
 	if (kind == GPU_ResourceKind_StorageImage) {
 		GPU_TextureImpl *texture = (GPU_TextureImpl*)value;
@@ -795,11 +794,11 @@ static void GPU_SetBinding(GPU_DescriptorSet *set, uint32_t binding, void *value
 
 	if (binding >= (uint32_t)set->bindings.length) {
 		GPU_BindingValue empty = {0};
-		DS_VecResize(&set->bindings, empty, binding + 1);
+		DS_ArrResize(&set->bindings, empty, binding + 1);
 	}
 
 	GPU_BindingValue binding_value = {value, mip_level};
-	DS_VecSet(set->bindings, binding, binding_value);
+	DS_ArrSet(set->bindings, binding, binding_value);
 	DS_ProfExit();
 }
 
@@ -872,13 +871,12 @@ static void GPU_FinalizeDescriptorSetEx(GPU_DescriptorSet *set, bool check_for_c
 		
 	if (check_for_completeness) GPU_Check(set->bindings.length == set->pipeline_layout->bindings.length); // Did you remember to call GPU_Set[*]Binding on all of the binding slots?
 		
-	DS_Vec(VkWriteDescriptorSet) writes = {0};
-	writes.arena = &FGPU.temp_arena;
-	DS_VecReserve(&writes, set->bindings.length);
+	DS_DynArray(VkWriteDescriptorSet) writes = {&FGPU.temp_arena};
+	DS_ArrReserve(&writes, set->bindings.length);
 		
 	for (uint32_t i = 0; i < (uint32_t)set->bindings.length; i++) {
-		GPU_BindingInfo binding_info = DS_VecGet(set->pipeline_layout->bindings, i);
-		GPU_BindingValue binding_value = DS_VecGet(set->bindings, i);
+		GPU_BindingInfo binding_info = DS_ArrGet(set->pipeline_layout->bindings, i);
+		GPU_BindingValue binding_value = DS_ArrGet(set->bindings, i);
 		if (check_for_completeness) GPU_Check(binding_value.ptr != NULL); // Did you remember to call GPU_Set[*]Binding on this binding?
 
 		VkWriteDescriptorSet write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -950,7 +948,7 @@ static void GPU_FinalizeDescriptorSetEx(GPU_DescriptorSet *set, bool check_for_c
 		} break;
 		}
 		
-		DS_VecPush(&writes, write);
+		DS_ArrPush(&writes, write);
 	}
 		
 	if (writes.length > 0) {
@@ -982,10 +980,10 @@ GPU_API void GPU_Init(GPU_WindowHandle window) {
 
 	memset(&FGPU, 0, sizeof(FGPU));
 	FGPU.window = window;
-	DS_ArenaInit(&FGPU.persistent_arena, DS_KIB(4));
-	DS_ArenaInit(&FGPU.temp_arena, DS_KIB(1));
+	DS_ArenaInit(&FGPU.persistent_arena, DS_KIB(4), DS_HEAP);
+	DS_ArenaInit(&FGPU.temp_arena, DS_KIB(1), DS_HEAP);
 		
-	DS_SlotAllocatorInitA(&FGPU.entities, &FGPU.persistent_arena);
+	DS_SlotAllocatorInit(&FGPU.entities, &FGPU.persistent_arena);
 
 	DS_ArenaMark T = DS_ArenaGetMark(&FGPU.temp_arena);
 
@@ -1362,7 +1360,7 @@ GPU_API void GPU_DestroyTexture(GPU_Texture *texture) {
 		GPU_TextureImpl *texture_impl = (GPU_TextureImpl*)texture;
 		if (texture_impl->mip_level_img_views) {
 			for (uint32_t i = 0; i < texture_impl->base.mip_level_count; i++) vkDestroyImageView(FGPU.device, texture_impl->mip_level_img_views[i], NULL);
-			DS_MemFree(texture_impl->mip_level_img_views);
+			DS_MemFree(DS_HEAP, texture_impl->mip_level_img_views);
 		}
 		vkDestroyImageView(FGPU.device, texture_impl->img_view, NULL);
 		vkDestroyImageView(FGPU.device, texture_impl->atomics_img_view, NULL);
@@ -1461,7 +1459,7 @@ GPU_API GPU_Texture *GPU_MakeTexture(GPU_Format format, uint32_t width, uint32_t
 	// and as an image you need to specify which mip level to bind into the image descriptor.
 
 	if ((flags & GPU_TextureFlag_StorageImage) || (flags & GPU_TextureFlag_RenderTarget) || (flags & GPU_TextureFlag_PerMipBinding)) {
-		texture_impl->mip_level_img_views = (VkImageView*)DS_MemAlloc(sizeof(VkImageView) * texture_impl->base.mip_level_count);
+		texture_impl->mip_level_img_views = (VkImageView*)DS_MemAlloc(DS_HEAP, sizeof(VkImageView) * texture_impl->base.mip_level_count);
 		for (uint32_t i = 0; i < texture_impl->base.mip_level_count; i++) {
 			texture_impl->mip_level_img_views[i] = GPU_MakeImageView(info.format, info.usage, format_info, texture_impl, i, 1);
 		}
@@ -1731,13 +1729,12 @@ static GPU_GraphicsPipeline *GPU_MakePipelineEx(const GPU_GraphicsPipelineDesc *
 	GPU_GraphicsPipeline *pipeline = &GPU_NewEntity()->graphics_pipeline;
 	pipeline->render_pass = desc->render_pass;
 	pipeline->layout = desc->layout;
-	DS_VecInit(&pipeline->accesses);
+	DS_ArrInit(&pipeline->accesses, DS_HEAP);
 	
 	VkGraphicsPipelineCreateInfo info = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 		
 	// SHADER STAGES
-	DS_Vec(VkPipelineShaderStageCreateInfo) stages = {0};
-	stages.arena = &FGPU.temp_arena;
+	DS_DynArray(VkPipelineShaderStageCreateInfo) stages = {&FGPU.temp_arena};
 
 	GPU_ShaderDesc vs_desc = desc->vs, fs_desc = desc->fs;
 	VkShaderModule vs = 0, fs = 0;
@@ -1759,9 +1756,9 @@ static GPU_GraphicsPipeline *GPU_MakePipelineEx(const GPU_GraphicsPipelineDesc *
 		vs_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
 		vs_info.module = vs;
 		vs_info.pName = "main";
-		DS_VecPush(&stages, vs_info);
+		DS_ArrPush(&stages, vs_info);
 		
-		DS_VecPushN(&pipeline->accesses, vs_desc.accesses.data, vs_desc.accesses.length);
+		DS_ArrPushN(&pipeline->accesses, vs_desc.accesses.data, vs_desc.accesses.length);
 	}
 
 	if (fs_desc.spirv.length > 0) { // It's valid to have a pipeline without pixel shader, e.g. depth only
@@ -1770,9 +1767,9 @@ static GPU_GraphicsPipeline *GPU_MakePipelineEx(const GPU_GraphicsPipelineDesc *
 		fs_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 		fs_info.module = fs;
 		fs_info.pName = "main";
-		DS_VecPush(&stages, fs_info);
+		DS_ArrPush(&stages, fs_info);
 
-		DS_VecPushN(&pipeline->accesses, fs_desc.accesses.data, fs_desc.accesses.length);
+		DS_ArrPushN(&pipeline->accesses, fs_desc.accesses.data, fs_desc.accesses.length);
 	}
 
 	info.stageCount = (uint32_t)stages.length;
@@ -1925,7 +1922,7 @@ GPU_API GPU_GraphicsPipeline *GPU_MakeGraphicsPipeline(const GPU_GraphicsPipelin
 GPU_API void GPU_DestroyComputePipeline(GPU_ComputePipeline *pipeline) {
 	if (pipeline) {
 		vkDestroyPipeline(FGPU.device, pipeline->vk_handle, NULL);
-		DS_VecDeinit(&pipeline->accesses);
+		DS_ArrDeinit(&pipeline->accesses);
 		GPU_FreeEntity((GPU_Entity*)pipeline);
 	}
 }
@@ -1933,7 +1930,7 @@ GPU_API void GPU_DestroyComputePipeline(GPU_ComputePipeline *pipeline) {
 GPU_API void GPU_DestroyGraphicsPipeline(GPU_GraphicsPipeline *pipeline) {
 	if (pipeline) {
 		vkDestroyPipeline(FGPU.device, pipeline->vk_handle, NULL);
-		DS_VecDeinit(&pipeline->accesses);
+		DS_ArrDeinit(&pipeline->accesses);
 		GPU_FreeEntity((GPU_Entity*)pipeline);
 	}
 }
@@ -1954,7 +1951,7 @@ GPU_API GPU_ComputePipeline *GPU_MakeComputePipeline(GPU_PipelineLayout *layout,
 		
 	GPU_Check(cs_desc.spirv.length > 0);
 	GPU_VkCreateShaderModule(cs_desc.spirv, &compute_shader);
-	DS_VecPushN(&pipeline->accesses, cs_desc.accesses.data, cs_desc.accesses.length);
+	DS_ArrPushN(&pipeline->accesses, cs_desc.accesses.data, cs_desc.accesses.length);
 		
 	VkPipelineShaderStageCreateInfo stage = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
 	stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -1990,8 +1987,7 @@ static glsl_include_result_t *GPU_IncludeHandlerGLSL(void *ctx, const char *head
 }
 
 GPU_API GPU_String GPU_JoinGLSLErrorString(GPU_ARENA *arena, GPU_GLSLErrorArray errors) {
-	GPU_StrBuilder s = {0};
-	s.arena = arena;
+	GPU_StrBuilder s = {arena};
 	for (uint32_t i = 0; i < errors.length; i++) {
 		GPU_PrintI(&s, errors.data[i].line);
 		GPU_PrintL(&s, ": ");
@@ -2013,9 +2009,7 @@ GPU_API GPU_String GPU_SPIRVFromGLSL(GPU_ARENA *arena, GPU_ShaderStage stage, GP
 	case GPU_ShaderStage_Compute:  glsl_stage = GLSLANG_STAGE_COMPUTE; break;
 	}
 		
-	GPU_StrBuilder glsl = {0};
-	glsl.arena = &FGPU.temp_arena;
-		
+	GPU_StrBuilder glsl = {&FGPU.temp_arena};
 	GPU_PrintL(&glsl, "#version 450\n");
 	GPU_PrintL(&glsl, "#define GPU_BINDING(NAME) GPU_BINDING_##NAME\n");
 
@@ -2028,7 +2022,7 @@ GPU_API GPU_String GPU_SPIRVFromGLSL(GPU_ARENA *arena, GPU_ShaderStage stage, GP
 	for (uint32_t i = 0; i < desc->accesses.length; i++) {
 		GPU_Access *access = &desc->accesses.data[i];
 		uint32_t binding_index = access->binding;
-		GPU_BindingInfo binding_info = DS_VecGet(pipeline_layout->bindings, binding_index);
+		GPU_BindingInfo binding_info = DS_ArrGet(pipeline_layout->bindings, binding_index);
 		const char *binding_name = binding_info.name;
 		
 		// We could just make the uniforms directly accessible by name, but then it would be slightly less clear to the user where the variable is coming from when used
@@ -2080,8 +2074,8 @@ GPU_API GPU_String GPU_SPIRVFromGLSL(GPU_ARENA *arena, GPU_ShaderStage stage, GP
 	}
 		
 	// Add user shader code
-	DS_VecPushN(&glsl, desc->glsl.data, desc->glsl.length);
-	DS_VecPush(&glsl, 0); // null termination
+	DS_ArrPushN(&glsl, desc->glsl.data, desc->glsl.length);
+	DS_ArrPush(&glsl, 0); // null termination
 
 	// GPU_DebugLog("=========== FGPU / Generated shader ===========\n");
 	// GPU_DebugLog("~s\n", generated_glsl.str);
@@ -2172,8 +2166,7 @@ GPU_API GPU_String GPU_SPIRVFromGLSL(GPU_ARENA *arena, GPU_ShaderStage stage, GP
 		
 		int fgpu_generated_extra_lines_count = gen_glsl_line_count - desc_glsl_line_count;
 
-		DS_Vec(GPU_GLSLError) errors = {0};
-		errors.arena = arena;
+		DS_DynArray(GPU_GLSLError) errors = {arena};
 
 		GPU_String log_remaining = log;
 		for (; log_remaining.length > 0;) {
@@ -2199,7 +2192,7 @@ GPU_API GPU_String GPU_SPIRVFromGLSL(GPU_ARENA *arena, GPU_ShaderStage stage, GP
 				error.shader_stage = stage;
 				error.line = (uint32_t)((int)line_idx - fgpu_generated_extra_lines_count);
 				error.error_message = line_remaining;
-				DS_VecPush(&errors, error);
+				DS_ArrPush(&errors, error);
 			}
 		}
 #if 0
@@ -2212,9 +2205,9 @@ GPU_API GPU_String GPU_SPIRVFromGLSL(GPU_ARENA *arena, GPU_ShaderStage stage, GP
 		uint32_t desc_glsl_line_count = (uint32_t)StrSplit(&FGPU.temp_arena, desc->glsl, '\n').length;
 		uint32_t generated_extra_lines_count = generated_glsl_line_count - desc_glsl_line_count;
 
-		DS_Vec(GPU_GLSLError) errors = {.arena = arena};
+		DS_DynArray(GPU_GLSLError) errors = {.arena = arena};
 
-		DS_VecEach(StrRange, &lines, it) {
+		DS_ArrEach(StrRange, &lines, it) {
 			String line_str = StrSlice(log, it.elem->min, it.elem->max);
 			if (StrCutStart(&line_str, STR_("ERROR: 0:"))) {
 				StrRange second_colon_range;
@@ -2229,8 +2222,8 @@ GPU_API GPU_String GPU_SPIRVFromGLSL(GPU_ARENA *arena, GPU_ShaderStage stage, GP
 
 				GPU_GLSLError error = {.shader_stage = stage, .line = (uint32_t)(line_idx - generated_extra_lines_count), .error_message = line_str};
 				// if (out_errors == NULL) GPU_DebugLog(" line ~i64: ~s\n", error.line, error.error_message);
-				// else DS_VecPush(&errors, error);
-				DS_VecPush(&errors, error);
+				// else DS_ArrPush(&errors, error);
+				DS_ArrPush(&errors, error);
 			}
 		}
 #endif
@@ -2313,11 +2306,8 @@ static void GPU_InsertBarriers(GPU_Graph *graph, GPU_ResourceAccess *accesses, u
 	VkPipelineStageFlags src_stage_mask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; // By default, this barrier depends on nothing
 	VkPipelineStageFlags dst_stage_mask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT; // By default, nothing depends on this barrier
 
-	DS_Vec(VkMemoryBarrier) mem_barriers = {0};
-	mem_barriers.arena = &graph->arena;
-		
-	DS_Vec(VkImageMemoryBarrier) img_barriers = {0};
-	img_barriers.arena = &graph->arena;
+	DS_DynArray(VkMemoryBarrier) mem_barriers = {&graph->arena};
+	DS_DynArray(VkImageMemoryBarrier) img_barriers = {&graph->arena};
 
 	for (uint32_t access_i = 0; access_i < accesses_count; access_i++) {
 		const GPU_ResourceAccess *access = &accesses[access_i];
@@ -2343,7 +2333,7 @@ static void GPU_InsertBarriers(GPU_Graph *graph, GPU_ResourceAccess *accesses, u
 				}
 
 				texture->temp = state;
-				DS_VecPush(&graph->builder_state.textures, texture);
+				DS_ArrPush(&graph->builder_state.textures, texture);
 			}
 
 			VkImageLayout dst_layout;
@@ -2365,7 +2355,7 @@ static void GPU_InsertBarriers(GPU_Graph *graph, GPU_ResourceAccess *accesses, u
 
 						// if (prev_view_access.layout == VK_IMAGE_LAYOUT_UNDEFINED && dst_layout == VK_IMAGE_LAYOUT_GENERAL) BP();
 						VkImageMemoryBarrier img_barrier = GPU_ImageBarrier(texture->vk_handle, aspect, layer, 1, level, 1, sub_state->layout, dst_layout, sub_state->access_flags, dst_access_flags);
-						DS_VecPush(&img_barriers, img_barrier);
+						DS_ArrPush(&img_barriers, img_barrier);
 
 						sub_state->layout = dst_layout;
 						sub_state->stage = dst_stage_mask;
@@ -2384,7 +2374,7 @@ static void GPU_InsertBarriers(GPU_Graph *graph, GPU_ResourceAccess *accesses, u
 				state->stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 				state->access_flags = 0;
 				buffer->temp = state;
-				DS_VecPush(&graph->builder_state.buffers, buffer);
+				DS_ArrPush(&graph->builder_state.buffers, buffer);
 			}
 
 			VkAccessFlags dst_access_flags = 0;
@@ -2397,7 +2387,7 @@ static void GPU_InsertBarriers(GPU_Graph *graph, GPU_ResourceAccess *accesses, u
 				VkMemoryBarrier mem_barrier = {VK_STRUCTURE_TYPE_MEMORY_BARRIER};
 				mem_barrier.srcAccessMask = state->access_flags;
 				mem_barrier.dstAccessMask = dst_access_flags;
-				DS_VecPush(&mem_barriers, mem_barrier);
+				DS_ArrPush(&mem_barriers, mem_barrier);
 
 				state->stage = dst_stage_mask;
 				state->access_flags = dst_access_flags;
@@ -2415,7 +2405,7 @@ static void GPU_InsertBarriers(GPU_Graph *graph, GPU_ResourceAccess *accesses, u
 
 GPU_API GPU_DescriptorArena *GPU_MakeDescriptorArena() {
 	GPU_DescriptorArena *descriptor_arena = &GPU_NewEntity()->descriptor_arena;
-	DS_ArenaInit(&descriptor_arena->arena, 256);
+	DS_ArenaInit(&descriptor_arena->arena, 256, DS_HEAP);
 		
 	VkDescriptorPoolSize pool_sizes[4];
 	pool_sizes[0].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
@@ -2458,9 +2448,9 @@ GPU_API void GPU_DestroyDescriptorArena(GPU_DescriptorArena *descriptor_arena) {
 }
 
 static void GPU_GraphBegin(GPU_Graph *graph) {
-	DS_VecInitA(&graph->builder_state.prepared_draw_params, &graph->arena);
-	DS_VecInitA(&graph->builder_state.textures, &graph->arena);
-	DS_VecInitA(&graph->builder_state.buffers, &graph->arena);
+	DS_ArrInit(&graph->builder_state.prepared_draw_params, &graph->arena);
+	DS_ArrInit(&graph->builder_state.textures, &graph->arena);
+	DS_ArrInit(&graph->builder_state.buffers, &graph->arena);
 
 	if (!graph->has_began_cmd_buffer) {
 		graph->has_began_cmd_buffer = true;
@@ -2507,7 +2497,7 @@ GPU_API GPU_Graph *GPU_MakeGraph(void) {
 	// That would be pretty awesome. Then we could have lots of arenas without feeling bad about it,
 	// and even ditch malloc and free completely and just go to VirtualAlloc directly.
 	// ... but how to make it deterministic? I guess that would be up to FOS to provide a deterministic VirtualAlloc.
-	DS_ArenaInit(&_arena, DS_KIB(1));
+	DS_ArenaInit(&_arena, DS_KIB(1), DS_HEAP);
 
 	GPU_Graph *graph = DS_New(GPU_Graph, &_arena);
 	graph->arena = _arena;
@@ -2596,14 +2586,14 @@ GPU_API void GPU_GraphSubmit(GPU_Graph *graph) {
 
 	// Make sure each texture has a single layout for all of its layers and levels.
 	{
-		DS_Vec(VkImageMemoryBarrier) img_barriers = {0};
-		img_barriers.arena = &graph->arena;
+		DS_DynArray(VkImageMemoryBarrier) img_barriers = {&graph->arena};
+		
 		VkPipelineStageFlags src_stage_mask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT; // By default, this barrier depends on nothing
 
-		DS_ForVecEach(GPU_BufferImpl*, &graph->builder_state.buffers, it) {
+		DS_ForArrEach(GPU_BufferImpl*, &graph->builder_state.buffers, it) {
 			(*it.ptr)->temp = NULL;
 		}
-		DS_ForVecEach(GPU_TextureImpl*, &graph->builder_state.textures, it) {
+		DS_ForArrEach(GPU_TextureImpl*, &graph->builder_state.textures, it) {
 			GPU_TextureImpl *texture = *it.ptr;
 			VkAccessFlags aspect = GPU_GetImageAspectFlags(texture->base.format);
 
@@ -2621,7 +2611,7 @@ GPU_API void GPU_GraphSubmit(GPU_Graph *graph) {
 						src_stage_mask |= sub_state->stage; // Make the barrier wait for the previous stage
 
 						VkImageMemoryBarrier img_barrier = GPU_ImageBarrier(texture->vk_handle, aspect, layer, 1, level, 1, sub_state->layout, dst_layout, sub_state->access_flags, 0);
-						DS_VecPush(&img_barriers, img_barrier);
+						DS_ArrPush(&img_barriers, img_barrier);
 					}
 				}
 			}
@@ -2731,8 +2721,7 @@ GPU_API void GPU_OpBeginRenderPass(GPU_Graph *graph) {
 	}
 
 	// Collect all resource accesses that happen during this renderpass.
-	DS_Vec(GPU_ResourceAccess) accesses = {0};
-	accesses.arena = &graph->arena;
+	DS_DynArray(GPU_ResourceAccess) accesses = {&graph->arena};
 
 	GPU_TextureView backbuffer_or_null = {0};
 	if (graph->frame.img_index != GPU_NOT_A_SWAPCHAIN_GRAPH) {
@@ -2744,13 +2733,13 @@ GPU_API void GPU_OpBeginRenderPass(GPU_Graph *graph) {
 
 		GPU_ResourceAccess access = {target.texture, GPU_ResourceKind_Texture, GPU_ResourceAccessFlag_ColorTargetRead|GPU_ResourceAccessFlag_ColorTargetWrite, 0, 1, target.mip_level, 1};
 		GPU_Check(access.resource);
-		DS_VecPush(&accesses, access);
+		DS_ArrPush(&accesses, access);
 
 		GPU_TextureView resolve_target = render_to_swapchain ? backbuffer_or_null : render_pass->resolve_targets[i];
 		if (resolve_target.texture) {
 			GPU_ResourceAccess resolve_access = {resolve_target.texture, GPU_ResourceKind_Texture, GPU_ResourceAccessFlag_ColorTargetRead|GPU_ResourceAccessFlag_ColorTargetWrite, 0, 1, resolve_target.mip_level, 1};
 			GPU_Check(resolve_access.resource);
-			DS_VecPush(&accesses, resolve_access);
+			DS_ArrPush(&accesses, resolve_access);
 		}
 	}
 		
@@ -2760,17 +2749,17 @@ GPU_API void GPU_OpBeginRenderPass(GPU_Graph *graph) {
 
 		GPU_ResourceAccess access = {render_pass->depth_stencil_target, GPU_ResourceKind_Texture, GPU_ResourceAccessFlag_DepthStencilTargetWrite, 0, 1, 0, 1};
 		GPU_Check(access.resource);
-		DS_VecPush(&accesses, access);
+		DS_ArrPush(&accesses, access);
 	}
 
-	DS_ForVecEach(GPU_DrawParams, &graph->builder_state.prepared_draw_params, it) {
+	DS_ForArrEach(GPU_DrawParams, &graph->builder_state.prepared_draw_params, it) {
 		GPU_GraphicsPipeline *pipeline = it.ptr->pipeline;
 		GPU_DescriptorSet *desc_set = it.ptr->desc_set;
 
 		for (int access_i = 0; access_i < pipeline->accesses.length; access_i++) {
 			GPU_Access *binding_access = &pipeline->accesses.data[access_i];
-			GPU_BindingInfo binding_info = DS_VecGet(pipeline->layout->bindings, binding_access->binding);
-			GPU_BindingValue binding_value = DS_VecGet(desc_set->bindings, binding_access->binding);
+			GPU_BindingInfo binding_info = DS_ArrGet(pipeline->layout->bindings, binding_access->binding);
+			GPU_BindingValue binding_value = DS_ArrGet(desc_set->bindings, binding_access->binding);
 
 			GPU_ResourceAccess access = {binding_value.ptr, binding_info.kind, 0, 0, 0, 0, 0};
 
@@ -2803,7 +2792,7 @@ GPU_API void GPU_OpBeginRenderPass(GPU_Graph *graph) {
 			} break;
 			case GPU_ResourceKind_Sampler: break;
 			}
-			DS_VecPush(&accesses, access);
+			DS_ArrPush(&accesses, access);
 		}
 	}
 	GPU_InsertBarriers(graph, accesses.data, (uint32_t)accesses.length);
@@ -2833,12 +2822,11 @@ GPU_API void GPU_OpDispatch(GPU_Graph *graph, uint32_t group_count_x, uint32_t g
 	GPU_Check(pipeline != NULL && desc_set != NULL);
 
 	// TODO: if you do multiple dispatches in a row with the same pipeline & descriptor set, we can skip this step. Though, InsertBarriers() should currently do nothing in that case anyway.
-	DS_Vec(GPU_ResourceAccess) accesses = {0};
-	accesses.arena = &graph->arena;
-
-	DS_ForVecEach(GPU_Access, &pipeline->accesses, it) {
-		GPU_BindingInfo binding_info = DS_VecGet(pipeline->layout->bindings, it.ptr->binding);
-		GPU_BindingValue binding_value = DS_VecGet(desc_set->bindings, it.ptr->binding);
+	DS_DynArray(GPU_ResourceAccess) accesses = {&graph->arena};
+	
+	DS_ForArrEach(GPU_Access, &pipeline->accesses, it) {
+		GPU_BindingInfo binding_info = DS_ArrGet(pipeline->layout->bindings, it.ptr->binding);
+		GPU_BindingValue binding_value = DS_ArrGet(desc_set->bindings, it.ptr->binding);
 		
 		uint32_t first_layer = 0, layer_count = 0;
 		uint32_t first_mip_level = 0, mip_level_count = 1;
@@ -2874,7 +2862,7 @@ GPU_API void GPU_OpDispatch(GPU_Graph *graph, uint32_t group_count_x, uint32_t g
 		}
 
 		GPU_ResourceAccess access = {binding_value.ptr, binding_info.kind, access_flags, first_layer, layer_count, first_mip_level, mip_level_count};
-		DS_VecPush(&accesses, access);
+		DS_ArrPush(&accesses, access);
 	}
 	GPU_InsertBarriers(graph, accesses.data, (uint32_t)accesses.length);
 
@@ -3069,7 +3057,7 @@ GPU_API void GPU_OpPrepareRenderPass(GPU_Graph *graph, GPU_RenderPass *render_pa
 	GPU_Check(graph->builder_state.preparing_render_pass == NULL && graph->builder_state.render_pass == NULL);
 		
 	graph->builder_state.preparing_render_pass = render_pass;
-	DS_VecClear(&graph->builder_state.prepared_draw_params);
+	DS_ArrClear(&graph->builder_state.prepared_draw_params);
 }
 
 GPU_API uint32_t GPU_OpPrepareDrawParams(GPU_Graph *graph, GPU_GraphicsPipeline *pipeline, GPU_DescriptorSet *descriptor_set) {
@@ -3077,12 +3065,12 @@ GPU_API uint32_t GPU_OpPrepareDrawParams(GPU_Graph *graph, GPU_GraphicsPipeline 
 
 	uint32_t idx = (uint32_t)graph->builder_state.prepared_draw_params.length;
 	GPU_DrawParams draw_params = {pipeline, descriptor_set};
-	DS_VecPush(&graph->builder_state.prepared_draw_params, draw_params);
+	DS_ArrPush(&graph->builder_state.prepared_draw_params, draw_params);
 	return idx;
 }
 
 GPU_API void GPU_OpBindDrawParams(GPU_Graph *graph, uint32_t draw_params) {
-	GPU_DrawParams dt = DS_VecGet(graph->builder_state.prepared_draw_params, draw_params);
+	GPU_DrawParams dt = DS_ArrGet(graph->builder_state.prepared_draw_params, draw_params);
 		
 	if (dt.pipeline != graph->builder_state.draw_pipeline) {
 		vkCmdBindPipeline(graph->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, dt.pipeline->vk_handle);

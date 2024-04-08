@@ -96,12 +96,11 @@ typedef struct UI_Color {
 #define UI_COLOR  UI_LangAgnosticLiteral(UI_Color)
 
 typedef struct UI_Text {
-	union {
-		DS_Vec(char) text;
-		UI_String str;
-	};
-	DS_Vec(int) line_offsets;
+	DS_DynArray(char) text;
+	DS_DynArray(int) line_offsets;
 } UI_Text;
+
+#define UI_TextToStr(TEXT) UI_LangAgnosticLiteral(STR){(const char*)(TEXT).text.data, (TEXT).text.length}
 
 typedef struct UI_CachedGlyphKey {
 // !!! memcmp is used on this struct, so it must be manually padded for 0-initialized padding.
@@ -253,7 +252,7 @@ typedef struct UI_ImmediateState {
 	
 	UI_Key active_edit_text_box;
 
-	DS_Vec(UI_Box*) roots;
+	DS_DynArray(UI_Box*) roots;
 	DS_Map(UI_Key, UI_Box*) box_from_key;
 	DS_Map(UI_Key, UI_Data) data_from_key;
 } UI_ImmediateState;
@@ -397,8 +396,8 @@ typedef struct UI_State {
 
 	UI_Box *deepest_hovered_box_prev_frame; // NULL by default
 	
-	DS_Vec(UI_Box*) box_stack;
-	DS_Vec(UI_Style*) style_stack;
+	DS_DynArray(UI_Box*) box_stack;
+	DS_DynArray(UI_Style*) style_stack;
 	
 	//bool frame_has_split_atlas;
 
@@ -408,7 +407,7 @@ typedef struct UI_State {
 	uint32_t draw_next_vertex;
 	uint32_t draw_next_index;
 	UI_TextureID draw_active_texture;
-	DS_Vec(UI_DrawCall) draw_calls;
+	DS_DynArray(UI_DrawCall) draw_calls;
 	
 	struct {
 		float scrollbar_origin_before_press;
@@ -558,7 +557,7 @@ UI_API bool UI_EditDouble(UI_Key key, UI_Size w, UI_Size h, double *value);
 
 UI_API bool UI_IsEditTextActive(UI_Key box);
 
-UI_API void UI_TextInit(DS_ArenaOrHeap *arena, UI_Text *text, UI_String initial_value);
+UI_API void UI_TextInit(DS_Allocator *allocator, UI_Text *text, UI_String initial_value);
 UI_API void UI_TextDeinit(UI_Text *text);
 UI_API void UI_TextSet(UI_Text *text, UI_String value);
 
@@ -736,8 +735,8 @@ static UI_ImmediateState *UI_NewFrameState() { return &UI_STATE.imm_new; }
 
 static UI_String UI_GetLineString(int line, const UI_Text *text) {
 	DS_ProfEnter();
-	int lo = line == 0 ? 0 : DS_VecGet(text->line_offsets, line - 1);
-	int hi = line == text->line_offsets.length ? text->text.length : DS_VecGet(text->line_offsets, line);
+	int lo = line == 0 ? 0 : DS_ArrGet(text->line_offsets, line - 1);
+	int hi = line == text->line_offsets.length ? text->text.length : DS_ArrGet(text->line_offsets, line);
 	UI_String result = {text->text.data, hi - lo};
 	DS_ProfExit();
 	return result;
@@ -752,8 +751,8 @@ static bool UI_MarkIsValid(UI_Mark mark, const UI_Text *text) {
 
 static int UI_MarkToByteOffset(UI_Mark mark, const UI_Text *text) {
 	DS_ProfEnter();
-	int line_start = mark.line > 0 ? DS_VecGet(text->line_offsets, mark.line - 1) : 0;
-	UI_String after = STR_SliceAfter(text->str, line_start);
+	int line_start = mark.line > 0 ? DS_ArrGet(text->line_offsets, mark.line - 1) : 0;
+	UI_String after = STR_SliceAfter(UI_TextToStr(*text), line_start);
 
 	int i = 0;
 	int result = text->text.length;
@@ -870,7 +869,7 @@ static void UI_MoveMarkByWord(UI_Mark *mark, const UI_Text *text, int dir) {
 
 	STR_Rune(*next_rune_fn)(UI_String, int*) = dir > 0 ? STR_NextRune : STR_PrevRune;
 
-	for (; r = next_rune_fn(text->str, &byteoffset); i++) {
+	for (; r = next_rune_fn(UI_TextToStr(*text), &byteoffset); i++) {
 		bool whitespace = r == ' ' || r == '\t';
 		bool alnum = (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_';
 
@@ -966,11 +965,11 @@ UI_API void UI_ApplyEditTextRequest(UI_Text *text, const UI_EditTextRequest *req
 		int end_byteoffset = UI_MarkToByteOffset(request->replace_to, text);
 	
 		int remove_n = end_byteoffset - start_byteoffset;
-		DS_VecRemoveN(&text->text, start_byteoffset, remove_n);
+		DS_ArrRemoveN(&text->text, start_byteoffset, remove_n);
 	
-		DS_VecRemoveN(&text->line_offsets, request->replace_from.line, request->replace_to.line - request->replace_from.line);
+		DS_ArrRemoveN(&text->line_offsets, request->replace_from.line, request->replace_to.line - request->replace_from.line);
 	
-		DS_ForVecEach(int, &text->line_offsets, it) {
+		DS_ForArrEach(int, &text->line_offsets, it) {
 			*it.ptr -= remove_n;
 		}
 	}
@@ -980,7 +979,7 @@ UI_API void UI_ApplyEditTextRequest(UI_Text *text, const UI_EditTextRequest *req
 		UI_Mark mark = request->replace_from;
 		int byteoffset = UI_MarkToByteOffset(mark, text);
 		
-		DS_VecInsertN(&text->text, byteoffset, insertion.data, insertion.size);
+		DS_ArrInsertN(&text->text, byteoffset, insertion.data, insertion.size);
 
 		int lines_count = 0;
 		for (UI_String remaining = insertion;;) {
@@ -998,22 +997,22 @@ UI_API void UI_ApplyEditTextRequest(UI_Text *text, const UI_EditTextRequest *req
 	
 		if (line_ranges.length > 1) {
 			int inserted_lines = line_ranges.length - 1;
-			DS_VecResizeUndef(&text->line_offsets, text->line_offsets.length + inserted_lines);
+			DS_ArrResizeUndef(&text->line_offsets, text->line_offsets.length + inserted_lines);
 			
 			for (int i = 0; i < line_ranges.length; i++) {
-				DS_VecSet(text->line_offsets, mark.line + i + inserted_lines, DS_VecGet(text->line_offsets, mark.line + 1));
-				DS_VecSet(text->line_offsets, mark.line + i, byteoffset + DS_VecGet(line_ranges, i).min);
+				DS_ArrSet(text->line_offsets, mark.line + i + inserted_lines, DS_ArrGet(text->line_offsets, mark.line + 1));
+				DS_ArrSet(text->line_offsets, mark.line + i, byteoffset + DS_ArrGet(line_ranges, i).min);
 			}
 	
 			mark.col = 0;
 			mark.line += inserted_lines;
 		}
 	
-		StrRange last_line_range = DS_VecGet(line_ranges, line_ranges.length - 1);
+		StrRange last_line_range = DS_ArrGet(line_ranges, line_ranges.length - 1);
 		mark.col += StrRuneCount(StrSlice(insertion, last_line_range.min, last_line_range.max));
 	
 		for (int i = mark.line; i < text->line_offsets.length; i++) {
-			int *line_offset = DS_VecGetPtr(text->line_offsets, i);
+			int *line_offset = DS_ArrGetPtr(text->line_offsets, i);
 			*line_offset += insertion.length;
 		}*/
 	}
@@ -1051,8 +1050,8 @@ UI_API bool UI_EditNumber(UI_Key key, UI_Size w, UI_Size h, void *value, bool is
 	if (text_edit_was_activated) {
 		UI_STATE.edit_number.editing_text = key;
 		
-		DS_VecInit(&UI_STATE.edit_number.text.text);
-		DS_VecPushN(&UI_STATE.edit_number.text.text, value_str.data, value_str.size);
+		DS_ArrInit(&UI_STATE.edit_number.text.text, DS_HEAP);
+		DS_ArrPushN(&UI_STATE.edit_number.text.text, value_str.data, value_str.size);
 		UI_EditTextSelectAll(&UI_STATE.edit_number.text, &UI_STATE.edit_number.editing_text_selection);
 	}
 
@@ -1064,11 +1063,11 @@ UI_API bool UI_EditNumber(UI_Key key, UI_Size w, UI_Size h, void *value, bool is
 
 		if (is_float) {
 			double v;
-			if (STR_ParseFloat(UI_STATE.edit_number.text.str, &v)) *(double*)value = v;
+			if (STR_ParseFloat(UI_TextToStr(UI_STATE.edit_number.text), &v)) *(double*)value = v;
 		}
 		else {
 			int64_t v;
-			if (STR_ParseI64(UI_STATE.edit_number.text.str, &v)) *(int64_t*)value = v;
+			if (STR_ParseI64(UI_TextToStr(UI_STATE.edit_number.text), &v)) *(int64_t*)value = v;
 		}
 		
 		if (!text_edit_was_activated && !editing) {
@@ -1187,18 +1186,18 @@ static void UI_EditTextRequestReplaceRange(UI_Selection *selection, UI_Mark from
 	selection->range[1] = mark;
 }
 
-UI_API void UI_TextInit(DS_ArenaOrHeap *arena, UI_Text *text, UI_String initial_value) {
+UI_API void UI_TextInit(DS_Allocator *allocator, UI_Text *text, UI_String initial_value) {
 	memset(text, 0, sizeof(*text));
-	DS_VecInitA(&text->str, arena);
+	DS_ArrInit(&text->text, allocator);
 	UI_TextSet(text, initial_value);
 }
 
 UI_API void UI_TextDeinit(UI_Text *text) {
-	DS_VecDeinit(&text->str);
+	DS_ArrDeinit(&text->text);
 }
 
 UI_API void UI_TextSet(UI_Text *text, UI_String value) {
-	DS_VecPushN(&text->str, value.data, value.size);
+	DS_ArrPushN(&text->text, value.data, value.size);
 }
 
 UI_API UI_Box *UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool *editing, UI_Selection *selection, UI_EditTextRequest *out_edit_request) {
@@ -1210,7 +1209,7 @@ UI_API UI_Box *UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool 
 	UI_Box *outer = UI_AddBox(key, w, h, UI_BoxFlag_Selectable|UI_BoxFlag_DrawBorder|UI_BoxFlag_Clickable);
 	UI_PushBox(outer);
 
-	UI_Box *inner = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, text.str);
+	UI_Box *inner = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, UI_TextToStr(text));
 
 	bool was_editing = *editing;
 	
@@ -1304,7 +1303,7 @@ UI_API UI_Box *UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool 
 			if (UI_STATE.inputs.set_clipboard_string_fn) {
 				int min = UI_MarkToByteOffset(selection->range[0], &text);
 				int max = UI_MarkToByteOffset(selection->range[1], &text);
-				UI_STATE.inputs.set_clipboard_string_fn(STR_Slice(text.str, min, max), UI_STATE.inputs.user_data);
+				UI_STATE.inputs.set_clipboard_string_fn(STR_Slice(UI_TextToStr(text), min, max), UI_STATE.inputs.user_data);
 			}
 		}
 		
@@ -1726,22 +1725,22 @@ UI_API bool UI_IsHoveredIdle(UI_Key box) {
 }
 
 UI_API UI_Style *UI_PeekStyle(void) {
-	return DS_VecPeek(UI_STATE.style_stack);
+	return DS_ArrPeek(UI_STATE.style_stack);
 }
 
 UI_API UI_Style *UI_MakeStyle(void) {
-	return DS_Clone(UI_Style, UI_FrameArena(), *DS_VecPeek(UI_STATE.style_stack));
+	return DS_Clone(UI_Style, UI_FrameArena(), *DS_ArrPeek(UI_STATE.style_stack));
 }
 
 UI_API UI_Style *UI_PushStyle(void) {
-	UI_Style *style = DS_Clone(UI_Style, UI_FrameArena(), *DS_VecPeek(UI_STATE.style_stack));
-	DS_VecPush(&UI_STATE.style_stack, style);
+	UI_Style *style = DS_Clone(UI_Style, UI_FrameArena(), *DS_ArrPeek(UI_STATE.style_stack));
+	DS_ArrPush(&UI_STATE.style_stack, style);
 	return style;
 }
 
 UI_API void UI_PopStyle(UI_Style *style) {
-	UI_CHECK(DS_VecPeek(UI_STATE.style_stack) == style);
-	DS_VecPop(&UI_STATE.style_stack);
+	UI_CHECK(DS_ArrPeek(UI_STATE.style_stack) == style);
+	DS_ArrPop(&UI_STATE.style_stack);
 }
 
 UI_API UI_Data *UI_DataFromKey(UI_Key key) {
@@ -1781,7 +1780,7 @@ UI_API UI_Box *UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
 	UI_Box *box = UI_BoxFromKey(key);
 	UI_CHECK(!(box->flags & UI_BoxFlag_HasCalledAddBox)); // If this fails, then a box with the same key has been added during this frame already.
 
-	box->parent = DS_VecPeek(UI_STATE.box_stack);
+	box->parent = DS_ArrPeek(UI_STATE.box_stack);
 	box->flags = flags | UI_BoxFlag_HasCalledAddBox;
 	box->size[0] = w;
 	box->size[1] = h;
@@ -1794,7 +1793,7 @@ UI_API UI_Box *UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
 		box->parent->first_child[1] = box;
 	}
 	else {
-		DS_VecPush(&UI_STATE.imm_new.roots, box);
+		DS_ArrPush(&UI_STATE.imm_new.roots, box);
 	}
 
 	if (UI_STATE.imm_old.deepest_clicking_down_box == key &&
@@ -1829,13 +1828,13 @@ UI_API UI_Box *UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
 
 UI_API void UI_PushBox(UI_Box *box) {
 	DS_ProfEnter();
-	DS_VecPush(&UI_STATE.box_stack, box);
+	DS_ArrPush(&UI_STATE.box_stack, box);
 	DS_ProfExit();
 }
 
 UI_API void UI_PopBox(UI_Box *box) {
 	DS_ProfEnter();
-	UI_Box *popped = DS_VecPop(&UI_STATE.box_stack);
+	UI_Box *popped = DS_ArrPop(&UI_STATE.box_stack);
 	UI_CHECK(popped == box);
 	DS_ProfExit();
 }
@@ -1973,15 +1972,15 @@ UI_API void UI_BeginFrame(const UI_Inputs *inputs, UI_Vec2 window_size) {
 
 	UI_STATE.imm_old = UI_STATE.imm_new;
 	memset(&UI_STATE.imm_new, 0, sizeof(UI_STATE.imm_new));
-	DS_MapInitA(&UI_STATE.imm_new.box_from_key, &UI_STATE.new_frame_arena);
-	DS_MapInitA(&UI_STATE.imm_new.data_from_key, &UI_STATE.new_frame_arena);
-	DS_VecInitA(&UI_STATE.imm_new.roots, &UI_STATE.new_frame_arena);
+	DS_MapInit(&UI_STATE.imm_new.box_from_key, &UI_STATE.new_frame_arena);
+	DS_MapInit(&UI_STATE.imm_new.data_from_key, &UI_STATE.new_frame_arena);
+	DS_ArrInit(&UI_STATE.imm_new.roots, &UI_STATE.new_frame_arena);
 	//UI_ResetImmediateState(&UI_.imm_new, &UI_.new_frame_arena);
 	
 	UI_STATE.frame_idx += 1;
 
 	//UI_STATE.frame_has_split_atlas = false;
-	DS_VecInitA(&UI_STATE.draw_calls, &UI_STATE.new_frame_arena);
+	DS_ArrInit(&UI_STATE.draw_calls, &UI_STATE.new_frame_arena);
 	//UI_.atlas_needs_reupload = false;
 
 	{ // Early input
@@ -2030,7 +2029,7 @@ UI_API void UI_BeginFrame(const UI_Inputs *inputs, UI_Vec2 window_size) {
 	style.text_padding = UI_VEC2{10.f, 5.f};
 	style.child_padding = UI_VEC2{12.f, 12.f};
 	style.text_color = UI_COLOR{255, 255, 255, 255};
-	DS_VecPush(&UI_STATE.style_stack, DS_Clone(UI_Style, UI_STATE.persistent_arena, style));
+	DS_ArrPush(&UI_STATE.style_stack, DS_Clone(UI_Style, UI_STATE.persistent_arena, style));
 
 	DS_ProfExit();
 }
@@ -2043,7 +2042,7 @@ UI_API void UI_Deinit(void) {
 	UI_STATE.backend.destroy_buffer(1);
 	UI_STATE.backend.destroy_atlas(0);
 
-	DS_MemFree(UI_STATE.atlas_buffer_grayscale);
+	DS_MemFree(DS_HEAP, UI_STATE.atlas_buffer_grayscale);
 }
 
 UI_API void UI_Init(DS_Arena *persistent_arena, const UI_Backend *backend) {
@@ -2052,8 +2051,8 @@ UI_API void UI_Init(DS_Arena *persistent_arena, const UI_Backend *backend) {
 	memset(&UI_STATE, 0, sizeof(UI_STATE));
 	UI_STATE.persistent_arena = persistent_arena;
 	UI_STATE.backend = *backend;
-	DS_ArenaInit(&UI_STATE.old_frame_arena, DS_KIB(4));
-	DS_ArenaInit(&UI_STATE.new_frame_arena, DS_KIB(4));
+	DS_ArenaInit(&UI_STATE.old_frame_arena, DS_KIB(4), DS_HEAP);
+	DS_ArenaInit(&UI_STATE.new_frame_arena, DS_KIB(4), DS_HEAP);
 
 	stbtt_PackBegin(&UI_STATE.pack_context, NULL, UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE, 0, UI_GLYPH_PADDING, NULL);
 
@@ -2083,7 +2082,7 @@ UI_API void UI_Init(DS_Arena *persistent_arena, const UI_Backend *backend) {
 	//UI_.atlas_staging_buffer = GPU_MakeBuffer(sizeof(uint32_t)*UI_GLYPH_MAP_SIZE*UI_GLYPH_MAP_SIZE, GPU_BufferFlag_CPU, NULL);
 	//memset(UI_.atlas_staging_buffer->data, 0, UI_.atlas_staging_buffer->size);
 	
-	UI_STATE.atlas_buffer_grayscale = (uint8_t*)DS_MemAlloc(sizeof(uint8_t)*UI_GLYPH_MAP_SIZE*UI_GLYPH_MAP_SIZE);
+	UI_STATE.atlas_buffer_grayscale = (uint8_t*)DS_MemAlloc(DS_HEAP, sizeof(uint8_t)*UI_GLYPH_MAP_SIZE*UI_GLYPH_MAP_SIZE);
 	memset(UI_STATE.atlas_buffer_grayscale, 0, UI_GLYPH_MAP_SIZE*UI_GLYPH_MAP_SIZE);
 	UI_STATE.pack_context.pixels = UI_STATE.atlas_buffer_grayscale;
 
@@ -2102,9 +2101,9 @@ UI_API void UI_Init(DS_Arena *persistent_arena, const UI_Backend *backend) {
 		// UI_FontInit(&UI_.icons_font, icons_ttf.data, -2.f);
 	}
 
-	DS_VecInitA(&UI_STATE.style_stack, UI_STATE.persistent_arena);
-	DS_VecInitA(&UI_STATE.box_stack, UI_STATE.persistent_arena);
-	DS_VecPush(&UI_STATE.box_stack, NULL);
+	DS_ArrInit(&UI_STATE.style_stack, UI_STATE.persistent_arena);
+	DS_ArrInit(&UI_STATE.box_stack, UI_STATE.persistent_arena);
+	DS_ArrPush(&UI_STATE.box_stack, NULL);
 	
 	DS_ProfExit();
 }
@@ -2271,7 +2270,7 @@ static void UI_FinalizeDrawBatch() {
 	DS_ProfEnter();
 	uint32_t first_index = 0;
 	if (UI_STATE.draw_calls.length > 0) {
-		UI_DrawCall last = DS_VecPeek(UI_STATE.draw_calls);
+		UI_DrawCall last = DS_ArrPeek(UI_STATE.draw_calls);
 		first_index = last.first_index + last.index_count;
 	}
 
@@ -2283,7 +2282,7 @@ static void UI_FinalizeDrawBatch() {
 		draw_call.index_count = index_count;
 		draw_call.vertex_buffer_id = 0;
 		draw_call.index_buffer_id = 1;
-		DS_VecPush(&UI_STATE.draw_calls, draw_call);
+		DS_ArrPush(&UI_STATE.draw_calls, draw_call);
 	}
 	DS_ProfExit();
 }
@@ -2317,7 +2316,7 @@ UI_API void UI_EndFrame(UI_Outputs *outputs/*, GPU_Graph *graph, GPU_DescriptorA
 	UI_FinalizeDrawBatch();
 
 	UI_CHECK(UI_STATE.style_stack.length == 1);
-	DS_VecPop(&UI_STATE.style_stack);
+	DS_ArrPop(&UI_STATE.style_stack);
 
 	UI_STATE.outputs.draw_calls = UI_STATE.draw_calls.data;
 	UI_STATE.outputs.draw_calls_count = UI_STATE.draw_calls.length;
@@ -2431,7 +2430,7 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 
 UI_API void UI_FontInit(UI_Font *font, const void *ttf_data, float y_offset) {
 	memset(font, 0, sizeof(*font));
-	DS_MapInit(&font->glyph_map);
+	DS_MapInit(&font->glyph_map, DS_HEAP);
 	
 	font->data = (const unsigned char*)ttf_data;
 	font->y_offset = y_offset;
@@ -2979,11 +2978,11 @@ UI_API void UI_DrawPolyline(UI_Vec2 *points, int points_count, float thickness, 
 
 	UI_Vec2 start_dir, end_dir;
 
-	DS_Vec(UI_Vec2) line_normals = {UI_FrameArena()};
-	DS_VecResizeUndef(&line_normals, points_count - 1);
+	DS_DynArray(UI_Vec2) line_normals = {UI_FrameArena()};
+	DS_ArrResizeUndef(&line_normals, points_count - 1);
 	
-	DS_Vec(float) distances = {UI_FrameArena()};
-	DS_VecResizeUndef(&distances, points_count);
+	DS_DynArray(float) distances = {UI_FrameArena()};
+	DS_ArrResizeUndef(&distances, points_count);
 
 	float total_distance = 0.f;
 
@@ -2995,17 +2994,17 @@ UI_API void UI_DrawPolyline(UI_Vec2 *points, int points_count, float thickness, 
 		float length = sqrtf(dir.x * dir.x + dir.y * dir.y);
 		dir = UI_MulV2F(dir, 1.f / length); // normalize
 
-		DS_VecSet(distances, i, total_distance);
+		DS_ArrSet(distances, i, total_distance);
 		total_distance += length;
 
 		UI_Vec2 dir_rotated = {-dir.y, dir.x}; // rotate counter-clockwise
-		DS_VecSet(line_normals, i, dir_rotated); 
+		DS_ArrSet(line_normals, i, dir_rotated); 
 
 		if (i == 0) start_dir = dir;
 		if (i == line_normals.length - 1) end_dir = dir;
 	}
 	
-	DS_VecSet(distances, points_count - 1, total_distance);
+	DS_ArrSet(distances, points_count - 1, total_distance);
 	
 	int before_first_line = 0;
 	int after_last_line = points_count - 2; // we can wrap these if we want the polyline to loop
@@ -3013,7 +3012,7 @@ UI_API void UI_DrawPolyline(UI_Vec2 *points, int points_count, float thickness, 
 	uint32_t prev_v_left, prev_v_right;
 
 	for (int i = 0; i < points_count; i++) {
-		// float distance = DS_VecGet(distances, i) / total_distance;
+		// float distance = DS_ArrGet(distances, i) / total_distance;
 
 		UI_Vec2 p = points[i];
 		
@@ -3021,8 +3020,8 @@ UI_API void UI_DrawPolyline(UI_Vec2 *points, int points_count, float thickness, 
 		if (i == 0) p = UI_AddV2(p, UI_MulV2F(start_dir, -half_thickness));
 		if (i == points_count - 1) p = UI_AddV2(p, UI_MulV2F(end_dir, half_thickness));
 
-		UI_Vec2 n1 = DS_VecGet(line_normals, i == 0 ? before_first_line : i - 1);
-		UI_Vec2 n2 = DS_VecGet(line_normals, i == points_count - 1 ? after_last_line : i);
+		UI_Vec2 n1 = DS_ArrGet(line_normals, i == 0 ? before_first_line : i - 1);
+		UI_Vec2 n2 = DS_ArrGet(line_normals, i == points_count - 1 ? after_last_line : i);
 		UI_Vec2 avrg_normal = UI_AddV2(n1, n2); // NOTE: this does not need to be normalized, as the math works out the same.
 
 		uint32_t first_new_vertex;
@@ -3034,7 +3033,7 @@ UI_API void UI_DrawPolyline(UI_Vec2 *points, int points_count, float thickness, 
 
 		float t = half_thickness / (avrg_normal.x*n1.x + avrg_normal.y*n1.y);
 
-		if (true) {// && HMM_DotDS_Vec2(n1, n2) >= 0) { // internal angle is less than 90 degrees?
+		if (true) {// && HMM_DotDS_Arr2(n1, n2) >= 0) { // internal angle is less than 90 degrees?
 			UI_Vec2 miter_left = UI_AddV2(p, UI_MulV2F(avrg_normal, t));
 			UI_Vec2 miter_right = UI_SubV2(p, UI_MulV2F(avrg_normal, t));
 			v[0] = UI_DRAW_VERTEX{{miter_left.x, miter_left.y},   {0.f, 0.f}, color};

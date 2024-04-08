@@ -41,7 +41,7 @@ typedef struct BUILD_ProjectOptions {
 	bool disable_warning_unhandled_switch_cases;
 	bool disable_warning_shadowed_locals;
 
-	bool enable_aslr; // Enable address-space layout randomization
+	bool disable_aslr; // Disable address-space layout randomization
 
 	// By default, these are false, and thus will be set to /MT
 	// https://learn.microsoft.com/en-us/cpp/build/reference/md-mt-ld-use-run-time-library
@@ -957,7 +957,7 @@ static bool BUILD_GenerateVisualStudioProject(BUILD_Arena *arena, const BUILD_Pr
 				
 				BUILD_Print1(&s, "/IGNORE:4099 "); // LNK4099: PDB ... was not found with ... or at ''; linking object as if no debug info
 				
-				if (!project->opts.enable_aslr) BUILD_Print1(&s, "/DYNAMICBASE:NO ");
+				if (project->opts.disable_aslr) BUILD_Print1(&s, "/DYNAMICBASE:NO ");
 				
 				BUILD_Print1(&s, "</AdditionalOptions>\n");
 			}

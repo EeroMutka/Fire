@@ -324,7 +324,7 @@ typedef struct OS_DefaultArena {
 #ifdef OS_USE_FIRE_DS_ARENA
 #define OS_CUSTOM_ARENA
 #define OS_Arena DS_Arena
-#define OS_ArenaInit_Custom(arena, block_size)      DS_ArenaInit(arena, block_size)
+#define OS_ArenaInit_Custom(arena, block_size)      DS_ArenaInit(arena, block_size, DS_HEAP)
 #define OS_ArenaDeinit_Custom(arena)                DS_ArenaDeinit(arena)
 #define OS_ArenaPush_Custom(arena, size, alignment) DS_ArenaPushEx(arena, size, alignment)
 #define OS_ArenaReset_Custom(arena)                 DS_ArenaReset(arena)

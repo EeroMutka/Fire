@@ -48,7 +48,7 @@ static UI_Outputs g_ui_outputs;
 static UI_Text g_dummy_text;
 static UI_Text g_dummy_text_2;
 
-static DS_Vec(TreeSpecie) g_trees;
+static DS_DynArray(TreeSpecie) g_trees;
 
 static uint32_t g_window_width = 1200;
 static uint32_t g_window_height = 900;
@@ -222,9 +222,9 @@ static void UpdateAndRender() {
 		UI_ArrangersPop(arrangers, &edit_request);
 
 		if (edit_request.move_from != edit_request.move_to) {
-			TreeSpecie moved = DS_VecGet(g_trees, edit_request.move_from);
-			DS_VecRemove(&g_trees, edit_request.move_from);
-			DS_VecInsert(&g_trees, edit_request.move_to, moved);
+			TreeSpecie moved = DS_ArrGet(g_trees, edit_request.move_from);
+			DS_ArrRemove(&g_trees, edit_request.move_from);
+			DS_ArrInsert(&g_trees, edit_request.move_to, moved);
 		}
 	}
 
@@ -371,17 +371,17 @@ static void AddTreeSpecie(DS_Arena *arena, UI_Key key, STR name, STR information
 	tree.show = false;
 	tree.key = key;
 	UI_TextInit(arena, &tree.text, information);
-	DS_VecPush(&g_trees, tree);
+	DS_ArrPush(&g_trees, tree);
 }
 
 int main() {
 	OS_Init();
 
 	DS_Arena persist, temp;
-	DS_ArenaInit(&persist, 4096);
-	DS_ArenaInit(&temp, 4096);
+	DS_ArenaInit(&persist, 4096, DS_HEAP);
+	DS_ArenaInit(&temp, 4096, DS_HEAP);
 
-	DS_VecInitA(&g_trees, &persist);
+	DS_ArrInit(&g_trees, &persist);
 	AddTreeSpecie(&persist, UI_KEY(), STR_("Pine"), STR_("Pine trees can live up to 1000 years."));
 	AddTreeSpecie(&persist, UI_KEY(), STR_("Oak"), STR_("Oak is commonly used in construction and furniture."));
 	AddTreeSpecie(&persist, UI_KEY(), STR_("Maple"), STR_("Maple trees are typically 10 to 45 meters tall."));
