@@ -493,7 +493,7 @@ typedef DS_DynArray(void) DS_DynArrayRaw;
 
 #define DS_ArrPushN(ARR, ELEMS_DATA, ELEMS_LENGTH) (DS_ArrTypecheck(ARR, ELEMS_DATA), DS_ArrPushNRaw((DS_DynArrayRaw*)(ARR), ELEMS_DATA, ELEMS_LENGTH, DS_ArrElemSize(*ARR)))
 
-#define DS_ArrPushVec(ARR, ELEMS)       (DS_ArrTypecheck(ARR, ELEMS.data), DS_ArrPushNRaw((DS_DynArrayRaw*)(ARR), ELEMS.data, ELEMS.length, DS_ArrElemSize(*ARR)))
+#define DS_ArrPushArr(ARR, ELEMS)       (DS_ArrTypecheck(ARR, ELEMS.data), DS_ArrPushNRaw((DS_DynArrayRaw*)(ARR), ELEMS.data, ELEMS.length, DS_ArrElemSize(*ARR)))
 
 #define DS_ArrInsert(ARR, AT, ELEM)     (DS_ArrTypecheck(ARR, &(ELEM)), DS_ArrInsertRaw((DS_DynArrayRaw*)(ARR), AT, &(ELEM), DS_ArrElemSize(*ARR)))
 
