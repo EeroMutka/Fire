@@ -1992,7 +1992,7 @@ OS_API bool OS_WindowPoll(OS_Arena *arena, OS_Inputs *inputs, OS_Window *window,
 	but that could introduce flickering in some cases.
 	*/
 	if (OS_current_cursor != OS_MouseCursor_Arrow) {
-		wchar_t *cursor_name;
+		wchar_t *cursor_name = NULL;
 		switch (OS_current_cursor) {
 		case OS_MouseCursor_Arrow: cursor_name = (wchar_t*)IDC_ARROW; break;
 		case OS_MouseCursor_Hand: cursor_name = (wchar_t*)IDC_HAND; break;

@@ -43,14 +43,14 @@
 #define DS_DEFAULT_ALIGNMENT sizeof(void*)
 #define DS_MAX_ALIGNMENT     sizeof(void*[2]) // this should be the alignment of the largest SIMD type.
 
-static const char DS_ALLOCATOR_HEADER_TAG_DECL_ARENA;
-static const char DS_ALLOCATOR_HEADER_TAG_DECL_HEAP;
+#define DS_ALLOCATOR_TAG_ARENA 1
+#define DS_ALLOCATOR_TAG_HEAP  2
 
 typedef struct DS_AllocatorHeader {
-	void* tag;
+	int tag;
 } DS_AllocatorHeader;
 
-#define DS_AllocatorIsBuiltin(ALLOCATOR) ((ALLOCATOR)->tag == &DS_ALLOCATOR_HEADER_TAG_DECL_ARENA || (ALLOCATOR)->tag == &DS_ALLOCATOR_HEADER_TAG_DECL_HEAP)
+#define DS_AllocatorIsBuiltin(ALLOCATOR) ((ALLOCATOR)->tag >= 0 && (ALLOCATOR)->tag <= 99)
 static char* DS_AllocatorFn_BuiltIn(DS_AllocatorHeader* allocator, char* old_ptr, int copy_size, int new_size, int new_alignment);
 
 #ifdef DS_USE_CUSTOM_ALLOCATOR
@@ -118,8 +118,8 @@ typedef struct DS_DefaultArena {
 #define DS_LangAgnosticLiteral(T) (T) // in C, struct and union literals are of the form (MyStructType){...}
 #endif
 
-static const DS_AllocatorHeader DS_HEAP_ = { (void*)&DS_ALLOCATOR_HEADER_TAG_DECL_HEAP };
-#define DS_HEAP (DS_Allocator*)(&DS_HEAP_)  // global heap
+static const DS_AllocatorHeader DS_HEAP_ = { DS_ALLOCATOR_TAG_HEAP };
+#define DS_HEAP (DS_Allocator*)(&DS_HEAP_)
 
 // DS_ArenaOrHeap is used to mark arena parameters where you may pass DS_HEAP.
 // When using DS_HEAP, you must also remember call the appropriate deinitialization function that frees the memory.
@@ -439,11 +439,12 @@ DS_API void DS_ArenaReset(DS_Arena* arena);
 
 static char* DS_AllocatorFn_BuiltIn(DS_AllocatorHeader* allocator, char* old_ptr, int copy_size, int new_size, int new_alignment) {
 	char* result = NULL;
-	if (allocator->tag == &DS_ALLOCATOR_HEADER_TAG_DECL_ARENA) {
+	if (allocator->tag == DS_ALLOCATOR_TAG_ARENA) {
 		result = DS_ArenaPush((DS_Arena*)allocator, new_size);
 		if (copy_size > 0) memcpy(result, old_ptr, copy_size);
 	}
 	else {
+		DS_CHECK(allocator->tag == DS_ALLOCATOR_TAG_HEAP);
 		result = (char*)_aligned_realloc(old_ptr, new_size, new_alignment);
 	}
 	return result;
@@ -1210,7 +1211,7 @@ DS_API void DS_ArenaInit(DS_Arena* arena, int block_size, DS_Allocator* allocato
 	DS_ArenaInit_Custom(allocator, arena, block_size);
 #else
 	memset(arena, 0, sizeof(*arena));
-	arena->header.tag = (void*)&DS_ALLOCATOR_HEADER_TAG_DECL_ARENA;
+	arena->header.tag = DS_ALLOCATOR_TAG_ARENA;
 	arena->block_size = block_size;
 	arena->allocator = allocator;
 #endif
