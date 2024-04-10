@@ -8,9 +8,10 @@ typedef struct {
 
 typedef struct UIDemoState {
 	DS_Arena* persist;
-	// UI_Outputs ui_outputs;
+
 	UI_Text dummy_text;
 	UI_Text dummy_text_2;
+
 	DS_DynArray(UIDemoTreeSpecie) trees;
 } UIDemoState;
 
