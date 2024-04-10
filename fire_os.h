@@ -30,7 +30,7 @@
 
 #ifndef OS_STRING_OVERRIDE
 typedef struct OS_String {
-	const char *data;
+	const char* data;
 	int size;
 } OS_String;
 #endif
@@ -59,13 +59,13 @@ typedef struct OS_ConditionVar {
 	uint64_t os_specific;
 } OS_ConditionVar;
 
-typedef struct { void *handle; } OS_DirectoryWatch;
+typedef struct { void* handle; } OS_DirectoryWatch;
 
-typedef void (*OS_ThreadFn)(void *user_data);
+typedef void (*OS_ThreadFn)(void* user_data);
 typedef struct OS_Thread {
-	void *os_specific;
+	void* os_specific;
 	OS_ThreadFn fn;
-	void *user_data;
+	void* user_data;
 } OS_Thread;
 
 typedef struct {
@@ -73,14 +73,14 @@ typedef struct {
 	OS_String file;
 	uint32_t line;
 } OS_DebugStackFrame;
-typedef struct { OS_DebugStackFrame *data; int length; } OS_DebugStackFrameArray;
+typedef struct { OS_DebugStackFrame* data; int length; } OS_DebugStackFrameArray;
 
 // OS-specific window handle. On windows, it's represented as HWND.
-typedef void *OS_WindowHandle;
+typedef void* OS_WindowHandle;
 
 typedef struct { uint64_t tick; } OS_Tick;
 
-typedef struct { void *handle; } OS_DynamicLibrary;
+typedef struct { void* handle; } OS_DynamicLibrary;
 
 typedef struct { uint64_t os_specific; } OS_FileTime;
 
@@ -96,7 +96,7 @@ typedef enum OS_FileOpenMode {
 
 typedef struct OS_File {
 	OS_FileOpenMode mode;
-	void *os_handle;
+	void* os_handle;
 	// ...Maybe I should provide a buffered write function.
 	// uint8_t buffer[OS_FILE_WRITER_BUFFER_SIZE];
 } OS_File;
@@ -106,7 +106,7 @@ typedef struct OS_FileInfo {
 	OS_String name; // includes the file extension if there is one
 	OS_FileTime last_write_time;
 } OS_FileInfo;
-typedef struct { OS_FileInfo *data; int length; } OS_FileInfoArray;
+typedef struct { OS_FileInfo* data; int length; } OS_FileInfoArray;
 
 typedef enum OS_Input {
 	OS_Input_Invalid = 0,
@@ -183,15 +183,15 @@ typedef enum OS_Input {
 	OS_Input_PrintScreen = 283,
 	OS_Input_Pause = 284,
 
-	OS_Input_F1  = 290,
-	OS_Input_F2  = 291,
-	OS_Input_F3  = 292,
-	OS_Input_F4  = 293,
-	OS_Input_F5  = 294,
-	OS_Input_F6  = 295,
-	OS_Input_F7  = 296,
-	OS_Input_F8  = 297,
-	OS_Input_F9  = 298,
+	OS_Input_F1 = 290,
+	OS_Input_F2 = 291,
+	OS_Input_F3 = 292,
+	OS_Input_F4 = 293,
+	OS_Input_F5 = 294,
+	OS_Input_F6 = 295,
+	OS_Input_F7 = 296,
+	OS_Input_F8 = 297,
+	OS_Input_F9 = 298,
 	OS_Input_F10 = 299,
 	OS_Input_F11 = 300,
 	OS_Input_F12 = 301,
@@ -268,7 +268,7 @@ typedef enum OS_MouseCursor {
 	OS_MouseCursor_COUNT
 } OS_MouseCursor;
 
-typedef void(*OS_WindowOnResize)(uint32_t width, uint32_t height, void *user_data);
+typedef void(*OS_WindowOnResize)(uint32_t width, uint32_t height, void* user_data);
 
 typedef uint8_t OS_InputStateFlags;
 typedef enum OS_InputStateFlag {
@@ -289,13 +289,13 @@ typedef struct OS_Inputs {
 
 	OS_InputStateFlags input_states[OS_Input_COUNT];
 
-	uint32_t *text_input_utf32;
+	uint32_t* text_input_utf32;
 	int text_input_utf32_length;
 } OS_Inputs;
 
 typedef struct OS_Log OS_Log;
 struct OS_Log {
-	void(*print)(OS_Log *self, OS_String data);
+	void(*print)(OS_Log* self, OS_String data);
 };
 
 typedef struct OS_Window {
@@ -307,17 +307,17 @@ typedef struct OS_Window {
 
 typedef struct OS_ArenaBlockHeader {
 	int size_including_header;
-	struct OS_ArenaBlockHeader *next; // may be NULL
+	struct OS_ArenaBlockHeader* next; // may be NULL
 } OS_ArenaBlockHeader;
 
 typedef struct OS_ArenaMark {
-	OS_ArenaBlockHeader *block; // If the arena has no blocks allocated yet, then we mark the beginning of the arena by setting this member to NULL.
-	char *ptr;
+	OS_ArenaBlockHeader* block; // If the arena has no blocks allocated yet, then we mark the beginning of the arena by setting this member to NULL.
+	char* ptr;
 } OS_ArenaMark;
 
 typedef struct OS_DefaultArena {
 	int block_size;
-	OS_ArenaBlockHeader *first_block; // may be NULL
+	OS_ArenaBlockHeader* first_block; // may be NULL
 	OS_ArenaMark mark;
 } OS_DefaultArena;
 
@@ -344,10 +344,10 @@ typedef OS_DefaultArena OS_Arena;
 OS_API void OS_Init(void);
 OS_API void OS_Deinit(void);
 
-OS_API void OS_ArenaInit(OS_Arena *arena, int block_size);
-OS_API void OS_ArenaDeinit(OS_Arena *arena);
-OS_API char *OS_ArenaPush(OS_Arena *arena, int size);
-OS_API void OS_ArenaReset(OS_Arena *arena);
+OS_API void OS_ArenaInit(OS_Arena* arena, int block_size);
+OS_API void OS_ArenaDeinit(OS_Arena* arena);
+OS_API char* OS_ArenaPush(OS_Arena* arena, int size);
+OS_API void OS_ArenaReset(OS_Arena* arena);
 
 // OS_API OS_Log *OS_Console();  // Redirects writes to OS console (stdout)
 // OS_API OS_Log *OS_DebugLog(); // Redirects writes to OS debug output
@@ -366,34 +366,34 @@ OS_API void OS_Sleep(uint64_t ms);
 // * if you want to read both stdout and stderr together in the right order, then pass identical pointers to `stdout_log` and `stderr_log`.
 // * `args[0]` should be the path of the executable, where `\' and `/` are accepted path separators.
 // * `out_exit_code`, `stdout_log`, `stderr_log` may be NULL
-OS_API bool OS_RunCommand(OS_String *args, uint32_t args_count, uint32_t *out_exit_code, OS_Log *stdout_log, OS_Log *stderr_log);
+OS_API bool OS_RunCommand(OS_String* args, uint32_t args_count, uint32_t* out_exit_code, OS_Log* stdout_log, OS_Log* stderr_log);
 
 OS_API void OS_OpenFileInDefaultProgram(OS_String file);
 
 // Find the path of an executable given its name, or return an empty string if it's not found.
 // NOTE: `name` must include the file extension!
-OS_API OS_String OS_FindExecutable(OS_Arena *arena, OS_String name);
+OS_API OS_String OS_FindExecutable(OS_Arena* arena, OS_String name);
 
 OS_API bool OS_SetWorkingDir(OS_String dir);
-OS_API OS_String OS_GetWorkingDir(OS_Arena *arena);
+OS_API OS_String OS_GetWorkingDir(OS_Arena* arena);
 
-OS_API OS_String OS_GetExecutablePath(OS_Arena *arena);
+OS_API OS_String OS_GetExecutablePath(OS_Arena* arena);
 
 OS_API void OS_MessageBox(OS_String title, OS_String message);
 
-OS_API OS_DebugStackFrameArray OS_DebugGetStackTrace(OS_Arena *arena);
+OS_API OS_DebugStackFrameArray OS_DebugGetStackTrace(OS_Arena* arena);
 
 // -- Clipboard ----------------------------------------------------------------
 
-OS_API OS_String OS_ClipboardGetText(OS_Arena *arena);
+OS_API OS_String OS_ClipboardGetText(OS_Arena* arena);
 OS_API void OS_ClipboardSetText(OS_String str);
 
 // -- DynamicLibrary -----------------------------------------------------------
 
-OS_API bool OS_LoadDLL(OS_String dll_path, OS_DynamicLibrary *out_dll);
+OS_API bool OS_LoadDLL(OS_String dll_path, OS_DynamicLibrary* out_dll);
 OS_API void OS_UnloadDLL(OS_DynamicLibrary dll);
 
-OS_API void *OS_GetSymbolAddress(OS_DynamicLibrary dll, OS_String symbol); // NULL is returned if not found
+OS_API void* OS_GetSymbolAddress(OS_DynamicLibrary dll, OS_String symbol); // NULL is returned if not found
 
 // -- Files --------------------------------------------------------------------
 
@@ -405,27 +405,27 @@ OS_API bool OS_PathIsAbsolute(OS_String path);
 
 // OLD COMMENT: If `working_dir` is an empty string, the current working directory will be used.
 // `working_dir` must be an absolute path.
-OS_API bool OS_PathToCanonical(OS_Arena *arena, OS_String path, OS_String *out_canonical);
+OS_API bool OS_PathToCanonical(OS_Arena* arena, OS_String path, OS_String* out_canonical);
 
-OS_API bool OS_GetAllFilesInDirectory(OS_Arena *arena, OS_String directory, OS_FileInfoArray *out_files);
+OS_API bool OS_GetAllFilesInDirectory(OS_Arena* arena, OS_String directory, OS_FileInfoArray* out_files);
 // OS_API bool OS_VisitDirectory(OS_WorkingDir working_dir, OS_String path, OS_VisitDirectoryVisitor visitor, void *visitor_userptr);
 
 OS_API bool OS_DirectoryExists(OS_String directory_path);
 OS_API bool OS_DeleteDirectory(OS_String directory_path); // If the directory doesn't already exist, it's treated as a success.
 OS_API bool OS_MakeDirectory(OS_String directory_path);   // If the directory already exists, it's treated as a success.
 
-OS_API bool OS_ReadEntireFile(OS_Arena *arena, OS_String file_path, OS_String *out_str);
+OS_API bool OS_ReadEntireFile(OS_Arena* arena, OS_String file_path, OS_String* out_str);
 OS_API bool OS_WriteEntireFile(OS_String file_path, OS_String data);
 
-OS_API bool OS_FileOpen(OS_String file_path, OS_FileOpenMode mode, OS_File *out_file);
-OS_API bool OS_FileClose(OS_File *file);
-OS_API uint64_t OS_FileSize(OS_File *file);
-OS_API size_t OS_FileRead(OS_File *file, void *dst, size_t size);
-OS_API bool OS_FileWrite(OS_File *file, OS_String data);
-OS_API uint64_t OS_FileGetCursor(OS_File *file);
-OS_API bool OS_FileSetCursor(OS_File *file, uint64_t position);
+OS_API bool OS_FileOpen(OS_String file_path, OS_FileOpenMode mode, OS_File* out_file);
+OS_API bool OS_FileClose(OS_File* file);
+OS_API uint64_t OS_FileSize(OS_File* file);
+OS_API size_t OS_FileRead(OS_File* file, void* dst, size_t size);
+OS_API bool OS_FileWrite(OS_File* file, OS_String data);
+OS_API uint64_t OS_FileGetCursor(OS_File* file);
+OS_API bool OS_FileSetCursor(OS_File* file, uint64_t position);
 
-OS_API bool OS_FileModtime(OS_String file_path, OS_FileTime *out_modtime); // Returns false if the file does not exist
+OS_API bool OS_FileModtime(OS_String file_path, OS_FileTime* out_modtime); // Returns false if the file does not exist
 OS_API int OS_FileCmpModtime(OS_FileTime a, OS_FileTime b); // Returns 1 when a > b, -1 when a < b, 0 when a == b
 OS_API bool OS_CloneFile(OS_String dst_file_path, OS_String src_file_path); // NOTE: the parent directory of the destination filepath must already exist.
 OS_API bool OS_DeleteFile(OS_String file_path);
@@ -433,34 +433,34 @@ OS_API bool OS_DeleteFile(OS_String file_path);
 // * The parent directory of the destination path must already exist.
 OS_API bool OS_CloneDirectory(OS_String dst_directory_path, OS_String src_directory_path);
 
-OS_API bool OS_FilePicker(OS_Arena *arena, OS_String *out_filepath);
-OS_API bool OS_FolderPicker(OS_Arena *arena, OS_String *out_path);
+OS_API bool OS_FilePicker(OS_Arena* arena, OS_String* out_filepath);
+OS_API bool OS_FolderPicker(OS_Arena* arena, OS_String* out_path);
 
 // -- Directory Watch ---------------------------------------------------------
 
-OS_API bool OS_InitDirectoryWatch(OS_DirectoryWatch *watch, OS_String directory_path);
-OS_API void OS_DeinitDirectoryWatch(OS_DirectoryWatch *watch); // you may call this on a zero/deinitialized OS_DirectoryWatch
+OS_API bool OS_InitDirectoryWatch(OS_DirectoryWatch* watch, OS_String directory_path);
+OS_API void OS_DeinitDirectoryWatch(OS_DirectoryWatch* watch); // you may call this on a zero/deinitialized OS_DirectoryWatch
 
-OS_API bool OS_DirectoryWatchHasChanges(OS_DirectoryWatch *watch);
+OS_API bool OS_DirectoryWatchHasChanges(OS_DirectoryWatch* watch);
 
 // -- Threads -----------------------------------------------------------------
 
 // NOTE: The `thread` pointer may not be moved or copied while in use.
 // * if `debug_name` is NULL, no debug name will be specified
-OS_API void OS_ThreadStart(OS_Thread *thread, OS_ThreadFn fn, void *user_data, OS_String *debug_name);
-OS_API void OS_ThreadJoin(OS_Thread *thread);
+OS_API void OS_ThreadStart(OS_Thread* thread, OS_ThreadFn fn, void* user_data, OS_String* debug_name);
+OS_API void OS_ThreadJoin(OS_Thread* thread);
 
-OS_API void OS_MutexInit(OS_Mutex *mutex);
-OS_API void OS_MutexDestroy(OS_Mutex *mutex);
-OS_API void OS_MutexLock(OS_Mutex *mutex);
-OS_API void OS_MutexUnlock(OS_Mutex *mutex);
+OS_API void OS_MutexInit(OS_Mutex* mutex);
+OS_API void OS_MutexDestroy(OS_Mutex* mutex);
+OS_API void OS_MutexLock(OS_Mutex* mutex);
+OS_API void OS_MutexUnlock(OS_Mutex* mutex);
 
 // NOTE: A condition variable cannot be moved or copied while in use.
-OS_API void OS_ConditionVarInit(OS_ConditionVar *condition_var);
-OS_API void OS_ConditionVarDestroy(OS_ConditionVar *condition_var);
-OS_API void OS_ConditionVarSignal(OS_ConditionVar *condition_var);
-OS_API void OS_ConditionVarBroadcast(OS_ConditionVar *condition_var);
-OS_API void OS_ConditionVarWait(OS_ConditionVar *condition_var, OS_Mutex *lock);
+OS_API void OS_ConditionVarInit(OS_ConditionVar* condition_var);
+OS_API void OS_ConditionVarDestroy(OS_ConditionVar* condition_var);
+OS_API void OS_ConditionVarSignal(OS_ConditionVar* condition_var);
+OS_API void OS_ConditionVarBroadcast(OS_ConditionVar* condition_var);
+OS_API void OS_ConditionVarWait(OS_ConditionVar* condition_var, OS_Mutex* lock);
 // OS_API void OS_ConditionVarWaitEx(OS_ConditionVar *condition_var, OS_Mutex *lock, Int wait_milliseconds);
 
 //OS_API Semaphore *OS_SemaphoreCreate(); // Starts as 0
@@ -476,10 +476,10 @@ OS_API double OS_DurationInSeconds(OS_Tick start, OS_Tick end);
 
 // -- Window creation ---------------------------------------------------------
 
-OS_API bool OS_InputIsDown(const OS_Inputs *inputs, OS_Input input);
-OS_API bool OS_InputWasPressed(const OS_Inputs *inputs, OS_Input input);
-OS_API bool OS_InputWasPressedOrRepeat(const OS_Inputs *inputs, OS_Input input);
-OS_API bool OS_InputWasReleased(const OS_Inputs *inputs, OS_Input input);
+OS_API bool OS_InputIsDown(const OS_Inputs* inputs, OS_Input input);
+OS_API bool OS_InputWasPressed(const OS_Inputs* inputs, OS_Input input);
+OS_API bool OS_InputWasPressedOrRepeat(const OS_Inputs* inputs, OS_Input input);
+OS_API bool OS_InputWasReleased(const OS_Inputs* inputs, OS_Input input);
 
 /*
  NOTE: After calling `OS_WindowCreateNoShow`, the window will remain hidden.
@@ -490,11 +490,11 @@ OS_API bool OS_InputWasReleased(const OS_Inputs *inputs, OS_Input input);
  window doesn't have to wait for the initialization.
 */
 OS_API OS_Window OS_WindowCreateHidden(uint32_t width, uint32_t height, OS_String name);
-OS_API void OS_WindowShow_(OS_Window *window);
+OS_API void OS_WindowShow_(OS_Window* window);
 
 OS_API OS_Window OS_WindowCreate(uint32_t width, uint32_t height, OS_String name);
 
-OS_API bool OS_SetFullscreen(OS_Window *window, bool fullscreen);
+OS_API bool OS_SetFullscreen(OS_Window* window, bool fullscreen);
 
 // * Returns `false` when the window is closed.
 // * The reason we provide a callback for window resizes instead of returning the size is that, when resizing, Windows doesn't
@@ -503,7 +503,7 @@ OS_API bool OS_SetFullscreen(OS_Window *window, bool fullscreen);
 //   you should do it inside `on_resize`.
 // * on_resize may be NULL
 // * inputs is a stateful data structure and should be initialized and kept around across multiple frames. TODO: refactor this and return an array of events instead.
-OS_API bool OS_WindowPoll(OS_Arena *arena, OS_Inputs *inputs, OS_Window *window, OS_WindowOnResize on_resize, void *user_data);
+OS_API bool OS_WindowPoll(OS_Arena* arena, OS_Inputs* inputs, OS_Window* window, OS_WindowOnResize on_resize, void* user_data);
 
 OS_API void OS_SetMouseCursor(OS_MouseCursor cursor);
 OS_API void OS_LockAndHideMouseCursor();
@@ -532,13 +532,13 @@ typedef OS_Vec(char) OS_VecRaw;
 	OS_VecReserveRaw((OS_VecRaw*)(VEC), (VEC)->length + 1, sizeof(*(VEC)->data)); \
 	(VEC)->data[(VEC)->length++] = __VA_ARGS__; } while (0)
 
-static void OS_VecReserveRaw(OS_VecRaw *array, int capacity, int elem_size) {
+static void OS_VecReserveRaw(OS_VecRaw* array, int capacity, int elem_size) {
 	int new_capacity = array->capacity;
 	while (capacity > new_capacity) {
 		new_capacity = new_capacity == 0 ? 8 : new_capacity * 2;
 	}
 	if (new_capacity != array->capacity) {
-		char *new_data = OS_ArenaPush(array->arena, new_capacity * elem_size);
+		char* new_data = OS_ArenaPush(array->arena, new_capacity * elem_size);
 		memcpy(new_data, array->data, array->length * elem_size);
 		array->data = new_data;
 		array->capacity = new_capacity;
@@ -547,7 +547,7 @@ static void OS_VecReserveRaw(OS_VecRaw *array, int capacity, int elem_size) {
 
 #define OS_AlignUpPow2(x, p) (((x) + (p) - 1) & ~((p) - 1)) // e.g. (x=30, p=16) -> 32
 
-OS_API void OS_ArenaInit(OS_Arena *arena, int block_size) {
+OS_API void OS_ArenaInit(OS_Arena* arena, int block_size) {
 #ifdef OS_CUSTOM_ARENA
 	OS_ArenaInit_Custom(arena, block_size);
 #else
@@ -557,31 +557,31 @@ OS_API void OS_ArenaInit(OS_Arena *arena, int block_size) {
 #endif
 }
 
-OS_API void OS_ArenaDeinit(OS_Arena *arena) {
+OS_API void OS_ArenaDeinit(OS_Arena* arena) {
 #ifdef OS_CUSTOM_ARENA
 	OS_ArenaDeinit_Custom(arena);
 #else
-	for (OS_ArenaBlockHeader *block = arena->first_block; block;) {
-		OS_ArenaBlockHeader *next = block->next;
+	for (OS_ArenaBlockHeader* block = arena->first_block; block;) {
+		OS_ArenaBlockHeader* next = block->next;
 		free(block);
 		block = next;
 	}
 #endif
 }
 
-OS_API char *OS_ArenaPush(OS_Arena *arena, int size/*, int alignment*/) {
+OS_API char* OS_ArenaPush(OS_Arena* arena, int size/*, int alignment*/) {
 #ifdef OS_CUSTOM_ARENA
-	char *result = OS_ArenaPush_Custom(arena, size, sizeof(void*));
+	char* result = OS_ArenaPush_Custom(arena, size, sizeof(void*));
 	return result;
 #else
 	int alignment = sizeof(void*);
-	bool alignment_is_power_of_2 = ((alignment) & ((alignment) - 1)) == 0;
+	bool alignment_is_power_of_2 = ((alignment) & ((alignment)-1)) == 0;
 	OS_CHECK(alignment != 0 && alignment_is_power_of_2);
 
-	OS_ArenaBlockHeader *curr_block = arena->mark.block; // may be NULL
-	void *curr_ptr = arena->mark.ptr;
+	OS_ArenaBlockHeader* curr_block = arena->mark.block; // may be NULL
+	void* curr_ptr = arena->mark.ptr;
 
-	char *result_address = (char*)OS_AlignUpPow2((uintptr_t)curr_ptr, alignment);
+	char* result_address = (char*)OS_AlignUpPow2((uintptr_t)curr_ptr, alignment);
 	int remaining_space = curr_block ? curr_block->size_including_header - (int)((uintptr_t)result_address - (uintptr_t)curr_block) : 0;
 
 	if (size > remaining_space) { // We need a new block!
@@ -589,8 +589,8 @@ OS_API char *OS_ArenaPush(OS_Arena *arena, int size/*, int alignment*/) {
 		int new_block_size = result_offset + size;
 		if (arena->block_size > new_block_size) new_block_size = arena->block_size;
 
-		OS_ArenaBlockHeader *new_block = NULL;
-		OS_ArenaBlockHeader *next_block = NULL;
+		OS_ArenaBlockHeader* new_block = NULL;
+		OS_ArenaBlockHeader* next_block = NULL;
 
 		// If there is a block at the end of the list that we have used previously, but aren't using anymore, then try to start using that one.
 		if (curr_block && curr_block->next) {
@@ -621,7 +621,7 @@ OS_API char *OS_ArenaPush(OS_Arena *arena, int size/*, int alignment*/) {
 #endif
 }
 
-OS_API void OS_ArenaReset(OS_Arena *arena) {
+OS_API void OS_ArenaReset(OS_Arena* arena) {
 #ifdef OS_CUSTOM_ARENA
 	OS_ArenaReset_Custom(arena);
 #else
@@ -638,14 +638,14 @@ OS_API bool OS_WriteEntireFile(OS_String file_path, OS_String data) {
 	return true;
 }
 
-OS_API bool OS_ReadEntireFile(OS_Arena *arena, OS_String file_path, OS_String *out_str) {
+OS_API bool OS_ReadEntireFile(OS_Arena* arena, OS_String file_path, OS_String* out_str) {
 	OS_File file;
 	if (!OS_FileOpen(file_path, OS_FileOpenMode_Read, &file)) return false;
 
 	uint64_t size = OS_FileSize(&file);
 	if (size >= 2147483647) return false;
 
-	char *data = OS_ArenaPush(arena, (int)size);
+	char* data = OS_ArenaPush(arena, (int)size);
 
 	bool ok = OS_FileRead(&file, data, (int)size) == (int)size;
 
@@ -655,24 +655,24 @@ OS_API bool OS_ReadEntireFile(OS_Arena *arena, OS_String file_path, OS_String *o
 	return ok;
 }
 
-OS_API bool OS_InputIsDown(const OS_Inputs *inputs, OS_Input input) {
+OS_API bool OS_InputIsDown(const OS_Inputs* inputs, OS_Input input) {
 	return inputs->input_states[input] & OS_InputStateFlag_IsDown;
 }
 
-OS_API bool OS_InputWasPressed(const OS_Inputs *inputs, OS_Input input) {
+OS_API bool OS_InputWasPressed(const OS_Inputs* inputs, OS_Input input) {
 	return inputs->input_states[input] & OS_InputStateFlag_WasPressed;
 }
 
-OS_API bool OS_InputWasPressedOrRepeat(const OS_Inputs *inputs, OS_Input input) {
+OS_API bool OS_InputWasPressedOrRepeat(const OS_Inputs* inputs, OS_Input input) {
 	return inputs->input_states[input] & OS_InputStateFlag_WasPressedOrRepeat;
 }
 
-OS_API bool OS_InputWasReleased(const OS_Inputs *inputs, OS_Input input) {
+OS_API bool OS_InputWasReleased(const OS_Inputs* inputs, OS_Input input) {
 	return inputs->input_states[input] & OS_InputStateFlag_WasReleased;
 }
 
-static char *OS_StrToCStr(OS_Arena *arena, OS_String s) {
-	char *data = OS_ArenaPush(arena, s.size + 1);
+static char* OS_StrToCStr(OS_Arena* arena, OS_String s) {
+	char* data = OS_ArenaPush(arena, s.size + 1);
 	memcpy(data, s.data, s.size);
 	data[s.size] = 0;
 	return data;
@@ -683,7 +683,7 @@ static char *OS_StrToCStr(OS_Arena *arena, OS_String s) {
 // - Windows implementation -------------------------------------------------------------------------
 
 // from <process.h>:
-uintptr_t _beginthreadex(void *security, unsigned stack_size, unsigned (*start_address )( void * ), void *arglist, unsigned initflag, unsigned *thrdaddr);
+uintptr_t _beginthreadex(void* security, unsigned stack_size, unsigned (*start_address)(void*), void* arglist, unsigned initflag, unsigned* thrdaddr);
 void _endthreadex(unsigned retval);
 
 #define UNICODE
@@ -707,7 +707,7 @@ static bool OS_mouse_cursor_should_hide;
 
 // ------------------------------------
 
-static OS_Arena *OS_TempArenaBegin(void) {
+static OS_Arena* OS_TempArenaBegin(void) {
 	OS_temp_arena_counter++;
 	return &OS_temp_arena;
 }
@@ -740,28 +740,28 @@ OS_API OS_Tick OS_Now(void) {
 	return tick;
 }
 
-static void OS_ConvertPathSlashes(char *path, int path_length, char from, char to) {
+static void OS_ConvertPathSlashes(char* path, int path_length, char from, char to) {
 	for (int i = 0; i < path_length; i++) {
-		char *c = &path[i];
+		char* c = &path[i];
 		if (*c == from) *c = to;
 	}
 }
 
-static void OS_ConvertPathSlashesW(wchar_t *path, int path_length, wchar_t from, wchar_t to) {
+static void OS_ConvertPathSlashesW(wchar_t* path, int path_length, wchar_t from, wchar_t to) {
 	for (int i = 0; i < path_length; i++) {
-		wchar_t *c = &path[i];
+		wchar_t* c = &path[i];
 		if (*c == from) *c = to;
 	}
 }
 
-static wchar_t *OS_StrToWide(OS_Arena *arena, OS_String str, int num_null_terminations, int *out_len) {
+static wchar_t* OS_StrToWide(OS_Arena* arena, OS_String str, int num_null_terminations, int* out_len) {
 	if (str.size == 0) {
 		if (out_len) *out_len = 0;
 		return NULL;
 	}
 	OS_CHECK(str.size < INT_MAX);
 
-	wchar_t *w_text = NULL;
+	wchar_t* w_text = NULL;
 
 	int w_len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (char*)str.data, (int)str.size, NULL, 0);
 	w_text = (wchar_t*)OS_ArenaPush(arena, sizeof(wchar_t) * (w_len + num_null_terminations));
@@ -775,8 +775,8 @@ static wchar_t *OS_StrToWide(OS_Arena *arena, OS_String str, int num_null_termin
 	return w_text;
 }
 
-static wchar_t *OS_StrToWideWin32Path(OS_Arena *arena, OS_String str, int num_null_terminations, int *out_len) {
-	wchar_t *result = OS_StrToWide(arena, str, num_null_terminations, out_len);
+static wchar_t* OS_StrToWideWin32Path(OS_Arena* arena, OS_String str, int num_null_terminations, int* out_len) {
+	wchar_t* result = OS_StrToWide(arena, str, num_null_terminations, out_len);
 
 	for (intptr_t i = 0; i < str.size; i++) {
 		if (result[i] == L'/') result[i] = L'\\';
@@ -785,26 +785,26 @@ static wchar_t *OS_StrToWideWin32Path(OS_Arena *arena, OS_String str, int num_nu
 	return result;
 }
 
-static OS_String OS_StrFromWide(OS_Arena *arena, wchar_t *str_wide) {
+static OS_String OS_StrFromWide(OS_Arena* arena, wchar_t* str_wide) {
 	if (*str_wide == 0) return OS_STR("");
 
 	int length = WideCharToMultiByte(CP_UTF8, 0, str_wide, -1, NULL, 0, NULL, NULL);
 	if (length <= 0) return OS_STR("");
 
-	char *result_data = OS_ArenaPush(arena, length);
+	char* result_data = OS_ArenaPush(arena, length);
 
 	int length2 = WideCharToMultiByte(CP_UTF8, 0, str_wide, -1, result_data, length, NULL, NULL);
 	if (length2 <= 0) return OS_STR("");
 
-	OS_String result = {result_data, length - 1};
+	OS_String result = { result_data, length - 1 };
 	return result;
 }
 
 OS_API void OS_MessageBox(OS_String title, OS_String message) {
-	OS_Arena *temp = OS_TempArenaBegin();
+	OS_Arena* temp = OS_TempArenaBegin();
 
-	wchar_t *title_utf16 = OS_StrToWide(temp, title, 1, NULL);
-	wchar_t *message_utf16 = OS_StrToWide(temp, message, 1, NULL);
+	wchar_t* title_utf16 = OS_StrToWide(temp, title, 1, NULL);
+	wchar_t* message_utf16 = OS_StrToWide(temp, message, 1, NULL);
 	MessageBoxW(0, message_utf16, title_utf16, MB_OK);
 
 	OS_TempArenaEnd();
@@ -818,17 +818,17 @@ OS_API double OS_DurationInSeconds(OS_Tick start, OS_Tick end) {
 	return (double)elapsed / (double)OS_ticks_per_second;
 }
 
-static void OS_ConsolePrint(OS_Log *self, OS_String str) { OS_PrintString(str); };
+static void OS_ConsolePrint(OS_Log* self, OS_String str) { OS_PrintString(str); };
 
-OS_API OS_Log *OS_Console() {
-	static const OS_Log log = {OS_ConsolePrint};
+OS_API OS_Log* OS_Console() {
+	static const OS_Log log = { OS_ConsolePrint };
 	return (OS_Log*)&log;
 };
 
-static void OS_DebugLogPrint(OS_Log *self, OS_String str) { OS_DebugPrintString(str); };
+static void OS_DebugLogPrint(OS_Log* self, OS_String str) { OS_DebugPrintString(str); };
 
-OS_API OS_Log *OS_DebugLog() {
-	static const OS_Log log = {OS_DebugLogPrint};
+OS_API OS_Log* OS_DebugLog() {
+	static const OS_Log log = { OS_DebugLogPrint };
 	return (OS_Log*)&log;
 }
 
@@ -843,16 +843,16 @@ OS_API void OS_PrintString(OS_String str) {
 	//       using WriteConsoleW doesn't get captured, but WriteFile does.
 	unsigned long num_chars_written;
 	//WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), str_wide, (uint32_t)str_wide_len * 2, &num_chars_written, NULL);
-	
+
 	WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), str.data, (uint32_t)str.size, &num_chars_written, NULL);
 	//OutputDebugStringW(
 	//ScopePop(temp);
 }
 
 OS_API void OS_DebugPrintString(OS_String str) {
-	OS_Arena *temp = OS_TempArenaBegin();
+	OS_Arena* temp = OS_TempArenaBegin();
 
-	wchar_t *str_wide = OS_StrToWide(temp, str, 1, NULL);
+	wchar_t* str_wide = OS_StrToWide(temp, str, 1, NULL);
 	OutputDebugStringW(str_wide);
 
 	OS_TempArenaEnd();
@@ -883,9 +883,9 @@ OS_API uint64_t OS_ReadCycleCounter(void) {
 	return counter;
 }
 
-OS_API bool OS_FileModtime(OS_String file_path, OS_FileTime *out_modtime) {
-	OS_Arena *temp = OS_TempArenaBegin();
-	
+OS_API bool OS_FileModtime(OS_String file_path, OS_FileTime* out_modtime) {
+	OS_Arena* temp = OS_TempArenaBegin();
+
 	// TODO: use GetFileAttributesExW like https://github.com/mmozeiko/TwitchNotify/blob/master/TwitchNotify.c#L568-L583
 	HANDLE h = CreateFileW(OS_StrToWide(temp, file_path, 1, NULL), 0, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY | FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (h != INVALID_HANDLE_VALUE) {
@@ -902,17 +902,17 @@ OS_API int OS_FileCmpModtime(OS_FileTime a, OS_FileTime b) {
 }
 
 OS_API bool OS_CloneFile(OS_String dst_file_path, OS_String src_file_path) {
-	OS_Arena *temp = OS_TempArenaBegin();
-	wchar_t *src_filepath_w = OS_StrToWideWin32Path(temp, src_file_path, 1, NULL);
-	wchar_t *dst_filepath_w = OS_StrToWideWin32Path(temp, dst_file_path, 1, NULL);
+	OS_Arena* temp = OS_TempArenaBegin();
+	wchar_t* src_filepath_w = OS_StrToWideWin32Path(temp, src_file_path, 1, NULL);
+	wchar_t* dst_filepath_w = OS_StrToWideWin32Path(temp, dst_file_path, 1, NULL);
 	BOOL ok = CopyFileW(src_filepath_w, dst_filepath_w, 0) == 1;
 	OS_TempArenaEnd();
 	return ok;
 }
 
 OS_API bool OS_CloneDirectory(OS_String dst_directory_path, OS_String src_directory_path) {
-	OS_Arena *temp = OS_TempArenaBegin();
-	
+	OS_Arena* temp = OS_TempArenaBegin();
+
 	SHFILEOPSTRUCTW s = {0};
 	s.wFunc = FO_COPY;
 	s.pTo = OS_StrToWide(temp, dst_directory_path, 2, NULL);
@@ -925,7 +925,7 @@ OS_API bool OS_CloneDirectory(OS_String dst_directory_path, OS_String src_direct
 }
 
 OS_API bool OS_DeleteFile(OS_String file_path) {
-	OS_Arena *temp = OS_TempArenaBegin();
+	OS_Arena* temp = OS_TempArenaBegin();
 	bool ok = DeleteFileW(OS_StrToWide(temp, file_path, 1, NULL)) == 1;
 	OS_TempArenaEnd();
 	return ok;
@@ -936,9 +936,9 @@ OS_API void OS_Sleep(uint64_t ms) {
 	Sleep((uint32_t)ms);
 }
 
-OS_API bool OS_LoadDLL(OS_String dll_path, OS_DynamicLibrary *out_dll) {
-	OS_Arena *temp = OS_TempArenaBegin();
-	
+OS_API bool OS_LoadDLL(OS_String dll_path, OS_DynamicLibrary* out_dll) {
+	OS_Arena* temp = OS_TempArenaBegin();
+
 	HANDLE handle = LoadLibraryW(OS_StrToWide(temp, dll_path, 1, NULL));
 	out_dll->handle = handle;
 
@@ -946,26 +946,26 @@ OS_API bool OS_LoadDLL(OS_String dll_path, OS_DynamicLibrary *out_dll) {
 	return handle != NULL;
 }
 
-OS_API bool OS_InitDirectoryWatch(OS_DirectoryWatch *watch, OS_String directory_path) {
-	OS_Arena *temp = OS_TempArenaBegin();
-	wchar_t *directory_wide = OS_StrToWide(temp, directory_path, 1, NULL);
+OS_API bool OS_InitDirectoryWatch(OS_DirectoryWatch* watch, OS_String directory_path) {
+	OS_Arena* temp = OS_TempArenaBegin();
+	wchar_t* directory_wide = OS_StrToWide(temp, directory_path, 1, NULL);
 
 	HANDLE handle = FindFirstChangeNotificationW(directory_wide, TRUE,
-		FILE_NOTIFY_CHANGE_FILE_NAME|FILE_NOTIFY_CHANGE_DIR_NAME|FILE_NOTIFY_CHANGE_ATTRIBUTES|FILE_NOTIFY_CHANGE_SIZE|FILE_NOTIFY_CHANGE_LAST_WRITE|FILE_NOTIFY_CHANGE_SECURITY);
+		FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SECURITY);
 	watch->handle = handle;
 
 	OS_TempArenaEnd();
 	return handle != INVALID_HANDLE_VALUE;
 }
 
-OS_API void OS_DeinitDirectoryWatch(OS_DirectoryWatch *watch) {
+OS_API void OS_DeinitDirectoryWatch(OS_DirectoryWatch* watch) {
 	if (watch->handle) {
 		OS_CHECK(FindCloseChangeNotification(watch->handle));
 		watch->handle = 0;
 	}
 }
 
-OS_API bool OS_DirectoryWatchHasChanges(OS_DirectoryWatch *watch) {
+OS_API bool OS_DirectoryWatchHasChanges(OS_DirectoryWatch* watch) {
 	DWORD wait = WaitForSingleObject((HANDLE)watch->handle, 0);
 	if (wait == WAIT_OBJECT_0) {
 		OS_CHECK(FindNextChangeNotification((HANDLE)watch->handle));
@@ -977,36 +977,36 @@ OS_API void OS_UnloadDLL(OS_DynamicLibrary dll) {
 	OS_CHECK(FreeLibrary((HINSTANCE)dll.handle));
 }
 
-OS_API void *OS_GetSymbolAddress(OS_DynamicLibrary dll, OS_String symbol) {
-	OS_Arena *temp = OS_TempArenaBegin();
-	void *addr = GetProcAddress((HINSTANCE)dll.handle, OS_StrToCStr(temp, symbol));
+OS_API void* OS_GetSymbolAddress(OS_DynamicLibrary dll, OS_String symbol) {
+	OS_Arena* temp = OS_TempArenaBegin();
+	void* addr = GetProcAddress((HINSTANCE)dll.handle, OS_StrToCStr(temp, symbol));
 	OS_TempArenaEnd();
 	return addr;
 }
 
-OS_API bool OS_FolderPicker(OS_Arena *arena, OS_String *out_path) {
+OS_API bool OS_FolderPicker(OS_Arena* arena, OS_String* out_path) {
 	bool ok = false;
 	if (SUCCEEDED(CoInitialize(NULL))) {
-		IFileDialog *dialog;
-		
+		IFileDialog* dialog;
+
 #ifdef __cplusplus
 		HRESULT instance_result = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, IID_IFileOpenDialog, (void**)&dialog);
 #else
 		HRESULT instance_result = CoCreateInstance(&CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, &IID_IFileOpenDialog, &dialog);
 #endif
-		
-		if (SUCCEEDED(instance_result)){
+
+		if (SUCCEEDED(instance_result)) {
 			// NOTE: for the following to compile, the CINTERFACE macro must be defined before the Windows COM headers are included!
 
 			dialog->lpVtbl->SetOptions(dialog, FOS_PICKFOLDERS);
 			dialog->lpVtbl->Show(dialog, NULL);
 
-			IShellItem *dialog_result;
-			if (SUCCEEDED(dialog->lpVtbl->GetResult(dialog, &dialog_result))){
-				wchar_t *path_wide = NULL;
-				if (SUCCEEDED(dialog_result->lpVtbl->GetDisplayName(dialog_result, SIGDN_FILESYSPATH, &path_wide))){
+			IShellItem* dialog_result;
+			if (SUCCEEDED(dialog->lpVtbl->GetResult(dialog, &dialog_result))) {
+				wchar_t* path_wide = NULL;
+				if (SUCCEEDED(dialog_result->lpVtbl->GetDisplayName(dialog_result, SIGDN_FILESYSPATH, &path_wide))) {
 					ok = true;
-					
+
 					OS_String result = OS_StrFromWide(arena, path_wide);
 					OS_ConvertPathSlashes((char*)result.data, result.size, '\\', '/');
 					*out_path = result;
@@ -1022,7 +1022,7 @@ OS_API bool OS_FolderPicker(OS_Arena *arena, OS_String *out_path) {
 	return ok;
 }
 
-OS_API bool OS_FilePicker(OS_Arena *arena, OS_String *out_filepath) {
+OS_API bool OS_FilePicker(OS_Arena* arena, OS_String* out_filepath) {
 	wchar_t buffer[OS_SANE_MAX_PATH];
 	buffer[0] = 0;
 
@@ -1094,28 +1094,28 @@ OS_API bool OS_FilePicker(OS_Arena *arena, OS_String *out_filepath) {
 //}
 
 OS_API bool OS_SetWorkingDir(OS_String dir) {
-	OS_Arena *temp = OS_TempArenaBegin();
+	OS_Arena* temp = OS_TempArenaBegin();
 	BOOL ok = SetCurrentDirectoryW(OS_StrToWide(temp, dir, 1, NULL));
 	OS_TempArenaEnd();
 	return ok;
 }
 
-OS_API OS_String OS_GetWorkingDir(OS_Arena *arena) {
+OS_API OS_String OS_GetWorkingDir(OS_Arena* arena) {
 	wchar_t buf[OS_SANE_MAX_PATH];
 	buf[0] = 0;
 	GetCurrentDirectoryW(OS_SANE_MAX_PATH, buf);
 	return OS_StrFromWide(arena, buf);
 }
 
-OS_API OS_String OS_GetExecutablePath(OS_Arena *arena) {
+OS_API OS_String OS_GetExecutablePath(OS_Arena* arena) {
 	wchar_t buf[OS_SANE_MAX_PATH];
 	uint32_t n = GetModuleFileNameW(NULL, buf, OS_SANE_MAX_PATH);
 	OS_CHECK(n > 0 && n < OS_SANE_MAX_PATH);
 	return OS_StrFromWide(arena, buf);
 }
 
-OS_API OS_String OS_ClipboardGetText(OS_Arena *arena) {
-	char *text = NULL;
+OS_API OS_String OS_ClipboardGetText(OS_Arena* arena) {
+	char* text = NULL;
 	int length = 0;
 
 	if (OpenClipboard(NULL)) {
@@ -1134,21 +1134,21 @@ OS_API OS_String OS_ClipboardGetText(OS_Arena *arena) {
 		CloseClipboard();
 	}
 
-	OS_String result = {text, length};
+	OS_String result = { text, length };
 	return result;
 }
 
 OS_API void OS_ClipboardSetText(OS_String text) {
 	if (!OpenClipboard(NULL)) return;
-	OS_Arena *temp = OS_TempArenaBegin();
+	OS_Arena* temp = OS_TempArenaBegin();
 	{
 		EmptyClipboard();
 
 		int utf16_len;
-		wchar_t *utf16 = OS_StrToWide(temp, text, 1, &utf16_len);
+		wchar_t* utf16 = OS_StrToWide(temp, text, 1, &utf16_len);
 
 		HANDLE clipbuffer = GlobalAlloc(0, utf16_len * 2 + 2);
-		char *buffer = (char*)GlobalLock(clipbuffer);
+		char* buffer = (char*)GlobalLock(clipbuffer);
 		memcpy(buffer, utf16, utf16_len * 2 + 2);
 
 		GlobalUnlock(clipbuffer);
@@ -1160,8 +1160,8 @@ OS_API void OS_ClipboardSetText(OS_String text) {
 }
 
 OS_API bool OS_DirectoryExists(OS_String directory_path) {
-	OS_Arena *temp = OS_TempArenaBegin();
-	wchar_t *path_utf16 = OS_StrToWide(temp, directory_path, 1, NULL);
+	OS_Arena* temp = OS_TempArenaBegin();
+	wchar_t* path_utf16 = OS_StrToWide(temp, directory_path, 1, NULL);
 	uint32_t dwAttrib = GetFileAttributesW(path_utf16);
 	OS_TempArenaEnd();
 	return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
@@ -1171,13 +1171,13 @@ OS_API bool OS_PathIsAbsolute(OS_String path) {
 	return path.size > 2 && path.data[1] == ':';
 }
 
-OS_API bool OS_PathToCanonical(OS_Arena *arena, OS_String path, OS_String *out_canonical) {
+OS_API bool OS_PathToCanonical(OS_Arena* arena, OS_String path, OS_String* out_canonical) {
 	// https://pdh11.blogspot.com/2009/05/pathcanonicalize-versus-what-it-says-on.html
 	// https://stackoverflow.com/questions/10198420/open-directory-using-createfile
 
-	OS_Arena *temp = OS_TempArenaBegin();
-	
-	wchar_t *path_utf16 = OS_StrToWide(temp, path, 1, NULL);
+	OS_Arena* temp = OS_TempArenaBegin();
+
+	wchar_t* path_utf16 = OS_StrToWide(temp, path, 1, NULL);
 
 	HANDLE file_handle = CreateFileW(path_utf16, 0, 0, NULL, OPEN_ALWAYS, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	bool dummy_file_was_created = GetLastError() == 0;
@@ -1194,7 +1194,7 @@ OS_API bool OS_PathToCanonical(OS_Arena *arena, OS_String path, OS_String *out_c
 		DeleteFileW(result_utf16);
 	}
 
-	OS_String result = { 0 };
+	OS_String result = {0};
 	if (ok) {
 		result = OS_StrFromWide(arena, result_utf16);
 		result.data += 4; result.size -= 4; // strings returned have `\\?\` - prefix that we should get rid of
@@ -1205,17 +1205,17 @@ OS_API bool OS_PathToCanonical(OS_Arena *arena, OS_String path, OS_String *out_c
 	return ok;
 }
 
-OS_API bool OS_GetAllFilesInDirectory(OS_Arena *arena, OS_String directory, OS_FileInfoArray *out_files) {
-	OS_Arena *temp = OS_TempArenaBegin();
+OS_API bool OS_GetAllFilesInDirectory(OS_Arena* arena, OS_String directory, OS_FileInfoArray* out_files) {
+	OS_Arena* temp = OS_TempArenaBegin();
 
-	char *match_cstr = OS_ArenaPush(temp, directory.size + 2);
+	char* match_cstr = OS_ArenaPush(temp, directory.size + 2);
 	memcpy(match_cstr, directory.data, directory.size);
 	match_cstr[directory.size] = '\\';
 	match_cstr[directory.size + 1] = '*';
-	OS_String match_str = {match_cstr, directory.size + 2};
-	wchar_t *match_wstr = OS_StrToWide(temp, match_str, 1, NULL);
+	OS_String match_str = { match_cstr, directory.size + 2 };
+	wchar_t* match_wstr = OS_StrToWide(temp, match_str, 1, NULL);
 
-	OS_Vec(OS_FileInfo) file_infos = {arena};
+	OS_Vec(OS_FileInfo) file_infos = { arena };
 
 	WIN32_FIND_DATAW find_info;
 	HANDLE handle = FindFirstFileW(match_wstr, &find_info);
@@ -1243,7 +1243,7 @@ OS_API bool OS_GetAllFilesInDirectory(OS_Arena *arena, OS_String directory, OS_F
 
 OS_API bool OS_DeleteDirectory(OS_String directory_path) {
 	if (!OS_DirectoryExists(directory_path)) return true;
-	OS_Arena *temp = OS_TempArenaBegin();
+	OS_Arena* temp = OS_TempArenaBegin();
 
 	SHFILEOPSTRUCTW file_op = {0};
 	file_op.hwnd = NULL;
@@ -1261,8 +1261,8 @@ OS_API bool OS_DeleteDirectory(OS_String directory_path) {
 }
 
 OS_API bool OS_MakeDirectory(OS_String directory_path) {
-	OS_Arena *temp = OS_TempArenaBegin();
-	wchar_t *path_utf16 = OS_StrToWide(temp, directory_path, 1, NULL);
+	OS_Arena* temp = OS_TempArenaBegin();
+	wchar_t* path_utf16 = OS_StrToWide(temp, directory_path, 1, NULL);
 	bool created = CreateDirectoryW(path_utf16, NULL);
 	OS_TempArenaEnd();
 
@@ -1270,9 +1270,9 @@ OS_API bool OS_MakeDirectory(OS_String directory_path) {
 	return GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
-OS_API bool OS_FileOpen(OS_String file_path, OS_FileOpenMode mode, OS_File *out_file) {
-	OS_Arena *temp = OS_TempArenaBegin();
-	wchar_t *filepath_utf16 = OS_StrToWide(temp, file_path, 1, NULL);
+OS_API bool OS_FileOpen(OS_String file_path, OS_FileOpenMode mode, OS_File* out_file) {
+	OS_Arena* temp = OS_TempArenaBegin();
+	wchar_t* filepath_utf16 = OS_StrToWide(temp, file_path, 1, NULL);
 
 	out_file->mode = mode;
 
@@ -1298,7 +1298,7 @@ OS_API bool OS_FileOpen(OS_String file_path, OS_FileOpenMode mode, OS_File *out_
 	return ok;
 }
 
-OS_API size_t OS_FileRead(OS_File *file, void *dst, size_t size) {
+OS_API size_t OS_FileRead(OS_File* file, void* dst, size_t size) {
 	if (dst == NULL) return 0;
 	if (size == 0) return 0;
 
@@ -1317,27 +1317,27 @@ OS_API size_t OS_FileRead(OS_File *file, void *dst, size_t size) {
 	return size;
 }
 
-OS_API uint64_t OS_FileSize(OS_File *file) {
+OS_API uint64_t OS_FileSize(OS_File* file) {
 	uint64_t size;
 	if (GetFileSizeEx(file->os_handle, (LARGE_INTEGER*)&size) != 1) return -1;
 	return size;
 }
 
-OS_API bool OS_FileWrite(OS_File *file, OS_String data) {
+OS_API bool OS_FileWrite(OS_File* file, OS_String data) {
 	if (data.size >= UINT_MAX) return false; // TODO: writing files greater than 4 GB
 
 	unsigned long bytes_written;
 	return WriteFile(file->os_handle, data.data, (uint32_t)data.size, &bytes_written, NULL) == 1 && bytes_written == data.size;
 }
 
-OS_API uint64_t OS_FileGetCursor(OS_File *file) {
+OS_API uint64_t OS_FileGetCursor(OS_File* file) {
 	uint64_t offset;
 	LARGE_INTEGER move = {0};
 	if (SetFilePointerEx(file->os_handle, move, (LARGE_INTEGER*)&offset, FILE_CURRENT) != 1) return -1;
 	return offset;
 }
 
-OS_API bool OS_FileSetCursor(OS_File *file, uint64_t position) {
+OS_API bool OS_FileSetCursor(OS_File* file, uint64_t position) {
 	return SetFilePointerEx(file->os_handle, *(LARGE_INTEGER*)&position, NULL, FILE_BEGIN) == 1;
 }
 
@@ -1346,7 +1346,7 @@ OS_API bool OS_FileSetCursor(OS_File *file, uint64_t position) {
 //	TODO(); //FlushBufferedWriter(&file->buffered_writer);
 //}
 
-OS_API bool OS_FileClose(OS_File *file) {
+OS_API bool OS_FileClose(OS_File* file) {
 	//if (file->mode != OS_FileOpenMode_Read) {
 	//	OS_FileFlush(file);
 	//}
@@ -1356,7 +1356,7 @@ OS_API bool OS_FileClose(OS_File *file) {
 	return ok;
 }
 
-OS_API OS_DebugStackFrameArray OS_DebugGetStackTrace(OS_Arena *arena) {
+OS_API OS_DebugStackFrameArray OS_DebugGetStackTrace(OS_Arena* arena) {
 	// NOTE: for any of this to work, `SymInitialize` must have been called! We do this in OS_Init().
 
 	CONTEXT ctx;
@@ -1402,11 +1402,11 @@ OS_API OS_DebugStackFrameArray OS_DebugGetStackTrace(OS_Arena *arena) {
 		// Using stuff like StrClone is obviously something I do want to do, but that adds a dependency on fire_ds.h arenas...
 
 		int function_len = (int)strlen(sym.s.Name);
-		char *function = OS_ArenaPush(arena, function_len);
+		char* function = OS_ArenaPush(arena, function_len);
 		memcpy(function, sym.s.Name, function_len);
 
 		int filename_len = (int)strlen(Line64.FileName);
-		char *filename = OS_ArenaPush(arena, filename_len);
+		char* filename = OS_ArenaPush(arena, filename_len);
 		memcpy(filename, Line64.FileName, filename_len);
 
 		OS_DebugStackFrame frame = {0};
@@ -1428,17 +1428,17 @@ OS_API OS_DebugStackFrameArray OS_DebugGetStackTrace(OS_Arena *arena) {
 }
 
 OS_API void OS_OpenFileInDefaultProgram(OS_String file) {
-	OS_Arena *temp = OS_TempArenaBegin();
-	wchar_t *name_wide = OS_StrToWide(temp, file, 1, NULL);
+	OS_Arena* temp = OS_TempArenaBegin();
+	wchar_t* name_wide = OS_StrToWide(temp, file, 1, NULL);
 	ShellExecuteW(NULL, NULL, name_wide, NULL, NULL, SW_SHOW);
 	//ShellExecuteW(NULL, NULL, name_wide, NULL, NULL, SW_NORMAL);
 	//ShellExecuteW(NULL, L"Open", name_wide, NULL, NULL, SW_SHOWNORMAL);
 	OS_TempArenaEnd();
 }
 
-OS_API OS_String OS_FindExecutable(OS_Arena *arena, OS_String name) {
-	OS_Arena *temp = OS_TempArenaBegin();
-	wchar_t *name_wide = OS_StrToWide(temp, name, 1, NULL);
+OS_API OS_String OS_FindExecutable(OS_Arena* arena, OS_String name) {
+	OS_Arena* temp = OS_TempArenaBegin();
+	wchar_t* name_wide = OS_StrToWide(temp, name, 1, NULL);
 
 	wchar_t path[OS_SANE_MAX_PATH] = {0};
 	uint32_t dwRet = SearchPathW(NULL, name_wide, NULL, OS_SANE_MAX_PATH, path, NULL);
@@ -1450,8 +1450,8 @@ OS_API OS_String OS_FindExecutable(OS_Arena *arena, OS_String name) {
 	return OS_StrFromWide(arena, path);
 }
 
-OS_API bool OS_RunCommand(OS_String *args, uint32_t args_count, uint32_t *out_exit_code, OS_Log *stdout_log, OS_Log *stderr_log) {
-	OS_Arena *temp = OS_TempArenaBegin();
+OS_API bool OS_RunCommand(OS_String* args, uint32_t args_count, uint32_t* out_exit_code, OS_Log* stdout_log, OS_Log* stderr_log) {
+	OS_Arena* temp = OS_TempArenaBegin();
 
 	// https://learn.microsoft.com/en-us/windows/win32/procthread/creating-a-child-process-with-redirected-input-and-output
 
@@ -1462,14 +1462,14 @@ OS_API bool OS_RunCommand(OS_String *args, uint32_t args_count, uint32_t *out_ex
 	// https://stackoverflow.com/questions/1291291/how-to-accept-command-line-args-ending-in-backslash
 	// https://daviddeley.com/autohotkey/parameters/parameters.htm#WINCRULESDOC
 
-	OS_Vec(char) cmd_string_buf = {temp};
+	OS_Vec(char) cmd_string_buf = { temp };
 
 	for (uint32_t i = 0; i < args_count; i++) {
 		OS_String arg = args[i];
 
 		bool contains_space = false;
 
-		OS_Vec(char) arg_string = {temp};
+		OS_Vec(char) arg_string = { temp };
 
 		for (intptr_t j = 0; j < arg.size; j++) {
 			char c = arg.data[j];
@@ -1518,9 +1518,9 @@ OS_API bool OS_RunCommand(OS_String *args, uint32_t args_count, uint32_t *out_ex
 		if (i < args_count - 1) OS_VecPush(&cmd_string_buf, ' '); // Separate each argument with a space
 	}
 
-	OS_String cmd_string = {cmd_string_buf.data, cmd_string_buf.length};
-	wchar_t *cmd_string_utf16 = OS_StrToWide(temp, cmd_string, 1, NULL);
-	
+	OS_String cmd_string = { cmd_string_buf.data, cmd_string_buf.length };
+	wchar_t* cmd_string_utf16 = OS_StrToWide(temp, cmd_string, 1, NULL);
+
 	PROCESS_INFORMATION process_info = {0};
 
 	// Initialize pipes
@@ -1565,7 +1565,7 @@ OS_API bool OS_RunCommand(OS_String *args, uint32_t args_count, uint32_t *out_ex
 		for (;;) {
 			if (!ReadFile(OUT_Rd, buf, sizeof(buf), &num_read_bytes, NULL)) break;
 			if (stdout_log) {
-				OS_String str = {buf, (int)num_read_bytes};
+				OS_String str = { buf, (int)num_read_bytes };
 				stdout_log->print(stdout_log, str);
 			}
 		}
@@ -1573,7 +1573,7 @@ OS_API bool OS_RunCommand(OS_String *args, uint32_t args_count, uint32_t *out_ex
 		for (;;) {
 			if (!ReadFile(ERR_Rd, buf, sizeof(buf), &num_read_bytes, NULL)) break;
 			if (stderr_log && stdout_log != stderr_log) {
-				OS_String str = {buf, (int)num_read_bytes};
+				OS_String str = { buf, (int)num_read_bytes };
 				stderr_log->print(stderr_log, str);
 			}
 		}
@@ -1582,7 +1582,7 @@ OS_API bool OS_RunCommand(OS_String *args, uint32_t args_count, uint32_t *out_ex
 
 		unsigned long exit_code;
 		ok = ok && GetExitCodeProcess(process_info.hProcess, &exit_code);
-		
+
 		if (out_exit_code) *out_exit_code = exit_code;
 
 		CloseHandle(process_info.hProcess);
@@ -1599,18 +1599,18 @@ OS_API bool OS_RunCommand(OS_String *args, uint32_t args_count, uint32_t *out_ex
 // Window creation & input ------------------
 
 typedef struct WindowProcUserData {
-	OS_Window *window;
-	OS_Inputs *inputs;
+	OS_Window* window;
+	OS_Inputs* inputs;
 
 	OS_Vec(uint32_t) text_input_utf32;
 
 	OS_WindowOnResize on_resize; // may be NULL
-	void *user_data;
+	void* user_data;
 
 	bool should_exit;
 } WindowProcUserData;
 
-static void UpdateKeyInputState(OS_Inputs *inputs, uint64_t vk, OS_InputStateFlags flags) {
+static void UpdateKeyInputState(OS_Inputs* inputs, uint64_t vk, OS_InputStateFlags flags) {
 	OS_Input input = OS_Input_Invalid;
 
 	if ((vk >= OS_Input_0 && vk <= OS_Input_9) || (vk >= OS_Input_A && vk <= OS_Input_Z)) {
@@ -1679,10 +1679,10 @@ static void UpdateKeyInputState(OS_Inputs *inputs, uint64_t vk, OS_InputStateFla
 
 static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t lParam) {
 	// `passed` will be NULL during window creation
-	WindowProcUserData *passed = (WindowProcUserData*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+	WindowProcUserData* passed = (WindowProcUserData*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
 
 	if (passed && (hWnd == (HWND)passed->window->handle)) {
-		OS_Inputs *inputs = passed->inputs;
+		OS_Inputs* inputs = passed->inputs;
 		switch (uMsg) {
 		case WM_INPUT: {
 			RAWINPUT raw_input = {0};
@@ -1808,24 +1808,24 @@ static void OS_RegisterWindowClass() {
 	//wnd_class.hbrBackground
 
 	WNDCLASSEXW wnd_class = {0};
-	wnd_class.cbSize =          sizeof(WNDCLASSEXW);
-	wnd_class.style =           CS_HREDRAW | CS_VREDRAW | CS_OWNDC; // CS_OWNDC is required for OpenGL
-	wnd_class.lpfnWndProc =     OS_WindowProc;
-	wnd_class.cbClsExtra =      0;
-	wnd_class.cbWndExtra =      0;
-	wnd_class.hInstance =       hInst;
-	wnd_class.hIcon =           NULL;
-	wnd_class.hCursor =         LoadCursorW(0, (const wchar_t*)IDC_ARROW);
-	wnd_class.hbrBackground =   NULL;
-	wnd_class.lpszMenuName =    NULL;
-	wnd_class.lpszClassName =   OS_WINDOW_CLASS_NAME;
-	wnd_class.hIconSm =         NULL;
+	wnd_class.cbSize = sizeof(WNDCLASSEXW);
+	wnd_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC; // CS_OWNDC is required for OpenGL
+	wnd_class.lpfnWndProc = OS_WindowProc;
+	wnd_class.cbClsExtra = 0;
+	wnd_class.cbWndExtra = 0;
+	wnd_class.hInstance = hInst;
+	wnd_class.hIcon = NULL;
+	wnd_class.hCursor = LoadCursorW(0, (const wchar_t*)IDC_ARROW);
+	wnd_class.hbrBackground = NULL;
+	wnd_class.lpszMenuName = NULL;
+	wnd_class.lpszClassName = OS_WINDOW_CLASS_NAME;
+	wnd_class.hIconSm = NULL;
 
 	uint64_t atom = RegisterClassExW(&wnd_class);
 	OS_CHECK(atom != 0);
 }
 
-OS_API void OS_WindowShow_(OS_Window *window) {
+OS_API void OS_WindowShow_(OS_Window* window) {
 	OS_CHECK(UpdateWindow((HWND)window->handle) != 0);
 	ShowWindow((HWND)window->handle, SW_SHOW);
 }
@@ -1836,7 +1836,7 @@ OS_API OS_Window OS_WindowCreate(uint32_t width, uint32_t height, OS_String name
 	return window;
 }
 
-OS_API bool OS_SetFullscreen(OS_Window *window, bool fullscreen) {
+OS_API bool OS_SetFullscreen(OS_Window* window, bool fullscreen) {
 	// https://devblogs.microsoft.com/oldnewthing/20100412-00/?p=14353
 
 	bool ok = true;
@@ -1887,7 +1887,7 @@ OS_API OS_Window OS_WindowCreateHidden(uint32_t width, uint32_t height, OS_Strin
 	input_devices[0].usUsage = 0x02;              // HID_USAGE_GENERIC_MOUSE
 	input_devices[0].dwFlags = 0/*RIDEV_NOLEGACY*/;    // adds mouse and also ignores legacy mouse messages
 	input_devices[0].hwndTarget = 0;
-	OS_CHECK(RegisterRawInputDevices(input_devices, sizeof(input_devices)/sizeof(input_devices[0]), sizeof(RAWINPUTDEVICE)) == 1);
+	OS_CHECK(RegisterRawInputDevices(input_devices, sizeof(input_devices) / sizeof(input_devices[0]), sizeof(RAWINPUTDEVICE)) == 1);
 
 	// NOTE: When you use a DPI scale on windows that's not 1, the window that we get back from `CreateWindowExW`
 	// has an incorrect size that's not what we ask for.
@@ -1902,12 +1902,12 @@ OS_API OS_Window OS_WindowCreateHidden(uint32_t width, uint32_t height, OS_Strin
 
 	int32_t x = 200;
 	int32_t y = 200;
-	RECT rect = {x, y, x + (int32_t)width, y + (int32_t)height};
+	RECT rect = { x, y, x + (int32_t)width, y + (int32_t)height };
 
 	// AdjustWindowRect modifies the window rectangle: we give it the client area rectangle, it gives us back the entire window rectangle.
 	AdjustWindowRectEx(&rect, WS_OVERLAPPEDWINDOW, 0, 0);
 
-	OS_Arena *temp = OS_TempArenaBegin();
+	OS_Arena* temp = OS_TempArenaBegin();
 
 	HWND hwnd = CreateWindowExW(0,
 		OS_WINDOW_CLASS_NAME,
@@ -1922,7 +1922,7 @@ OS_API OS_Window OS_WindowCreateHidden(uint32_t width, uint32_t height, OS_Strin
 	OS_CHECK(hwnd != 0);
 
 	OS_TempArenaEnd();
-	
+
 	OS_Window result = {0};
 	result.handle = (OS_WindowHandle)hwnd;
 	return result;
@@ -1932,7 +1932,7 @@ OS_API void OS_SetMouseCursor(OS_MouseCursor cursor) { OS_current_cursor = curso
 
 OS_API void OS_LockAndHideMouseCursor() { OS_mouse_cursor_should_hide = true; }
 
-OS_API bool OS_WindowPoll(OS_Arena *arena, OS_Inputs *inputs, OS_Window *window, OS_WindowOnResize on_resize, void *user_data) {
+OS_API bool OS_WindowPoll(OS_Arena* arena, OS_Inputs* inputs, OS_Window* window, OS_WindowOnResize on_resize, void* user_data) {
 	WindowProcUserData passed = {0};
 	passed.window = window;
 	passed.inputs = inputs;
@@ -1940,7 +1940,7 @@ OS_API bool OS_WindowPoll(OS_Arena *arena, OS_Inputs *inputs, OS_Window *window,
 	passed.user_data = user_data;
 	passed.text_input_utf32.arena = arena;
 	passed.should_exit = false;
-	
+
 	// inputs->characters_count = 0;
 	inputs->mouse_raw_dx = 0;
 	inputs->mouse_raw_dy = 0;
@@ -1948,7 +1948,7 @@ OS_API bool OS_WindowPoll(OS_Arena *arena, OS_Inputs *inputs, OS_Window *window,
 
 	OS_InputStateFlags remove_flags = OS_InputStateFlag_WasReleased | OS_InputStateFlag_WasPressed | OS_InputStateFlag_WasPressedOrRepeat;
 	for (size_t i = 0; i < OS_Input_COUNT; i++) {
-		OS_InputStateFlags *flags = &inputs->input_states[i];
+		OS_InputStateFlags* flags = &inputs->input_states[i];
 		*flags &= ~remove_flags;
 	}
 
@@ -1992,7 +1992,7 @@ OS_API bool OS_WindowPoll(OS_Arena *arena, OS_Inputs *inputs, OS_Window *window,
 	but that could introduce flickering in some cases.
 	*/
 	if (OS_current_cursor != OS_MouseCursor_Arrow) {
-		wchar_t *cursor_name = NULL;
+		wchar_t* cursor_name = NULL;
 		switch (OS_current_cursor) {
 		case OS_MouseCursor_Arrow: cursor_name = (wchar_t*)IDC_ARROW; break;
 		case OS_MouseCursor_Hand: cursor_name = (wchar_t*)IDC_HAND; break;
@@ -2041,18 +2041,18 @@ OS_API bool OS_WindowPoll(OS_Arena *arena, OS_Inputs *inputs, OS_Window *window,
 
 // ----------------------------------------------------------------------------------------------------------------
 
-static uint32_t OS_ThreadEntryFn(void *args) {
-	OS_Thread *thread = (OS_Thread*)args;
+static uint32_t OS_ThreadEntryFn(void* args) {
+	OS_Thread* thread = (OS_Thread*)args;
 	thread->fn(thread->user_data);
 
 	_endthreadex(0);
 	return 0;
 }
 
-OS_API void OS_ThreadStart(OS_Thread *thread, OS_ThreadFn fn, void *user_data, OS_String *debug_name) {
+OS_API void OS_ThreadStart(OS_Thread* thread, OS_ThreadFn fn, void* user_data, OS_String* debug_name) {
 	OS_CHECK(thread->os_specific == NULL);
 
-	OS_Arena *temp = OS_TempArenaBegin();
+	OS_Arena* temp = OS_TempArenaBegin();
 
 	// OS_ThreadEntryFn might be called at any time after calling `_beginthreadex`, and we must pass `fn` and `user_data` to it somehow. We can't pass them
 	// on the stack, because this function might have exited at the point the ThreadEntryFn is entered. So, let's pass them in the OS_Thread structure
@@ -2070,55 +2070,55 @@ OS_API void OS_ThreadStart(OS_Thread *thread, OS_ThreadFn fn, void *user_data, O
 	thread->os_specific = handle;
 
 	if (debug_name) {
-		wchar_t *debug_name_utf16 = OS_StrToWide(temp, *debug_name, 1, NULL);
+		wchar_t* debug_name_utf16 = OS_StrToWide(temp, *debug_name, 1, NULL);
 		SetThreadDescription(handle, debug_name_utf16);
 	}
 
 	OS_TempArenaEnd();
 }
 
-OS_API void OS_ThreadJoin(OS_Thread *thread) {
+OS_API void OS_ThreadJoin(OS_Thread* thread) {
 	WaitForSingleObject((HANDLE)thread->os_specific, INFINITE);
 	CloseHandle((HANDLE)thread->os_specific);
 	memset(thread, 0, sizeof(*thread)); // Do this so that we can safely start a new thread again using this same struct
 }
 
-OS_API void OS_MutexInit(OS_Mutex *mutex) {
+OS_API void OS_MutexInit(OS_Mutex* mutex) {
 	OS_CHECK(sizeof(OS_Mutex) >= sizeof(CRITICAL_SECTION));
 	InitializeCriticalSection((CRITICAL_SECTION*)mutex);
 }
 
-OS_API void OS_MutexDestroy(OS_Mutex *mutex) {
+OS_API void OS_MutexDestroy(OS_Mutex* mutex) {
 	DeleteCriticalSection((CRITICAL_SECTION*)mutex);
 }
 
-OS_API void OS_MutexLock(OS_Mutex *mutex) {
+OS_API void OS_MutexLock(OS_Mutex* mutex) {
 	EnterCriticalSection((CRITICAL_SECTION*)mutex);
 }
 
-OS_API void OS_MutexUnlock(OS_Mutex *mutex) {
+OS_API void OS_MutexUnlock(OS_Mutex* mutex) {
 	LeaveCriticalSection((CRITICAL_SECTION*)mutex);
 }
 
-OS_API void OS_ConditionVarInit(OS_ConditionVar *condition_var) {
+OS_API void OS_ConditionVarInit(OS_ConditionVar* condition_var) {
 	OS_CHECK(sizeof(OS_ConditionVar) >= sizeof(CONDITION_VARIABLE));
 	InitializeConditionVariable((CONDITION_VARIABLE*)condition_var);
 }
 
-OS_API void OS_ConditionVarDestroy(OS_ConditionVar *condition_var) {
+OS_API void OS_ConditionVarDestroy(OS_ConditionVar* condition_var) {
 	// No need to explicitly destroy
 	// https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-initializeconditionvariable
 }
 
-OS_API void OS_ConditionVarWait(OS_ConditionVar *condition_var, OS_Mutex *lock) {
+OS_API void OS_ConditionVarWait(OS_ConditionVar* condition_var, OS_Mutex* lock) {
 	SleepConditionVariableCS((CONDITION_VARIABLE*)condition_var, (CRITICAL_SECTION*)lock, INFINITE);
 }
 
-OS_API void OS_ConditionVarSignal(OS_ConditionVar *condition_var) {
+OS_API void OS_ConditionVarSignal(OS_ConditionVar* condition_var) {
 	WakeConditionVariable((CONDITION_VARIABLE*)condition_var);
 }
 
-OS_API void OS_ConditionVarBroadcast(OS_ConditionVar *condition_var) {
+OS_API void OS_ConditionVarBroadcast(OS_ConditionVar* condition_var) {
 	WakeAllConditionVariable((CONDITION_VARIABLE*)condition_var);
 }
 #endif // OS_IMPLEMENTATION
