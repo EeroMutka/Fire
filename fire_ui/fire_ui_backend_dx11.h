@@ -239,7 +239,7 @@ static void UI_DX11_Deinit(void) {
 
 static void UI_DX11_BeginFrame(void) {}
 
-static void UI_DX11_EndFrame(UI_Outputs *outputs, ID3D11RenderTargetView* framebuffer_rtv, uint32_t window_size[2]) {
+static void UI_DX11_EndFrame(UI_Outputs *outputs, ID3D11RenderTargetView* framebuffer_rtv) {
 	ID3D11DeviceContext *dc = UI_DX11_STATE.device_context;
 
 	for (int i = 0; i < 2; i++) {
@@ -265,14 +265,14 @@ static void UI_DX11_EndFrame(UI_Outputs *outputs, ID3D11RenderTargetView* frameb
 
 	UINT stride = 2*sizeof(float) + 2*sizeof(float) + 4; // pos, uv, color
 	UINT offset = 0;
-	D3D11_VIEWPORT viewport = {0.0f, 0.0f, (float)window_size[0], (float)window_size[1], 0.0f, 1.0f};
+	D3D11_VIEWPORT viewport = {0.0f, 0.0f, UI_STATE.window_size.x, UI_STATE.window_size.y, 0.0f, 1.0f};
 
 	D3D11_MAPPED_SUBRESOURCE constantbufferMSR;
 
 	dc->Map(UI_DX11_STATE.constant_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &constantbufferMSR);
 	float *constants = (float*)constantbufferMSR.pData;
-	constants[0] = 1.f / (float)window_size[0];
-	constants[1] = 1.f / (float)window_size[1];
+	constants[0] = 1.f / UI_STATE.window_size.x;
+	constants[1] = 1.f / UI_STATE.window_size.y;
 	dc->Unmap(UI_DX11_STATE.constant_buffer, 0);
 
 	dc->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
