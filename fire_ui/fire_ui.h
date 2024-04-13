@@ -655,6 +655,7 @@ UI_API inline void UI_AddQuadIndices(uint32_t a, uint32_t b, uint32_t c, uint32_
 UI_API void UI_AddTriangleIndicesAndClip(uint32_t a, uint32_t b, uint32_t c, UI_TextureID texture, UI_ScissorRect scissor);
 UI_API void UI_AddQuadIndicesAndClip(uint32_t a, uint32_t b, uint32_t c, uint32_t d, UI_TextureID texture, UI_ScissorRect scissor);
 
+
 UI_API void UI_DrawRect(UI_Rect rect, UI_Color color, UI_ScissorRect scissor);
 UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, UI_ScissorRect scissor);
 UI_API void UI_DrawRectRounded2(UI_Rect rect, float roundness, UI_Color inner_color, UI_Color outer_color, UI_ScissorRect scissor);
@@ -662,6 +663,8 @@ UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, UI_Sc
 UI_API void UI_DrawRectLines(UI_Rect rect, float thickness, UI_Color color, UI_ScissorRect scissor);
 UI_API void UI_DrawRectLinesRounded(UI_Rect rect, float thickness, float roundness, UI_Color color, UI_ScissorRect scissor);
 UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, float thickness, UI_ScissorRect scissor);
+UI_API void UI_DrawTriangle(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color color, UI_ScissorRect scissor);
 
 UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor);
 
@@ -673,8 +676,9 @@ UI_API void UI_DrawConvexPolygon(UI_Vec2* points, int points_count, UI_Color col
 
 UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color, UI_ScissorRect scissor);
 
-UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, float edge_soft_radius, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawPolyline(UI_Vec2* points, int points_count, float thickness, float edge_soft_radius, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawPolyline(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawPolylineLoop(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor);
 
 #ifdef /* ---------------- */ UI_IMPLEMENTATION /* ---------------- */
 
@@ -1190,10 +1194,12 @@ static void UI_EditTextRequestReplaceRange(UI_Selection* selection, UI_Mark from
 UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, UI_String initial_value) {
 	memset(text, 0, sizeof(*text));
 	DS_ArrInit(&text->text, allocator);
+	DS_ArrInit(&text->line_offsets, allocator);
 	UI_TextSet(text, initial_value);
 }
 
 UI_API void UI_TextDeinit(UI_Text* text) {
+	DS_ArrDeinit(&text->line_offsets);
 	DS_ArrDeinit(&text->text);
 }
 
@@ -1201,12 +1207,12 @@ UI_API void UI_TextSet(UI_Text* text, UI_String value) {
 	DS_ArrPushN(&text->text, value.data, value.size);
 }
 
-UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool* editing, UI_Selection* selection, UI_EditTextRequest* out_edit_request) {
+UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool* editing, UI_Selection* selection, UI_EditTextRequest* out_edit_request)
+{
 	DS_ProfEnter();
 	UI_FontUsage font = UI_PeekStyle()->font;
 	memset(out_edit_request, 0, sizeof(*out_edit_request));
 
-	//UI_Key outer_key = UI_KEY1(inner_key);
 	UI_Box* outer = UI_AddBox(key, w, h, UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_Clickable);
 	UI_PushBox(outer);
 
@@ -1231,9 +1237,6 @@ UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool*
 	}
 
 	if (*editing) {
-		// The box could have been selected last frame, but not editing text (i.e. in UI_NumberEdit we sneakily swap the boxes and they share the same keys),
-		// in which case we should also reactivate it.
-		// bool activated = false; //bool activated = !UI_WasSelectedLastFrame(outer) || (UI_.edit_text.editing_frame_idx + 1 != UI_.frame_idx);
 		UI_STATE.edit_text.editing_frame_idx = UI_STATE.frame_idx;
 		UI_STATE.imm_new.active_edit_text_box = key;
 
@@ -1243,22 +1246,11 @@ UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool*
 			UI_EditTextSelectAll(&text, selection);
 		}
 
-		//UI_.imm_new.edit_text_has_selection = key;
-
-		// Scroll view to selection
-		//{
-		//	UI_Mark mark = *UI_selection_end(selection);
-		//	float mark_x = outer->text_padding.x + UI_mark_pos(text, mark, font).x;
-		//
-		//	float edge_left = outer->text_padding.x;
-		//	float edge_right = outer->computed_size.x - outer->text_padding.x;
-		//	float align_scroll_left = mark_x - edge_left;
-		//	float align_scroll_right = mark_x - edge_right;
-		//
-		//	outer->children_offset_target.x = UI_Min(outer->children_offset_target.x, align_scroll_left);
-		//	outer->children_offset_target.x = UI_Max(outer->children_offset_target.x, align_scroll_right);
+		// move selection?
+		//if (UI_Pressed(key, UI_Input_MouseLeft)) {
 		//}
 
+		
 		if (UI_InputWasPressedOrRepeat(UI_Input_Right)) {
 			UI_EditTextArrowKeyInputX(1, &text, selection, font);
 		}
@@ -1323,7 +1315,6 @@ UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool*
 			UI_EditTextRequestReplaceRange(selection, selection->range[0], selection->range[1], STR_(""), out_edit_request);
 		}
 
-		//UI_.edit_text_selection = *selection;
 		UI_STATE.edit_text.draw_selection_from_box = inner;
 		UI_STATE.edit_text.draw_selection_from_box_sel = *selection;
 	}
@@ -2873,13 +2864,32 @@ UI_API void UI_DrawCircle(UI_Vec2 p, float radius, int segments, UI_Color color,
 	}
 }
 
+UI_API void UI_DrawTriangle(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Color color, UI_ScissorRect scissor) {
+	uint32_t first_vert;
+	UI_DrawVertex* v = UI_AddVertices(4, &first_vert);
+	v[0] = UI_DRAW_VERTEX{a, UI_WHITE_PIXEL_UV, color};
+	v[1] = UI_DRAW_VERTEX{b, UI_WHITE_PIXEL_UV, color};
+	v[2] = UI_DRAW_VERTEX{c, UI_WHITE_PIXEL_UV, color};
+	UI_AddTriangleIndicesAndClip(first_vert, first_vert + 1, first_vert + 2, UI_TEXTURE_ID_NIL, scissor);
+}
+
+UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color color, UI_ScissorRect scissor) {
+	uint32_t first_vert;
+	UI_DrawVertex* v = UI_AddVertices(4, &first_vert);
+	v[0] = UI_DRAW_VERTEX{a, UI_WHITE_PIXEL_UV, color};
+	v[1] = UI_DRAW_VERTEX{b, UI_WHITE_PIXEL_UV, color};
+	v[2] = UI_DRAW_VERTEX{c, UI_WHITE_PIXEL_UV, color};
+	v[3] = UI_DRAW_VERTEX{d, UI_WHITE_PIXEL_UV, color};
+	UI_AddQuadIndicesAndClip(first_vert, first_vert + 1, first_vert + 2, first_vert + 3, UI_TEXTURE_ID_NIL, scissor);
+}
+
 UI_API void UI_DrawRect(UI_Rect rect, UI_Color color, UI_ScissorRect scissor) {
 	uint32_t first_vert;
 	UI_DrawVertex* v = UI_AddVertices(4, &first_vert);
-	v[0] = UI_DRAW_VERTEX{ {rect.min.x, rect.min.y}, UI_WHITE_PIXEL_UV, color };
-	v[1] = UI_DRAW_VERTEX{ {rect.max.x, rect.min.y}, UI_WHITE_PIXEL_UV, color };
-	v[2] = UI_DRAW_VERTEX{ {rect.max.x, rect.max.y}, UI_WHITE_PIXEL_UV, color };
-	v[3] = UI_DRAW_VERTEX{ {rect.min.x, rect.max.y}, UI_WHITE_PIXEL_UV, color };
+	v[0] = UI_DRAW_VERTEX{{rect.min.x, rect.min.y}, UI_WHITE_PIXEL_UV, color};
+	v[1] = UI_DRAW_VERTEX{{rect.max.x, rect.min.y}, UI_WHITE_PIXEL_UV, color};
+	v[2] = UI_DRAW_VERTEX{{rect.max.x, rect.max.y}, UI_WHITE_PIXEL_UV, color};
+	v[3] = UI_DRAW_VERTEX{{rect.min.x, rect.max.y}, UI_WHITE_PIXEL_UV, color};
 	UI_AddQuadIndicesAndClip(first_vert, first_vert + 1, first_vert + 2, first_vert + 3, UI_TEXTURE_ID_NIL, scissor);
 }
 
@@ -2966,13 +2976,12 @@ UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color, UI_ScissorR
 	DS_ProfExit();
 }
 
-UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, float edge_soft_radius, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color, UI_ScissorRect scissor) {
 	UI_Vec2 points[] = { a, b };
-	UI_DrawPolyline(points, 2, thickness, edge_soft_radius, color, scissor);
+	UI_DrawPolyline(points, 2, thickness, color, scissor);
 }
 
-// TODO: edge gradient width parameter
-UI_API void UI_DrawPolyline(UI_Vec2* points, int points_count, float thickness, float edge_soft_radius, UI_Color color, UI_ScissorRect scissor) {
+static void UI_DrawPolyline_(UI_Vec2* points, int points_count, float thickness, UI_Color color, bool loop, UI_ScissorRect scissor) {
 	if (points_count < 2) return;
 	DS_ProfEnter();
 
@@ -2981,100 +2990,68 @@ UI_API void UI_DrawPolyline(UI_Vec2* points, int points_count, float thickness, 
 	UI_Vec2 start_dir, end_dir;
 
 	DS_DynArray(UI_Vec2) line_normals = { UI_FrameArena() };
-	DS_ArrResizeUndef(&line_normals, points_count - 1);
+	DS_ArrResizeUndef(&line_normals, points_count);
 
-	DS_DynArray(float) distances = { UI_FrameArena() };
-	DS_ArrResizeUndef(&distances, points_count);
-
-	float total_distance = 0.f;
-
-	for (int64_t i = 0; i < line_normals.length; i++) {
+	int last = points_count - 1;
+	for (int i = 0; i < points_count; i++) {
 		UI_Vec2 p1 = points[i];
-		UI_Vec2 p2 = points[i + 1];
+		UI_Vec2 p2 = points[i == last ? 0 : i + 1];
 
 		UI_Vec2 dir = UI_SubV2(p2, p1);
 		float length = sqrtf(dir.x * dir.x + dir.y * dir.y);
-		dir = UI_MulV2F(dir, 1.f / length); // normalize
+		dir = UI_MulV2F(dir, 1.f / length);
 
-		DS_ArrSet(distances, i, total_distance);
-		total_distance += length;
-
-		UI_Vec2 dir_rotated = { -dir.y, dir.x }; // rotate counter-clockwise
-		DS_ArrSet(line_normals, i, dir_rotated);
+		UI_Vec2 dir_rotated = { -dir.y, dir.x };
+		line_normals.data[i] = dir_rotated;
 
 		if (i == 0) start_dir = dir;
-		if (i == line_normals.length - 1) end_dir = dir;
+		if (i == last-1) end_dir = dir;
 	}
 
-	DS_ArrSet(distances, points_count - 1, total_distance);
-
-	int before_first_line = 0;
-	int after_last_line = points_count - 2; // we can wrap these if we want the polyline to loop
-
-	uint32_t prev_v_left, prev_v_right;
+	uint32_t first_vertex;
+	UI_DrawVertex* v = UI_AddVertices(points_count*2, &first_vertex);
 
 	for (int i = 0; i < points_count; i++) {
-		// float distance = DS_ArrGet(distances, i) / total_distance;
-
 		UI_Vec2 p = points[i];
 
-		// Extend start and end points outwards by half_thickness so that the segment does not just get thicker perpendicularly, but also in parallel
-		if (i == 0) p = UI_AddV2(p, UI_MulV2F(start_dir, -half_thickness));
-		if (i == points_count - 1) p = UI_AddV2(p, UI_MulV2F(end_dir, half_thickness));
-
-		UI_Vec2 n1 = DS_ArrGet(line_normals, i == 0 ? before_first_line : i - 1);
-		UI_Vec2 n2 = DS_ArrGet(line_normals, i == points_count - 1 ? after_last_line : i);
-		UI_Vec2 avrg_normal = UI_AddV2(n1, n2); // NOTE: this does not need to be normalized, as the math works out the same.
-
-		uint32_t first_new_vertex;
-		UI_DrawVertex* v = UI_AddVertices(2, &first_new_vertex);
-
-		if (i > 0) {
-			UI_AddQuadIndicesAndClip(prev_v_left, prev_v_right, first_new_vertex + 1, first_new_vertex, UI_TEXTURE_ID_NIL, scissor);
+		if (!loop) {
+			// Extend start and end points outwards by half thickness
+			if (i == 0)    p = UI_AddV2(p, UI_MulV2F(start_dir, -half_thickness));
+			if (i == last) p = UI_AddV2(p, UI_MulV2F(end_dir, half_thickness));
 		}
 
-		float t = half_thickness / (avrg_normal.x * n1.x + avrg_normal.y * n1.y);
-
-		if (true) {// && HMM_DotDS_Arr2(n1, n2) >= 0) { // internal angle is less than 90 degrees?
-			UI_Vec2 miter_left = UI_AddV2(p, UI_MulV2F(avrg_normal, t));
-			UI_Vec2 miter_right = UI_SubV2(p, UI_MulV2F(avrg_normal, t));
-			v[0] = UI_DRAW_VERTEX{ {miter_left.x, miter_left.y},   {0.f, 0.f}, color };
-			v[1] = UI_DRAW_VERTEX{ {miter_right.x, miter_right.y}, {0.f, 0.f}, color };
-			prev_v_left = first_new_vertex;
-			prev_v_right = first_new_vertex + 1;
+		UI_Vec2 n_pre, n_post;
+		if (loop) {
+			n_pre = line_normals.data[i == 0 ? last : i - 1];
+			n_post = line_normals.data[i];
+		} else {
+			n_pre = line_normals.data[i == 0 ? 0 : i - 1];
+			n_post = line_normals.data[i == last ? i - 1 : i];
 		}
-		else {
-			//if (-n1.y * n2.x + n1.x * n2.y > 0) { // The angle on the left side is smaller?
-			//	UI_VEC2 v_outer_first = UI_SubV2(p, UI_MulV2F(n1, half_thickness));
-			//	UI_VEC2 v_outer_second = UI_SubV2(p, UI_MulV2F(n2, half_thickness));
-			//	UI_VEC2 inner = UI_AddV2(p, UI_MulV2F(avrg_normal, t));
-			//
-			//	UI_AddVertex(&(UI_DrawVertex){inner, (UI_VEC2){0}, info, scissor, color});
-			//	UI_AddVertex(&(UI_DrawVertex){v_outer_first, (UI_VEC2){0}, info, scissor, color});
-			//	UI_AddVertex(&(UI_DrawVertex){v_outer_second, (UI_VEC2){0}, info, scissor, color});
-			//
-			//	prev_v_left = first_new_vertex;
-			//	prev_v_right = first_new_vertex + 2;
-			//}
-			//else {
-			//	UI_VEC2 v_outer_first = UI_AddV2(p, UI_MulV2F(n1, half_thickness));
-			//	UI_VEC2 v_outer_second = UI_AddV2(p, UI_MulV2F(n2, half_thickness));
-			//	UI_VEC2 inner = UI_SubV2(p, UI_MulV2F(avrg_normal, t));
-			//
-			//	UI_AddVertex(&(UI_DrawVertex){v_outer_first, (UI_VEC2){0}, info, scissor, color});
-			//	UI_AddVertex(&(UI_DrawVertex){inner, (UI_VEC2){0}, info, scissor, color});
-			//	UI_AddVertex(&(UI_DrawVertex){v_outer_second, (UI_VEC2){0}, info, scissor, color});
-			//
-			//	prev_v_left = first_new_vertex + 2;
-			//	prev_v_right = first_new_vertex + 1;
-			//}
-			//
-			//UI_AddIndex(first_new_vertex);
-			//UI_AddIndex(first_new_vertex + 1);
-			//UI_AddIndex(first_new_vertex + 2);
-		}
+		UI_Vec2 n = UI_AddV2(n_pre, n_post); // NOTE: this doesn't need to be normalized, the math works regardless.
+		float t = half_thickness / (n.x * n_pre.x + n.y * n_pre.y);
+		v[i*2 + 0] = UI_DRAW_VERTEX{{p.x + n.x*t, p.y + n.y*t}, {0.f, 0.f}, color};
+		v[i*2 + 1] = UI_DRAW_VERTEX{{p.x - n.x*t, p.y - n.y*t}, {0.f, 0.f}, color};
 	}
+
+	for (int i = 0; i < points_count-1; i++) {
+		uint32_t q = first_vertex + i * 2;
+		UI_AddQuadIndicesAndClip(q, q + 1, q + 3, q + 2, UI_TEXTURE_ID_NIL, scissor);
+	}
+	if (loop) {
+		uint32_t q = first_vertex + last * 2;
+		UI_AddQuadIndicesAndClip(q, q + 1, first_vertex + 1, first_vertex + 0, UI_TEXTURE_ID_NIL, scissor);
+	}
+
 	DS_ProfExit();
+}
+
+UI_API void UI_DrawPolyline(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor) {
+	UI_DrawPolyline_(points, points_count, thickness, color, false, scissor);
+}
+
+UI_API void UI_DrawPolylineLoop(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor) {
+	UI_DrawPolyline_(points, points_count, thickness, color, true, scissor);
 }
 
 UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {

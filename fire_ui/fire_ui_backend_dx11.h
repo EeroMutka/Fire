@@ -210,7 +210,7 @@ static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11Device
 
 	D3D11_RASTERIZER_DESC raster_desc = {0};
 	raster_desc.FillMode = D3D11_FILL_SOLID;
-	raster_desc.CullMode = D3D11_CULL_BACK;
+	raster_desc.CullMode = D3D11_CULL_NONE; //D3D11_CULL_BACK
 	device->CreateRasterizerState(&raster_desc, &state.raster_state);
 
 	backend->create_vertex_buffer = UI_DX11_CreateVertexBuffer;
