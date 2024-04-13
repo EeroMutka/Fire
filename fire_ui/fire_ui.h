@@ -679,6 +679,7 @@ UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color, UI_ScissorR
 UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color, UI_ScissorRect scissor);
 UI_API void UI_DrawPolyline(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor);
 UI_API void UI_DrawPolylineLoop(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawPolylineEx(UI_Vec2* points, int points_count, float thickness, UI_Color color, bool loop, float split_miter_threshold, UI_ScissorRect scissor);
 
 #ifdef /* ---------------- */ UI_IMPLEMENTATION /* ---------------- */
 
@@ -2981,7 +2982,9 @@ UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color, U
 	UI_DrawPolyline(points, 2, thickness, color, scissor);
 }
 
-static void UI_DrawPolyline_(UI_Vec2* points, int points_count, float thickness, UI_Color color, bool loop, UI_ScissorRect scissor) {
+UI_API void UI_DrawPolylineEx(UI_Vec2* points, int points_count, float thickness, UI_Color color, bool loop,
+	float split_miter_threshold, UI_ScissorRect scissor)
+{
 	if (points_count < 2) return;
 	DS_ProfEnter();
 
@@ -3008,8 +3011,8 @@ static void UI_DrawPolyline_(UI_Vec2* points, int points_count, float thickness,
 		if (i == last-1) end_dir = dir;
 	}
 
-	uint32_t first_vertex;
-	UI_DrawVertex* v = UI_AddVertices(points_count*2, &first_vertex);
+	uint32_t first_idx[2];
+	uint32_t prev_idx[2];
 
 	for (int i = 0; i < points_count; i++) {
 		UI_Vec2 p = points[i];
@@ -3028,30 +3031,60 @@ static void UI_DrawPolyline_(UI_Vec2* points, int points_count, float thickness,
 			n_pre = line_normals.data[i == 0 ? 0 : i - 1];
 			n_post = line_normals.data[i == last ? i - 1 : i];
 		}
-		UI_Vec2 n = UI_AddV2(n_pre, n_post); // NOTE: this doesn't need to be normalized, the math works regardless.
-		float t = half_thickness / (n.x * n_pre.x + n.y * n_pre.y);
-		v[i*2 + 0] = UI_DRAW_VERTEX{{p.x + n.x*t, p.y + n.y*t}, {0.f, 0.f}, color};
-		v[i*2 + 1] = UI_DRAW_VERTEX{{p.x - n.x*t, p.y - n.y*t}, {0.f, 0.f}, color};
+
+		if (n_pre.x*n_post.x + n_pre.y*n_post.y < split_miter_threshold) {
+			uint32_t new_vertices;
+			UI_DrawVertex* v = UI_AddVertices(4, &new_vertices);
+			v[0] = UI_DRAW_VERTEX{{p.x + n_pre.x*half_thickness, p.y + n_pre.y*half_thickness}, {0.f, 0.f}, color};
+			v[1] = UI_DRAW_VERTEX{{p.x - n_pre.x*half_thickness, p.y - n_pre.y*half_thickness}, {0.f, 0.f}, color};
+			v[2] = UI_DRAW_VERTEX{{p.x + n_post.x*half_thickness, p.y + n_post.y*half_thickness}, {0.f, 0.f}, color};
+			v[3] = UI_DRAW_VERTEX{{p.x - n_post.x*half_thickness, p.y - n_post.y*half_thickness}, {0.f, 0.f}, color};
+
+			UI_AddQuadIndicesAndClip(new_vertices+0, new_vertices+1, new_vertices+3, new_vertices+2, UI_TEXTURE_ID_NIL, scissor);
+
+			if (i > 0) {
+				UI_AddQuadIndicesAndClip(prev_idx[0], prev_idx[1], new_vertices + 1, new_vertices + 0, UI_TEXTURE_ID_NIL, scissor);
+			} else {
+				first_idx[0] = new_vertices + 0;
+				first_idx[1] = new_vertices + 1;
+			}
+			prev_idx[0] = new_vertices + 2;
+			prev_idx[1] = new_vertices + 3;
+		}
+		else {
+			UI_Vec2 n = UI_AddV2(n_pre, n_post); // Note: This doesn't need to be normalized, the math works regardless
+			float denom = n.x * n_pre.x + n.y * n_pre.y;
+			float t = half_thickness / denom;
+
+			uint32_t new_vertices;
+			UI_DrawVertex* v = UI_AddVertices(2, &new_vertices);
+			v[0] = UI_DRAW_VERTEX{{p.x + n.x*t, p.y + n.y*t}, {0.f, 0.f}, color};
+			v[1] = UI_DRAW_VERTEX{{p.x - n.x*t, p.y - n.y*t}, {0.f, 0.f}, color};
+
+			if (i > 0) {
+				UI_AddQuadIndicesAndClip(prev_idx[0], prev_idx[1], new_vertices + 1, new_vertices + 0, UI_TEXTURE_ID_NIL, scissor);
+			} else {
+				first_idx[0] = new_vertices + 0;
+				first_idx[1] = new_vertices + 1;
+			}
+			prev_idx[0] = new_vertices + 0;
+			prev_idx[1] = new_vertices + 1;
+		}
 	}
 
-	for (int i = 0; i < points_count-1; i++) {
-		uint32_t q = first_vertex + i * 2;
-		UI_AddQuadIndicesAndClip(q, q + 1, q + 3, q + 2, UI_TEXTURE_ID_NIL, scissor);
-	}
 	if (loop) {
-		uint32_t q = first_vertex + last * 2;
-		UI_AddQuadIndicesAndClip(q, q + 1, first_vertex + 1, first_vertex + 0, UI_TEXTURE_ID_NIL, scissor);
+		UI_AddQuadIndicesAndClip(prev_idx[0], prev_idx[1], first_idx[1], first_idx[0], UI_TEXTURE_ID_NIL, scissor);
 	}
 
 	DS_ProfExit();
 }
 
 UI_API void UI_DrawPolyline(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor) {
-	UI_DrawPolyline_(points, points_count, thickness, color, false, scissor);
+	UI_DrawPolylineEx(points, points_count, thickness, color, false, 0.7f, scissor);
 }
 
 UI_API void UI_DrawPolylineLoop(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor) {
-	UI_DrawPolyline_(points, points_count, thickness, color, true, scissor);
+	UI_DrawPolylineEx(points, points_count, thickness, color, true, 0.7f, scissor);
 }
 
 UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {
