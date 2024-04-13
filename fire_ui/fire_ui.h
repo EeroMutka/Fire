@@ -3040,7 +3040,9 @@ UI_API void UI_DrawPolylineEx(UI_Vec2* points, int points_count, float thickness
 			v[2] = UI_DRAW_VERTEX{{p.x + n_post.x*half_thickness, p.y + n_post.y*half_thickness}, {0.f, 0.f}, color};
 			v[3] = UI_DRAW_VERTEX{{p.x - n_post.x*half_thickness, p.y - n_post.y*half_thickness}, {0.f, 0.f}, color};
 
-			UI_AddQuadIndicesAndClip(new_vertices+0, new_vertices+1, new_vertices+3, new_vertices+2, UI_TEXTURE_ID_NIL, scissor);
+			if (loop || (i != 0 && i != last)) {
+				UI_AddQuadIndicesAndClip(new_vertices+0, new_vertices+1, new_vertices+3, new_vertices+2, UI_TEXTURE_ID_NIL, scissor);
+			}
 
 			if (i > 0) {
 				UI_AddQuadIndicesAndClip(prev_idx[0], prev_idx[1], new_vertices + 1, new_vertices + 0, UI_TEXTURE_ID_NIL, scissor);
