@@ -672,14 +672,14 @@ UI_API void UI_DrawSprite(UI_Rect rect, UI_Color color, UI_Rect uv_rect, UI_Text
 
 UI_API void UI_DrawCircle(UI_Vec2 p, float radius, int segments, UI_Color color, UI_ScissorRect scissor);
 
-UI_API void UI_DrawConvexPolygon(UI_Vec2* points, int points_count, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawConvexPolygon(const UI_Vec2* points, int points_count, UI_Color color, UI_ScissorRect scissor);
 
 UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color, UI_ScissorRect scissor);
 
 UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawPolyline(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawPolylineLoop(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawPolylineEx(UI_Vec2* points, int points_count, float thickness, UI_Color color, bool loop, float split_miter_threshold, UI_ScissorRect scissor);
+UI_API void UI_DrawPolyline(const UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawPolylineEx(const UI_Vec2* points, int points_count, float thickness, UI_Color color, bool loop, float split_miter_threshold, UI_ScissorRect scissor);
 
 #ifdef /* ---------------- */ UI_IMPLEMENTATION /* ---------------- */
 
@@ -2703,7 +2703,7 @@ draw:;
 	indices[2] = c;
 }
 
-UI_API void UI_DrawConvexPolygon(UI_Vec2* points, int points_count, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawConvexPolygon(const UI_Vec2* points, int points_count, UI_Color color, UI_ScissorRect scissor) {
 	DS_ProfEnter();
 	uint32_t first_vertex;
 	UI_DrawVertex* vertices = UI_AddVertices(points_count, &first_vertex);
@@ -2982,7 +2982,7 @@ UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color, U
 	UI_DrawPolyline(points, 2, thickness, color, scissor);
 }
 
-UI_API void UI_DrawPolylineEx(UI_Vec2* points, int points_count, float thickness, UI_Color color, bool loop,
+UI_API void UI_DrawPolylineEx(const UI_Vec2* points, int points_count, float thickness, UI_Color color, bool loop,
 	float split_miter_threshold, UI_ScissorRect scissor)
 {
 	if (points_count < 2) return;
@@ -3081,11 +3081,11 @@ UI_API void UI_DrawPolylineEx(UI_Vec2* points, int points_count, float thickness
 	DS_ProfExit();
 }
 
-UI_API void UI_DrawPolyline(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawPolyline(const UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor) {
 	UI_DrawPolylineEx(points, points_count, thickness, color, false, 0.7f, scissor);
 }
 
-UI_API void UI_DrawPolylineLoop(UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor) {
 	UI_DrawPolylineEx(points, points_count, thickness, color, true, 0.7f, scissor);
 }
 
