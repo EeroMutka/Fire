@@ -51,14 +51,14 @@ typedef struct DS_AllocatorHeader {
 } DS_AllocatorHeader;
 
 #define DS_AllocatorIsBuiltin(ALLOCATOR) ((ALLOCATOR)->tag >= 0 && (ALLOCATOR)->tag <= 99)
-static char* DS_AllocatorFn_BuiltIn(DS_AllocatorHeader* allocator, char* old_ptr, int copy_size, int new_size, int new_alignment);
+static char* DS_AllocatorFn_BuiltIn(DS_AllocatorHeader* allocator, char* old_ptr, int old_size, int new_size, int new_alignment);
 
 #ifdef DS_USE_CUSTOM_ALLOCATOR
-char* DS_AllocatorFn_Impl(DS_AllocatorHeader* allocator, char* old_ptr, int copy_size, int new_size, int new_alignment);
+char* DS_AllocatorFn_Impl(DS_AllocatorHeader* allocator, char* old_ptr, int old_size, int new_size, int new_alignment);
 #else
-static char* DS_AllocatorFn_Impl(DS_AllocatorHeader* allocator, char* old_ptr, int copy_size, int new_size, int new_alignment) {
+static char* DS_AllocatorFn_Impl(DS_AllocatorHeader* allocator, char* old_ptr, int old_size, int new_size, int new_alignment) {
 	DS_CHECK(DS_AllocatorIsBuiltin(allocator));
-	char* result = DS_AllocatorFn_BuiltIn(allocator, old_ptr, copy_size, new_size, new_alignment);
+	char* result = DS_AllocatorFn_BuiltIn(allocator, old_ptr, old_size, new_size, new_alignment);
 	return result;
 }
 #endif
@@ -275,6 +275,10 @@ Remove the first node of a singly linked list, e.g.
 DS_API uint32_t DS_MurmurHash3(const void* key, int len, uint32_t seed);
 DS_API uint64_t DS_MurmurHash64A(const void* key, int len, uint64_t seed);
 
+// @DS_SeeNoteAboutKeyTypePadding:
+//   If using a struct as the key type in a DS_Map, it must not contain any compiler-generated padding, as that could cause
+//   unpredictible behaviour when memcmp is used on them.
+
 #define DS_Map(K, V) \
 	struct { DS_Allocator* allocator; struct{ uint32_t hash; K key; V value; }* data; int length; int capacity; }
 typedef DS_Map(char, char) DS_MapRaw;
@@ -437,11 +441,11 @@ DS_API void DS_ArenaReset(DS_Arena* arena);
 
 // -- Memory allocation --------------------------------
 
-static char* DS_AllocatorFn_BuiltIn(DS_AllocatorHeader* allocator, char* old_ptr, int copy_size, int new_size, int new_alignment) {
+static char* DS_AllocatorFn_BuiltIn(DS_AllocatorHeader* allocator, char* old_ptr, int old_size, int new_size, int new_alignment) {
 	char* result = NULL;
 	if (allocator->tag == DS_ALLOCATOR_TAG_ARENA) {
 		result = DS_ArenaPush((DS_Arena*)allocator, new_size);
-		if (copy_size > 0) memcpy(result, old_ptr, copy_size);
+		memcpy(result, old_ptr, old_size);
 	}
 	else {
 		DS_CHECK(allocator->tag == DS_ALLOCATOR_TAG_HEAP);
@@ -453,11 +457,9 @@ static char* DS_AllocatorFn_BuiltIn(DS_AllocatorHeader* allocator, char* old_ptr
 // DS_AllocatorFn is a combination of malloc, free and realloc.
 // - To make a new allocation (i.e. malloc/realloc), pass a size other than 0 into `new_size`,
 //   and pass an alignment, e.g. DS_DEFAULT_ALIGNMENT into `new_alignment`.
-// - To free an existing allocation (i.e. free/realloc), pass it into `old_ptr`, otherwise pass NULL.
-// - By default, no data will be copied over from the old allocation into the new allocation.
-//   You must specify how many bytes you want to copy with `copy_size`.
-static char* DS_AllocatorFn(DS_Allocator* allocator, const void* old_ptr, int copy_size, int new_size, int new_alignment) {
-	char* result = DS_AllocatorFn_Impl((DS_AllocatorHeader*)allocator, (char*)old_ptr, copy_size, new_size, new_alignment);
+// - To free an existing allocation (i.e. free/realloc), pass it into `old_ptr` and its size into `old_size, otherwise pass NULL and 0.
+static char* DS_AllocatorFn(DS_Allocator* allocator, const void* old_ptr, int old_size, int new_size, int new_alignment) {
+	char* result = DS_AllocatorFn_Impl((DS_AllocatorHeader*)allocator, (char*)old_ptr, old_size, new_size, new_alignment);
 	DS_CHECK(((uintptr_t)result & (new_alignment - 1)) == 0); // check that the alignment is correct
 	return result;
 }

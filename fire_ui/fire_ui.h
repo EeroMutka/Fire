@@ -426,6 +426,10 @@ typedef struct UI_State {
 	} edit_number;
 
 	struct {
+		// By default,
+		UI_Key active_key; // UI_INVALID_KEY means nothing is active
+		UI_Selection active_selection;
+
 		//Opt(UI_Box*) edit_text_active_inner;
 		uint64_t editing_frame_idx;
 		// UI_Selection selection;
@@ -546,8 +550,7 @@ UI_API UI_Box* UI_Button(UI_Key key, UI_Size w, UI_Size h, UI_String string);
 UI_API bool UI_Checkbox(UI_Key key, bool* value);
 
 // * may return NULL
-UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_String text);
-
+UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, UI_String text);
 UI_API void UI_PopCollapsing(UI_Box* box);
 
 // Returns true if the value was modified
@@ -562,8 +565,11 @@ UI_API void UI_TextDeinit(UI_Text* text);
 UI_API void UI_TextSet(UI_Text* text, UI_String value);
 
 // In the future, I could remove the UI_Text type and make all of the functions work with just a regular UI_String type. But for now, let's depend on UI_Text
-UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool* editing, UI_Selection* selection, UI_EditTextRequest* out_edit_request);
 UI_API UI_Box* UI_EditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool* editing, UI_Selection* selection, UI_EditTextRequest* out_edit_request);
+UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text);
+
+// Lower-level edit text routines
+UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool* editing, UI_Selection* selection, UI_EditTextRequest* out_edit_request);
 UI_API void UI_ApplyEditTextRequest(UI_Text* text, const UI_EditTextRequest* request);
 
 // * `anchor_x` / `anchor_y` can be 0 or 1: A value of 0 means anchoring the scrollbar to left / top, 1 means anchoring it to right / bottom.
@@ -1061,9 +1067,9 @@ UI_API bool UI_EditNumber(UI_Key key, UI_Size w, UI_Size h, void* value, bool is
 	}
 
 	if (UI_STATE.edit_number.editing_text == key) {
-		UI_EditTextRequest request;
 		bool editing = true;
-		UI_EditText(key, w, h, UI_STATE.edit_number.text, &editing, &UI_STATE.edit_number.editing_text_selection, &request);
+		UI_EditTextRequest request;
+		UI_EditTextCore(key, w, h, UI_STATE.edit_number.text, &editing, &UI_STATE.edit_number.editing_text_selection, &request);
 		UI_ApplyEditTextRequest(&UI_STATE.edit_number.text, &request);
 
 		if (is_float) {
@@ -1135,7 +1141,7 @@ UI_API UI_Box* UI_EditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text filepat
 	UI_PushBox(box);
 
 	UI_Key edit_text_key = UI_KEY1(key);
-	UI_EditText(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath, editing, selection, out_edit_request);
+	UI_EditTextCore(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath, editing, selection, out_edit_request);
 
 	UI_Style* button_style = UI_PushStyle();
 	button_style->font.font = UI_STATE.icons_font;
@@ -1208,7 +1214,18 @@ UI_API void UI_TextSet(UI_Text* text, UI_String value) {
 	DS_ArrPushN(&text->text, value.data, value.size);
 }
 
-UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool* editing, UI_Selection* selection, UI_EditTextRequest* out_edit_request)
+UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text) {
+	bool is_active = UI_STATE.edit_text.active_key == key;
+	
+	UI_EditTextRequest request;
+	UI_Box* box = UI_EditTextCore(key, w, h, *text, &is_active, &UI_STATE.edit_text.active_selection, &request);
+	UI_ApplyEditTextRequest(text, &request);
+	
+	if (is_active) UI_STATE.edit_text.active_key = key;
+	return box;
+}
+
+UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool* editing, UI_Selection* selection, UI_EditTextRequest* out_edit_request)
 {
 	DS_ProfEnter();
 	UI_FontUsage font = UI_PeekStyle()->font;
@@ -1369,11 +1386,11 @@ UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 	return box;
 }
 
-UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_String text) {
+UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, UI_String text) {
 	DS_ProfEnter();
 	UI_Key child_box_key = UI_KEY1(key);
-	UI_BoxFlags flags = UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
-	UI_Box* box = UI_AddBox(key, UI_SizeFlex(1.f), h, flags);
+	UI_BoxFlags box_flags = UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
+	UI_Box* box = UI_AddBox(key, UI_SizeFlex(1.f), h, box_flags);
 	UI_PushBox(box);
 
 	bool is_open = UI_BoxFromKey(child_box_key)->prev_frame != NULL;
@@ -1390,16 +1407,23 @@ UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_String tex
 
 	UI_PopBox(box);
 
+	UI_Box* outer_child_box = NULL;
+	UI_Box* inner_child_box = NULL;
 	if (is_open) {
-		UI_Box* child_box = UI_AddBox(child_box_key, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_DrawBorder);
-		UI_PushBox(child_box);
+		outer_child_box = UI_AddBox(child_box_key, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+		UI_PushBox(outer_child_box);
+		UI_AddBox(UI_KEY1(key), indent, UI_SizeFit(), 0);
+		
+		inner_child_box = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), flags);
+		UI_PushBox(inner_child_box);
 	}
 	DS_ProfExit();
-	return is_open ? box : NULL;
+	return inner_child_box;
 }
 
 UI_API void UI_PopCollapsing(UI_Box* box) {
 	UI_PopBox(box);
+	UI_PopBox(box->parent);
 }
 
 UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y) {
