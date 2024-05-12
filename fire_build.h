@@ -71,6 +71,7 @@ BUILD_API void BUILD_AddDefine(BUILD_Project* project, const char* define);
 BUILD_API void BUILD_AddLinkerInput(BUILD_Project* project, const char* linker_input);
 BUILD_API void BUILD_AddExtraLinkerArg(BUILD_Project* project, const char* arg_string);
 BUILD_API void BUILD_AddExtraCompilerArg(BUILD_Project* project, const char* arg_string);
+BUILD_API void BUILD_AddVisualStudioNatvisFile(BUILD_Project* project, const char* natvis_file);
 
 // TODO:
 // BUILD_API void BUILD_AddSourceDir(BUILD_Project *project, const char *source_dir); // Add all .c and .cpp files inside a directory as source files
@@ -105,6 +106,7 @@ struct BUILD_Project {
 	const char* name;
 	BUILD_ProjectOptions opts;
 	BUILD_Array(const char*) source_files;
+	BUILD_Array(const char*) natvis_files;
 	BUILD_Array(const char*) source_dirs;
 	BUILD_Array(const char*) include_dirs;
 	BUILD_Array(const char*) defines;
@@ -967,6 +969,12 @@ static bool BUILD_GenerateVisualStudioProject(BUILD_Arena* arena, const BUILD_Pr
 		BUILD_Print1(&s, "</ItemDefinitionGroup>\n");
 	}
 
+	for (int i = 0; i < project->natvis_files.length; i++) {
+		BUILD_Print1(&s, "<ItemGroup>\n");
+		BUILD_Print3(&s, "  <Natvis Include=\"", project->natvis_files.data[i], "\" />\n");
+		BUILD_Print1(&s, "</ItemGroup>\n");
+	}
+	
 	for (int i = 0; i < project->source_files.length; i++) {
 		BUILD_Print1(&s, "<ItemGroup>\n");
 		BUILD_Print3(&s, "  <ClCompile Include=\"", project->source_files.data[i], "\" />\n");
@@ -1026,6 +1034,7 @@ BUILD_API void BUILD_InitProject(BUILD_Project* project, const char* name, const
 	project->opts = *options;
 
 	project->source_files.arena = &project->arena;
+	project->natvis_files.arena = &project->arena;
 	project->source_dirs.arena = &project->arena;
 	project->defines.arena = &project->arena;
 	project->include_dirs.arena = &project->arena;
@@ -1040,6 +1049,10 @@ BUILD_API void BUILD_DestroyProject(BUILD_Project* project) {
 
 BUILD_API void BUILD_AddSourceFile(BUILD_Project* project, const char* source_file) {
 	BUILD_ArrayPush(&project->source_files, source_file);
+}
+
+BUILD_API void BUILD_AddVisualStudioNatvisFile(BUILD_Project* project, const char* natvis_file) {
+	BUILD_ArrayPush(&project->natvis_files, natvis_file);
 }
 
 BUILD_API void BUILD_AddSourceDir(BUILD_Project* project, const char* source_dir) {
