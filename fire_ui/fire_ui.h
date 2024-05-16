@@ -79,7 +79,7 @@ typedef enum UI_BoxFlagBits {
 	UI_BoxFlag_Selectable = 1 << 10, // When set, the keyboard navigator can move to this UI box.
 	UI_BoxFlag_NoAutoOffset = 1 << 11, // When set, this box won't use the layout system to determine its position, it'll be fully controlled by the `offset` field instead.
 	UI_BoxFlag_NoScissor = 1 << 12,
-	UI_BoxFlag_HasCalledAddBox = 1 << 13, // Internal flag
+	UI_BoxFlag_HasCalledMakeBox = 1 << 13, // Internal flag
 	//UI_BoxFlag_HasComputedUnexpandedSizes = 1 << 14, // Internal flag
 	//UI_BoxFlag_HasComputedExpandedSizes = 1 << 15, // Internal flag
 	UI_BoxFlag_HasComputedRects = 1 << 16, // Internal flag
@@ -252,7 +252,7 @@ typedef struct UI_ImmediateState {
 
 	UI_Key active_edit_text_box;
 
-	DS_DynArray(UI_Box*) roots;
+	//DS_DynArray(UI_Box*) roots;
 	DS_Map(UI_Key, UI_Box*) box_from_key;
 	DS_Map(UI_Key, UI_Data) data_from_key;
 } UI_ImmediateState;
@@ -381,10 +381,6 @@ typedef struct UI_State {
 	UI_TextureID atlases[2]; // 0 is the current atlas, 1 is NULL or the old atlas
 	uint8_t* atlas_buffer_grayscale; // stb rect pack works with grayscale, while we want to convert to RGBA8 on the fly.
 
-	// For now, only support a single fixed-size vertex & index buffer.
-	// UI_BufferID vertex_buffer;
-	// UI_BufferID index_buffer;
-
 	// Mouse position in screen space coordinates, snapped to the pixel center. Placing it at the pixel center means we don't
 	// need to worry about dUI_enerate cases where the mouse is exactly at the edge of one or many rectangles when testing for overlap.
 	UI_Vec2 mouse_pos;
@@ -426,13 +422,10 @@ typedef struct UI_State {
 	} edit_number;
 
 	struct {
-		// By default,
 		UI_Key active_key; // UI_INVALID_KEY means nothing is active
 		UI_Selection active_selection;
 
-		//Opt(UI_Box*) edit_text_active_inner;
 		uint64_t editing_frame_idx;
-		// UI_Selection selection;
 		UI_Box* draw_selection_from_box; // NULL by default
 		UI_Selection draw_selection_from_box_sel;
 	} edit_text;
@@ -539,11 +532,12 @@ UI_API void UI_BoxComputeUnexpandedSizesStep(UI_Box* box, UI_Axis axis);
 UI_API void UI_BoxComputeExpandedSizesStep(UI_Box* box, UI_Axis axis, float size);
 UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI_ScissorRect scissor);
 
-UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags);
-UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string);
-
+UI_API UI_Box* UI_MakeRootBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags);
 UI_API void UI_PushBox(UI_Box* box);
 UI_API void UI_PopBox(UI_Box* box);
+
+UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags);
+UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string);
 
 UI_API UI_Box* UI_Button(UI_Key key, UI_Size w, UI_Size h, UI_String string);
 
@@ -1783,7 +1777,7 @@ UI_API UI_Box* UI_BoxFromKey(UI_Key key) {
 		UI_Box* prev_frame;
 		if (DS_MapFind(&UI_STATE.imm_old.box_from_key, key, &prev_frame)) {
 			UI_Box* prev_frame_box = (UI_Box*)prev_frame;
-			if (prev_frame_box->flags & UI_BoxFlag_HasCalledAddBox) {
+			if (prev_frame_box->flags & UI_BoxFlag_HasCalledMakeBox) {
 				box->prev_frame = prev_frame;
 			}
 			prev_frame_box->prev_frame = (UI_Box*)(-1); // You shouldn't ever touch `prev_frame` on previous frame's boxes
@@ -1791,70 +1785,6 @@ UI_API UI_Box* UI_BoxFromKey(UI_Key key) {
 	}
 	DS_ProfExit();
 	return *p_box;
-}
-
-UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
-	DS_ProfEnter();
-	UI_Box* box = UI_BoxFromKey(key);
-	UI_CHECK(!(box->flags & UI_BoxFlag_HasCalledAddBox)); // If this fails, then a box with the same key has been added during this frame already.
-
-	box->parent = DS_ArrPeek(UI_STATE.box_stack);
-	box->flags = flags | UI_BoxFlag_HasCalledAddBox;
-	box->size[0] = w;
-	box->size[1] = h;
-	box->style = UI_PeekStyle();
-
-	if (box->parent) {
-		if (box->parent->first_child[1]) box->parent->first_child[1]->next[1] = box;
-		else box->parent->first_child[0] = box;
-		box->next[0] = box->parent->first_child[1];
-		box->parent->first_child[1] = box;
-	}
-	else {
-		DS_ArrPush(&UI_STATE.imm_new.roots, box);
-	}
-
-	if (UI_STATE.imm_old.deepest_clicking_down_box == key &&
-		(UI_InputIsDown(UI_Input_MouseLeft) || (UI_STATE.selection_is_visible && UI_InputIsDown(UI_Input_Enter))))
-	{
-		// Keep holding down this box
-		UI_STATE.imm_new.deepest_clicking_down_box = key;
-	}
-
-	if ((flags & UI_BoxFlag_Clickable) && UI_Pressed(box->key, UI_Input_MouseLeft)) {
-		UI_STATE.imm_new.deepest_clicking_down_box = key;
-
-		if (box->flags & UI_BoxFlag_Selectable) {
-			UI_STATE.imm_new.selected_box = key; // Select this box
-		}
-	}
-	else {
-		// Keep currently selected box selected, unless overwritten by pressing some other box
-		if (UI_STATE.imm_old.selected_box == key && UI_STATE.imm_new.selected_box == UI_INVALID_KEY) {
-			UI_STATE.imm_new.selected_box = key;
-		}
-	}
-
-	if (box->prev_frame) {
-		box->lazy_is_hovered = UI_Lerp(box->prev_frame->lazy_is_hovered, (float)UI_IsHoveredIdle(box->key), 0.2f);
-		box->lazy_is_holding_down = UI_Lerp(box->prev_frame->lazy_is_holding_down, (float)UI_IsClickingDown(box->key), 0.2f);
-	}
-
-	DS_ProfExit();
-	return box;
-}
-
-UI_API void UI_PushBox(UI_Box* box) {
-	DS_ProfEnter();
-	DS_ArrPush(&UI_STATE.box_stack, box);
-	DS_ProfExit();
-}
-
-UI_API void UI_PopBox(UI_Box* box) {
-	DS_ProfEnter();
-	UI_Box* popped = DS_ArrPop(&UI_STATE.box_stack);
-	UI_CHECK(popped == box);
-	DS_ProfExit();
 }
 
 UI_API bool UI_SelectionMovementInput(UI_Box* node, UI_Key* out_new_selected_box) {
@@ -1944,13 +1874,102 @@ end:;
 	return result;
 }
 
+UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, bool is_a_root) {
+	DS_ProfEnter();
+	UI_Box* box = UI_BoxFromKey(key);
+	UI_CHECK(!(box->flags & UI_BoxFlag_HasCalledMakeBox)); // If this fails, then a box with the same key has been added during this frame already!
+
+	box->flags = flags | UI_BoxFlag_HasCalledMakeBox;
+	box->size[0] = w;
+	box->size[1] = h;
+	box->style = UI_PeekStyle();
+
+	if (UI_STATE.imm_old.deepest_clicking_down_box == key &&
+		(UI_InputIsDown(UI_Input_MouseLeft) || (UI_STATE.selection_is_visible && UI_InputIsDown(UI_Input_Enter))))
+	{
+		UI_STATE.imm_new.deepest_clicking_down_box = key; // Keep holding down this box
+	}
+
+	if ((flags & UI_BoxFlag_Clickable) && UI_Pressed(box->key, UI_Input_MouseLeft)) {
+		UI_STATE.imm_new.deepest_clicking_down_box = key;
+
+		if (box->flags & UI_BoxFlag_Selectable) {
+			UI_STATE.imm_new.selected_box = key; // Select this box
+		}
+	}
+	else {
+		// Keep currently selected box selected, unless overwritten by pressing some other box
+		if (UI_STATE.imm_old.selected_box == key && UI_STATE.imm_new.selected_box == UI_INVALID_KEY) {
+			UI_STATE.imm_new.selected_box = key;
+		}
+	}
+
+	if (box->prev_frame) {
+		if (is_a_root) {
+			UI_Key new_selected_box;
+			if (UI_SelectionMovementInput(box->prev_frame, &new_selected_box)) {
+				if (UI_STATE.selection_is_visible) { // only move if selection is already visible; otherwise first make it visible
+					UI_STATE.imm_new.selected_box = new_selected_box;
+				}
+				UI_STATE.selection_is_visible = true;
+			}
+
+			// Find the deepest hovered box of the new mouse position, using the previous frame's box tree
+			for (UI_Box* b = box->prev_frame; b;) {
+				if (UI_PointIsInRect(b->computed_rect_clipped, UI_STATE.mouse_pos)) {
+					UI_STATE.deepest_hovered_box_prev_frame = b;
+					b = b->first_child[0];
+					continue;
+				}
+				b = b->next[1];
+			}
+		}
+
+		box->lazy_is_hovered = UI_Lerp(box->prev_frame->lazy_is_hovered, (float)UI_IsHoveredIdle(box->key), 0.2f);
+		box->lazy_is_holding_down = UI_Lerp(box->prev_frame->lazy_is_holding_down, (float)UI_IsClickingDown(box->key), 0.2f);
+	}
+
+	DS_ProfExit();
+	return box;
+}
+
+UI_API UI_Box* UI_MakeRootBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
+	return UI_MakeBox_(key, w, h, flags, true);
+}
+
+UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
+	UI_Box* box = UI_MakeBox_(key, w, h, flags, false);
+	box->parent = DS_ArrPeek(UI_STATE.box_stack);
+	UI_CHECK(box->parent != NULL); // AddBox creates a new box under the currently pushed box. If this fails, no box is currently pushed
+
+	if (box->parent->first_child[1]) box->parent->first_child[1]->next[1] = box;
+	else box->parent->first_child[0] = box;
+	box->next[0] = box->parent->first_child[1];
+	box->parent->first_child[1] = box;
+
+	return box;
+}
+
+UI_API void UI_PushBox(UI_Box* box) {
+	DS_ProfEnter();
+	DS_ArrPush(&UI_STATE.box_stack, box);
+	DS_ProfExit();
+}
+
+UI_API void UI_PopBox(UI_Box* box) {
+	DS_ProfEnter();
+	UI_Box* popped = DS_ArrPop(&UI_STATE.box_stack);
+	UI_CHECK(popped == box);
+	DS_ProfExit();
+}
+
 UI_API bool UI_DropdownShouldKeepOpen(UI_Key key) {
 	bool should_close = false;
 	bool was_open = UI_BoxFromKey(key)->prev_frame != NULL;
 	if (was_open && UI_InputWasPressed(UI_Input_MouseLeft)) {
 		// If the deepest hovered box has been added this frame, then pressing left means pressing "behind" the dropdown.
 		if (UI_STATE.deepest_hovered_box_prev_frame &&
-			(UI_BoxFromKey(UI_STATE.deepest_hovered_box_prev_frame->key)->flags & UI_BoxFlag_HasCalledAddBox))
+			(UI_BoxFromKey(UI_STATE.deepest_hovered_box_prev_frame->key)->flags & UI_BoxFlag_HasCalledMakeBox))
 		{
 			should_close = true;
 		}
@@ -1992,9 +2011,8 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 	memset(&UI_STATE.imm_new, 0, sizeof(UI_STATE.imm_new));
 	DS_MapInit(&UI_STATE.imm_new.box_from_key, &UI_STATE.new_frame_arena);
 	DS_MapInit(&UI_STATE.imm_new.data_from_key, &UI_STATE.new_frame_arena);
-	DS_ArrInit(&UI_STATE.imm_new.roots, &UI_STATE.new_frame_arena);
-	//UI_ResetImmediateState(&UI_.imm_new, &UI_.new_frame_arena);
-
+	//DS_ArrInit(&UI_STATE.imm_new.roots, &UI_STATE.new_frame_arena);
+	
 	UI_STATE.frame_idx += 1;
 
 	//UI_STATE.frame_has_split_atlas = false;
@@ -2006,30 +2024,9 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 		UI_STATE.deepest_hovered_box_prev_frame = NULL;
 
 		// Recurse through the trees and do movement input
-		for (int i = 0; i < UI_STATE.imm_old.roots.length; i++) {
-			UI_Box* root = UI_STATE.imm_old.roots.data[i];
-
-			UI_Key new_selected_box;
-			if (UI_SelectionMovementInput(root, &new_selected_box)) {
-				if (UI_STATE.selection_is_visible) { // only move if selection is already visible; otherwise first make it visible
-					UI_STATE.imm_new.selected_box = new_selected_box;
-				}
-				UI_STATE.selection_is_visible = true;
-			}
-
-			// Find the deepest hovered box of the new mouse position, using the previous frame's box tree
-			for (UI_Box* box = root; box;) {
-				UI_Rect rect = box->computed_rect_clipped;
-
-				if (UI_PointIsInRect(rect, UI_STATE.mouse_pos)) {
-					UI_STATE.deepest_hovered_box_prev_frame = box;
-					box = box->first_child[0];
-					continue;
-				}
-
-				box = box->next[1];
-			}
-		}
+		/*for (int i = 0; i < UI_STATE.imm_old.roots.length; i++) {
+			
+		}*/
 
 		// When clicking somewhere or pressing escape, by default, hide the selection box
 		if (UI_InputWasPressed(UI_Input_MouseLeft) || UI_InputWasPressed(UI_Input_Escape)) {
