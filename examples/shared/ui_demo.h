@@ -1,3 +1,6 @@
+// TODO:
+// - it'd be nice to have menus which display some internal variables of fire-UI / things you can use, such as hover state
+// - data table editor
 
 typedef struct {
 	UI_Key key;
@@ -24,8 +27,8 @@ static void UIDemoAddTreeSpecie(UIDemoState* state, UI_Key key, STR name, STR in
 	DS_ArrPush(&state->trees, tree);
 }
 
-static UI_Box *UIDemoTopBarButton(UI_Key key, UI_Size w, UI_Size h, STR string) {
-	return UI_AddBoxWithText(key, w, h, UI_BoxFlag_Clickable|UI_BoxFlag_Selectable, string);
+static UI_Box* UIDemoTopBarButton(UI_Key key, UI_Size w, UI_Size h, STR string) {
+	return UI_AddBoxWithText(key, w, h, UI_BoxFlag_Clickable | UI_BoxFlag_Selectable, string);
 }
 
 static void UIDemoInit(UIDemoState* state, DS_Arena* persist) {
@@ -44,22 +47,26 @@ static void UIDemoInit(UIDemoState* state, DS_Arena* persist) {
 }
 
 static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
-	
-	UI_Box *top_bar = NULL;
-	UI_Box *file_button = NULL;
+
+	UI_Box* top_bar = NULL;
+	UI_Box* file_button = NULL;
 	static bool file_dropdown_is_open = false;
+
+	static UI_Key deepest_hovered_root_prev = UI_INVALID_KEY;
+	UI_Key deepest_hovered_root = UI_INVALID_KEY;
 
 	//// Top bar ///////////////////////////////////////////////
 
-	UI_Box *top_bar_root = UI_AddBox(UI_KEY(), UI_SizePx(window_size.x), UI_SizeFit(), 0);
+	UI_Box* top_bar_root = UI_MakeRootBox(UI_KEY(), UI_SizePx(window_size.x), UI_SizeFit(), 0);
+	if (UI_IsMouseInsideOf(top_bar_root->key)) deepest_hovered_root = top_bar_root->key;
 	UI_PushBox(top_bar_root);
 
 	{
-		top_bar = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX|UI_BoxFlag_DrawTransparentBackground);
+		top_bar = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX | UI_BoxFlag_DrawTransparentBackground);
 		UI_PushBox(top_bar);
 
 		file_button = UIDemoTopBarButton(UI_KEY(), UI_SizeFit(), UI_SizeFit(), STR_("File"));
-		if (UI_Pressed(file_button->key, UI_Input_MouseLeft)) {
+		if (UI_Pressed(file_button->key)) {
 			file_dropdown_is_open = true;
 		}
 
@@ -71,23 +78,26 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	}
 
 	UI_PopBox(top_bar_root);
-	UI_BoxComputeRects(top_bar_root, UI_VEC2{0, 0});
+	UI_BoxComputeRects(top_bar_root, UI_VEC2{ 0, 0 });
 	UI_DrawBox(top_bar_root);
 
 	//// Main area /////////////////////////////////////////////
 
-	UI_Vec2 main_area_size = {window_size.x, window_size.y - top_bar_root->computed_size.y};
-	UI_Box *main_area = UI_AddBox(UI_KEY(), UI_SizePx(main_area_size.x), UI_SizePx(main_area_size.y), UI_BoxFlag_DrawBorder|UI_BoxFlag_ChildPadding);
+	UI_Vec2 main_area_size = { window_size.x, window_size.y - top_bar_root->computed_size.y };
+	UI_Box* main_area = UI_MakeRootBox(UI_KEY(), UI_SizePx(main_area_size.x), UI_SizePx(main_area_size.y), UI_BoxFlag_DrawBorder | UI_BoxFlag_ChildPadding);
+	if (UI_IsMouseInsideOf(main_area->key)) deepest_hovered_root = main_area->key;
+	if (deepest_hovered_root_prev != main_area->key) main_area->flags |= UI_BoxFlag_NoHover;
+
 	UI_PushBox(main_area);
 
-	UI_Box *click_me = UI_Button(UI_KEY(), UI_SizeFit(), UI_SizeFit(), STR_("Click me!"));
+	UI_Box* click_me = UI_Button(UI_KEY(), UI_SizeFit(), UI_SizeFit(), STR_("Click me!"));
 	if (UI_Clicked(click_me->key)) {
 		printf("Button says thanks you!\n");
 	}
 
 	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
 
-	UI_Box *another_button = UI_Button(UI_KEY(), UI_SizeFit(), UI_SizeFit(), STR_("Another button"));
+	UI_Box* another_button = UI_Button(UI_KEY(), UI_SizeFit(), UI_SizeFit(), STR_("Another button"));
 	if (UI_Clicked(another_button->key)) {
 		printf("Another button was clicked. He's not as thankful.\n");
 	}
@@ -95,7 +105,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
 
 	{
-		UI_Box *row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX|UI_BoxFlag_DrawBorder|UI_BoxFlag_ChildPadding);
+		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX | UI_BoxFlag_DrawBorder | UI_BoxFlag_ChildPadding);
 		UI_PushBox(row);
 		UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Greedy button (does nothing)"));
 		UI_Button(UI_KEY(), UI_SizeFit(), UI_SizeFit(), STR_("Humble button (does nothing)"));
@@ -105,24 +115,17 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
 
 	{
-		UI_Box *row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 		UI_PushBox(row);
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Enter text: "));
-
-		static bool editing_dummy_text;
-		static UI_Selection dummy_text_selection;
-
-		UI_EditTextRequest edit_request;
-		UI_EditText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), state->dummy_text, &editing_dummy_text, &dummy_text_selection, &edit_request);
-		UI_ApplyEditTextRequest(&state->dummy_text, &edit_request);
-
+		UI_EditText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text);
 		UI_PopBox(row);
 	}
 
 	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
 
 	{
-		UI_Box *row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 		UI_PushBox(row);
 		static float my_float = 320.5f;
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Edit float: "));
@@ -133,7 +136,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
 
 	{
-		UI_Box *row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 		UI_PushBox(row);
 		static int64_t my_int = 8281;
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Edit int: "));
@@ -144,12 +147,12 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
 
 	{
-		UI_Box *row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 		UI_PushBox(row);
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("A bunch of checkboxes:"));
 
 		static bool checkboxes[5];
-		for (int i=0; i<5; i++) UI_Checkbox(UI_KEY1(i), &checkboxes[i]);
+		for (int i = 0; i < 5; i++) UI_Checkbox(UI_KEY1(i), &checkboxes[i]);
 
 		UI_PopBox(row);
 	}
@@ -159,13 +162,13 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	{ // Arrangers 
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("And here we have some useful tree facts."));
 
-		UI_Box *arrangers = UI_ArrangersPush(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit());
+		UI_Box* arrangers = UI_ArrangersPush(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit());
 
-		for (int i = 0; i < state->trees.length; i++)  {
-			UIDemoTreeSpecie *tree = &state->trees.data[i];
+		for (int i = 0; i < state->trees.length; i++) {
+			UIDemoTreeSpecie* tree = &state->trees.data[i];
 
-			UI_Box *tree_box = UI_AddBox(UI_KEY1(tree->key),
-				UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawOpaqueBackground);
+			UI_Box* tree_box = UI_AddBox(UI_KEY1(tree->key),
+				UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawOpaqueBackground);
 			UI_PushBox(tree_box);
 
 			UI_Arranger(UI_KEY1(tree->key), UI_SizeFit(), UI_SizeFit());
@@ -174,25 +177,25 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 			UI_AddBoxWithText(UI_KEY1(tree->key), UI_SizeFit(), UI_SizeFit(), 0, tree->name);
 
 			if (tree->show) {
-				UI_Box *box = UI_AddBox(UI_KEY1(tree->key),
-					UI_SizeFit(), UI_SizeFit(), UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawOpaqueBackground);
+				UI_Box* box = UI_AddBox(UI_KEY1(tree->key),
+					UI_SizeFit(), UI_SizeFit(), UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawOpaqueBackground);
 				UI_PushBox(box);
 
 				UI_AddBoxWithText(UI_KEY1(tree->key), UI_SizeFit(), UI_SizeFit(), 0, STR_("Tree fact:"));
 
-				static UI_Key editing_text = UI_INVALID_KEY;
-				static UI_Selection edit_text_selection;
+				//static UI_Key editing_text = UI_INVALID_KEY;
+				//static UI_Selection edit_text_selection;
 
 				UI_Key key = UI_KEY1(tree->key);
-				bool was_editing_this = editing_text == key;
+				//bool was_editing_this = editing_text == key;
 
-				UI_EditTextRequest edit_request;
-				bool editing_this = was_editing_this;
-				UI_EditText(key, UI_SizeFit(), UI_SizeFit(), tree->text, &editing_this, &edit_text_selection, &edit_request);
-				UI_ApplyEditTextRequest(&tree->text, &edit_request);
+				//UI_EditTextRequest edit_request;
+				//bool editing_this = was_editing_this;
+				UI_EditText(key, UI_SizeFit(), UI_SizeFit(), &tree->text);
+				//UI_ApplyEditTextRequest(&tree->text, &edit_request);
 
-				if (editing_this) editing_text = key;
-				else if (was_editing_this) editing_text = UI_INVALID_KEY;
+				//if (editing_this) editing_text = key;
+				//else if (was_editing_this) editing_text = UI_INVALID_KEY;
 
 				UI_PopBox(box);
 			}
@@ -212,7 +215,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
 
-	UI_Box *scroll_area = UI_PushScrollArea(UI_KEY(), UI_SizeFlex(1.f), UI_SizePx(200.f), UI_BoxFlag_DrawBorder, 0, 0);
+	UI_Box* scroll_area = UI_PushScrollArea(UI_KEY(), UI_SizeFlex(1.f), UI_SizePx(200.f), UI_BoxFlag_DrawBorder, 0, 0);
 	UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("This marks the beginning of a scrollable area."));
 
 	STR lorem_ipsum_lines[] = {
@@ -226,9 +229,9 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		STR_("Phasellus dapibus laoreet imperdiet."),
 		STR_("Pellentesque at molestie lectus."),
 	};
-	
+
 	for (int i = 0; i < UI_ArrayCount(lorem_ipsum_lines); i++) {
-		UI_Box *button = UI_Button(UI_KEY1(i), UI_SizeFit(), UI_SizeFit(), lorem_ipsum_lines[i]);
+		UI_Box* button = UI_Button(UI_KEY1(i), UI_SizeFit(), UI_SizeFit(), lorem_ipsum_lines[i]);
 		if (UI_Clicked(button->key)) {
 			printf("Clicked button index %d\n", i);
 		}
@@ -245,20 +248,33 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Above this text is some flexy padding. Try resizing the window!"));
 
 	UI_PopBox(main_area);
-	UI_BoxComputeRects(main_area, UI_VEC2{0.f, top_bar_root->computed_size.y});
+	UI_BoxComputeRects(main_area, UI_VEC2{ 0.f, top_bar_root->computed_size.y });
 	UI_DrawBox(main_area);
-
+	
 	//// Dropdown menus ////////////////////////////////////////
+
+	UI_Key file_dropdown_key = UI_KEY();
+
+	if (UI_PrevFrameBoxFromKey(file_dropdown_key) != NULL) {
+		// If we click anywhere in higher-up code that has been created already during this frame, we want to close this dropdown.
+		if (UI_InputWasPressed(UI_Input_MouseLeft) && UI_BoxFromKey(deepest_hovered_root_prev) != NULL) {
+			file_dropdown_is_open = false;
+		}
+	}
 
 	if (file_dropdown_is_open) {
 		static bool nested_dropdown_is_open = false;
 
-		UI_Key file_dropdown_key = UI_KEY();
-		file_dropdown_is_open = UI_DropdownShouldKeepOpen(file_dropdown_key);
+		//if (UI_InputWasPressed(UI_Input_MouseLeft) && UI_STATE.deepest_hovered_box_prev_frame) {
+		//	UI_Box* hover_box_new_frame = UI_BoxFromKey(UI_STATE.deepest_hovered_box_prev_frame->key);
+		//	__debugbreak();
+		//}
 
-		UI_BoxFlags dropdown_window_flags = UI_BoxFlag_DrawOpaqueBackground|UI_BoxFlag_DrawTransparentBackground|UI_BoxFlag_DrawBorder;
+		UI_BoxFlags dropdown_window_flags = UI_BoxFlag_DrawOpaqueBackground | UI_BoxFlag_DrawTransparentBackground | UI_BoxFlag_DrawBorder;
 
-		UI_Box *dropdown = UI_AddBox(file_dropdown_key, UI_SizeFit(), UI_SizeFit(), dropdown_window_flags);
+		UI_Box* dropdown = UI_MakeRootBox(file_dropdown_key, UI_SizeFit(), UI_SizeFit(), dropdown_window_flags);
+		if (UI_IsMouseInsideOf(dropdown->key)) deepest_hovered_root = dropdown->key;
+		if (deepest_hovered_root_prev != dropdown->key) dropdown->flags |= UI_BoxFlag_NoHover;
 		UI_PushBox(dropdown);
 
 		if (UI_Clicked(UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Say Hello!"))->key)) {
@@ -270,7 +286,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 		bool curious_checkbox_active_before = curious_checkbox_active;
 		{
-			UI_Box *row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+			UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 			UI_PushBox(row);
 			UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Curious checkbox"));
 
@@ -280,7 +296,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		}
 
 		if (curious_checkbox_active) {
-			STR states[] = {STR_(":|"), STR_(":)"), STR_(":|"), STR_(":(")};
+			STR states[] = { STR_(":|"), STR_(":)"), STR_(":|"), STR_(":(") };
 
 			UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, states[curious_checkbox_state]);
 			if (!curious_checkbox_active_before) {
@@ -288,8 +304,8 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 			}
 		}
 
-		UI_Box *nested_dropdown_button = UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Open nested dropdown:"));
-		if (UI_Pressed(nested_dropdown_button->key, UI_Input_MouseLeft)) {
+		UI_Box* nested_dropdown_button = UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Open nested dropdown:"));
+		if (UI_Pressed(nested_dropdown_button->key)) {
 			nested_dropdown_is_open = true;
 		}
 
@@ -299,14 +315,24 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 		UI_PopBox(dropdown);
 
-		UI_BoxComputeRects(dropdown, UI_VEC2{file_button->computed_position.x, file_button->computed_rect_clipped.max.y});
+		UI_BoxComputeRects(dropdown, UI_VEC2{ file_button->computed_position.x, file_button->computed_rect_clipped.max.y });
 		UI_DrawBox(dropdown);
 
 		UI_Key nested_dropdown_key = UI_KEY();
-		if (nested_dropdown_is_open) {
-			nested_dropdown_is_open = UI_DropdownShouldKeepOpen(nested_dropdown_key);
 
-			UI_Box *nested_dropdown = UI_AddBox(nested_dropdown_key, UI_SizeFit(), UI_SizeFit(), dropdown_window_flags);
+		if (UI_PrevFrameBoxFromKey(nested_dropdown_key) != NULL) {
+			// If we click anywhere in higher-up code that has been created already during this frame, we want to close this dropdown.
+			if (UI_InputWasPressed(UI_Input_MouseLeft) && UI_BoxFromKey(deepest_hovered_root_prev) != NULL) {
+				nested_dropdown_is_open = false;
+			}
+		}
+
+		if (nested_dropdown_is_open) {
+			// nested_dropdown_is_open = UI_DropdownShouldKeepOpen(nested_dropdown_key);
+
+			UI_Box* nested_dropdown = UI_MakeRootBox(nested_dropdown_key, UI_SizeFit(), UI_SizeFit(), dropdown_window_flags);
+			if (UI_IsMouseInsideOf(nested_dropdown->key)) deepest_hovered_root = nested_dropdown->key;
+			if (deepest_hovered_root_prev != nested_dropdown->key) nested_dropdown->flags |= UI_BoxFlag_NoHover;
 			UI_PushBox(nested_dropdown);
 			UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Do nothing (1)"));
 			UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Do nothing (2)"));
@@ -321,4 +347,6 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 			UI_DrawBox(nested_dropdown);
 		}
 	}
+
+	deepest_hovered_root_prev = deepest_hovered_root;
 }

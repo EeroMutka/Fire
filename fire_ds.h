@@ -288,14 +288,14 @@ typedef DS_Map(char, char) DS_MapRaw;
 // * Returns true if the key was found.
 // * KEY must be an l-value, otherwise this macro won't compile.
 #define DS_MapFind(MAP, KEY, OUT_VALUE) /* (DS_Map(K, V) *MAP, K KEY, (optional null) V *OUT_VALUE) */ \
-	(DS_MapTypecheckK(MAP, &(KEY)) && DS_MapTypecheckV(MAP, OUT_VALUE), \
-	DS_MapFindRaw((DS_MapRaw*)MAP, &(KEY), OUT_VALUE, DS_MapKSize(MAP), DS_MapVSize(MAP), DS_MapElemSize(MAP), DS_MapKOffset(MAP), DS_MapVOffset(MAP)))
+	(DS_MapTypecheckK((MAP), &(KEY)) && DS_MapTypecheckV(MAP, OUT_VALUE), \
+	DS_MapFindRaw((DS_MapRaw*)(MAP), &(KEY), OUT_VALUE, DS_MapKSize(MAP), DS_MapVSize(MAP), DS_MapElemSize(MAP), DS_MapKOffset(MAP), DS_MapVOffset(MAP)))
 
 // * Returns the address of the value if the key was found, otherwise NULL.
 // * KEY must be an l-value, otherwise this macro won't compile.
 #define DS_MapFindPtr(MAP, KEY) /* (DS_Map(K, V) *MAP, K KEY) */ \
-	(DS_MapTypecheckK(MAP, &(KEY)), \
-	DS_MapFindPtrRaw((DS_MapRaw*)MAP, &(KEY), DS_MapKSize(MAP), DS_MapVSize(MAP), DS_MapElemSize(MAP), DS_MapKOffset(MAP), DS_MapVOffset(MAP)))
+	(DS_MapTypecheckK((MAP), &(KEY)), \
+	DS_MapFindPtrRaw((DS_MapRaw*)(MAP), &(KEY), DS_MapKSize(MAP), DS_MapVSize(MAP), DS_MapElemSize(MAP), DS_MapKOffset(MAP), DS_MapVOffset(MAP)))
 
 // * Returns true if the key was newly added.
 // * Existing keys get overwritten with the new value.
