@@ -372,8 +372,10 @@ typedef struct UI_State {
 	UI_Vec2 last_pressed_mouse_pos;
 	UI_Vec2 mouse_travel_distance_after_press; // NOTE: holding alt/shift will modify the speed at which this value changes
 
-	UI_Key clicking_down_box;
-	UI_Key clicking_down_box_new;
+	UI_Key mouse_clicking_down_box;
+	UI_Key mouse_clicking_down_box_new;
+	UI_Key keyboard_clicking_down_box;
+	UI_Key keyboard_clicking_down_box_new;
 	UI_Key selected_box;
 	UI_Key selected_box_new;
 	
@@ -592,9 +594,7 @@ UI_API bool UI_IsMouseInsideOf(UI_Key key); // like IsHovered, except ignores th
 UI_API bool UI_IsSelected(UI_Key key);
 
 UI_API bool UI_IsClickingDown(UI_Key key);
-
-// For multi-line text edits, you must provide `line_offsets`, which stores an offset to each line strings bUI_inning,
-// except for the first line. So if the string is only on one line, line_offsets.length == 0
+UI_API bool UI_IsClickingDownAndHovered(UI_Key key);
 
 UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection);
 
@@ -1615,13 +1615,13 @@ UI_API bool UI_Pressed(UI_Key key) {
 }
 
 UI_API bool UI_PressedEx(UI_Key key, UI_Input mouse_button) {
-	bool pressed = UI_IsHovered(key) && UI_InputWasPressed(mouse_button);
+	bool pressed = UI_InputWasPressed(mouse_button) && UI_IsHovered(key);
 	pressed = pressed || (UI_STATE.selected_box == key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter));
 	return pressed;
 }
 
 UI_API bool UI_PressedIdleEx(UI_Key key, UI_Input mouse_button) {
-	bool pressed = UI_IsHoveredIdle(key) && UI_InputWasPressed(mouse_button);
+	bool pressed = UI_InputWasPressed(mouse_button) && UI_IsHoveredIdle(key);
 	pressed = pressed || (UI_STATE.selected_box == key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter));
 	return pressed;
 }
@@ -1631,7 +1631,7 @@ UI_API bool UI_PressedIdle(UI_Key key) {
 }
 
 UI_API bool UI_Clicked(UI_Key key) {
-	bool clicked = UI_STATE.clicking_down_box == key &&
+	bool clicked = UI_IsClickingDownAndHovered(key) &&
 		(UI_InputWasReleased(UI_Input_MouseLeft) || (UI_STATE.selection_is_visible && UI_InputWasReleased(UI_Input_Enter)));
 	return clicked;
 }
@@ -1659,12 +1659,13 @@ UI_API bool UI_IsSelected(UI_Key key) {
 	return key == UI_STATE.selected_box;
 }
 
-// UI_API bool UI_IsEditTextActive(UI_Key box) {
-// 	return box == UI_STATE.imm_new.active_edit_text_box; // hmm... we really should make a convention for imm_new vs imm_old calls
-// }
-
 UI_API bool UI_IsClickingDown(UI_Key key) {
-	return UI_STATE.clicking_down_box == key;
+	return UI_STATE.mouse_clicking_down_box == key || UI_STATE.keyboard_clicking_down_box == key;
+}
+
+UI_API bool UI_IsClickingDownAndHovered(UI_Key key) {
+	return (UI_STATE.keyboard_clicking_down_box == key && UI_STATE.selected_box == key) ||
+		(UI_STATE.mouse_clicking_down_box == key && UI_IsHovered(key));
 }
 
 UI_API bool UI_IsHovered(UI_Key key) {
@@ -1841,23 +1842,30 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 	box->flags = flags;
 	box->style = UI_PeekStyle();
 
-	if (UI_STATE.clicking_down_box == key &&
-		(UI_InputIsDown(UI_Input_MouseLeft) || (UI_STATE.selection_is_visible && UI_InputIsDown(UI_Input_Enter))))
-	{
-		UI_STATE.clicking_down_box_new = key;
+	if (UI_STATE.mouse_clicking_down_box == key && UI_InputIsDown(UI_Input_MouseLeft)) {
+		UI_STATE.mouse_clicking_down_box_new = key;
 	}
 
-	if ((flags & UI_BoxFlag_Clickable) && UI_Pressed(box->key)) {
-		UI_STATE.clicking_down_box_new = key;
-		if (box->flags & UI_BoxFlag_Selectable) {
-			UI_STATE.selected_box_new = key; // Select this box
+	if (UI_STATE.keyboard_clicking_down_box == key && (UI_STATE.selection_is_visible && UI_InputIsDown(UI_Input_Enter))) {
+		UI_STATE.keyboard_clicking_down_box_new = key;
+	}
+
+	if (flags & UI_BoxFlag_Clickable) {
+		bool pressed_with_mouse = UI_InputWasPressed(UI_Input_MouseLeft) && UI_IsHovered(key);
+		bool pressed_with_keyboard = UI_STATE.selected_box == key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter);
+		if (pressed_with_mouse) {
+			UI_STATE.mouse_clicking_down_box_new = key;
+			if (box->flags & UI_BoxFlag_Selectable) UI_STATE.selected_box_new = key;
+		}
+		if (pressed_with_keyboard) {
+			UI_STATE.keyboard_clicking_down_box_new = key;
+			if (box->flags & UI_BoxFlag_Selectable) UI_STATE.selected_box_new = key;
 		}
 	}
-	else {
-		// Keep currently selected box selected, unless overwritten by pressing some other box
-		if (UI_STATE.selected_box == key && UI_STATE.selected_box_new == UI_INVALID_KEY) {
-			UI_STATE.selected_box_new = key;
-		}
+
+	// Keep the currently selected box selected, unless overwritten by pressing some other box
+	if (UI_STATE.selected_box == key && UI_STATE.selected_box_new == UI_INVALID_KEY) {
+		UI_STATE.selected_box_new = key;
 	}
 
 	if (box->prev_frame) {
@@ -1871,10 +1879,10 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 			}
 		}
 
-		float is_hovered = (float)UI_IsHoveredIdle(box->key);
-		float is_clicking = (float)UI_IsClickingDown(box->key);
-		box->lazy_is_hovered = is_hovered;//is_hovered > box->prev_frame->lazy_is_hovered ? is_hovered : UI_Lerp(box->prev_frame->lazy_is_hovered, is_hovered, 0.4f);
-		box->lazy_is_holding_down = is_clicking > box->prev_frame->lazy_is_holding_down ? is_clicking : UI_Lerp(box->prev_frame->lazy_is_holding_down, is_clicking, 0.2f);
+		float is_clicking = (float)UI_IsClickingDownAndHovered(box->key);
+		box->lazy_is_hovered = (float)UI_IsHoveredIdle(box->key);
+		box->lazy_is_holding_down = is_clicking > box->prev_frame->lazy_is_holding_down ?
+			is_clicking : UI_Lerp(box->prev_frame->lazy_is_holding_down, is_clicking, 0.2f);
 	}
 
 	DS_ProfExit();
@@ -1944,8 +1952,10 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 	UI_STATE.prev_frame_box_from_key = UI_STATE.box_from_key;
 	DS_MapInit(&UI_STATE.box_from_key, &UI_STATE.frame_arena);
 	
-	UI_STATE.clicking_down_box = UI_STATE.clicking_down_box_new;
-	UI_STATE.clicking_down_box_new = UI_INVALID_KEY;
+	UI_STATE.mouse_clicking_down_box = UI_STATE.mouse_clicking_down_box_new;
+	UI_STATE.mouse_clicking_down_box_new = UI_INVALID_KEY;
+	UI_STATE.keyboard_clicking_down_box = UI_STATE.keyboard_clicking_down_box_new;
+	UI_STATE.keyboard_clicking_down_box_new = UI_INVALID_KEY;
 	UI_STATE.selected_box = UI_STATE.selected_box_new;
 	UI_STATE.selected_box_new = UI_INVALID_KEY;
 	UI_STATE.text_editing_box = UI_STATE.text_editing_box_new;
