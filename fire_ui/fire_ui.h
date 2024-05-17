@@ -340,18 +340,7 @@ typedef struct UI_EditTextRequest {
 	UI_String replace_with;
 } UI_EditTextRequest;
 
-
-// Immediate state is rebuilt every frame, during which you can inspect the complete immediate state from the previous frame.
-typedef struct UI_ImmediateState {
-	UI_Key deepest_clicking_down_box; // UI_INVALID_KEY by default
-
-	UI_Key selected_box_old;
-	UI_Key selected_box; // UI_INVALID_KEY by default. Selected box is the box with the (potentially hidden) selection box around it.
-
-	UI_Key active_edit_text_box;
-
-	DS_Map(UI_Key, UI_Box*) box_from_key;
-} UI_ImmediateState;
+typedef DS_Map(UI_Key, UI_Box*) UI_BoxFromKeyMap;
 
 typedef struct UI_State {
 	DS_Arena* persistent_arena;
@@ -360,11 +349,12 @@ typedef struct UI_State {
 	UI_Font* base_font;
 	UI_Font* icons_font;
 
-	DS_Arena old_frame_arena;
-	DS_Arena new_frame_arena;
+	DS_Arena prev_frame_arena;
+	DS_Arena frame_arena;
 
-	UI_ImmediateState imm_old; // input for this frame
-	UI_ImmediateState imm_new; // output that is built this frame
+	UI_BoxFromKeyMap prev_frame_box_from_key;
+	UI_BoxFromKeyMap box_from_key;
+
 	uint64_t frame_idx;
 
 	// The selected box can be hidden, i.e. when clicking a button with your mouse. Then, when pressing an arrow key, it becomes visible again.
@@ -390,12 +380,13 @@ typedef struct UI_State {
 	UI_Vec2 last_pressed_mouse_pos;
 	UI_Vec2 mouse_travel_distance_after_press; // NOTE: holding alt/shift will modify the speed at which this value changes
 
-	//UI_Box* deepest_hovered_box_prev_frame; // NULL by default
+	UI_Key clicking_down_box;
+	UI_Key clicking_down_box_new;
+	UI_Key selected_box;
+	UI_Key selected_box_new;
 
 	DS_DynArray(UI_Box*) box_stack;
 	DS_DynArray(UI_Style*) style_stack;
-
-	//bool frame_has_split_atlas;
 
 	// Draw state
 	uint32_t* draw_indices; // NULL by default
@@ -475,7 +466,7 @@ UI_API inline bool UI_InputWasPressed(UI_Input input) { return UI_STATE.inputs.i
 UI_API inline bool UI_InputWasPressedOrRepeat(UI_Input input) { return UI_STATE.inputs.input_states[input] & UI_InputState_WasPressedOrRepeat; }
 UI_API inline bool UI_InputWasReleased(UI_Input input) { return UI_STATE.inputs.input_states[input] & UI_InputState_WasReleased; }
 
-UI_API inline DS_Arena* UI_FrameArena(void) { return &UI_STATE.new_frame_arena; }
+UI_API inline DS_Arena* UI_FrameArena(void) { return &UI_STATE.frame_arena; }
 
 UI_API inline bool UI_MarkEquals(UI_Mark a, UI_Mark b) { return a.line == b.line && a.col == b.col; }
 
@@ -552,7 +543,7 @@ UI_API bool UI_EditInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value);
 UI_API bool UI_EditFloat(UI_Key key, UI_Size w, UI_Size h, float* value);
 UI_API bool UI_EditDouble(UI_Key key, UI_Size w, UI_Size h, double* value);
 
-UI_API bool UI_IsEditTextActive(UI_Key box);
+// UI_API bool UI_IsEditTextActive(UI_Key box);
 
 UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, UI_String initial_value);
 UI_API void UI_TextDeinit(UI_Text* text);
@@ -618,8 +609,6 @@ UI_API bool UI_IsHoveredIdle(UI_Key key); // Differs from UI_IsHovered in that i
 UI_API bool UI_IsMouseInsideOf(UI_Key key); // like IsHovered, except ignores the NoHover box flag
 
 UI_API bool UI_IsSelected(UI_Key key);
-UI_API bool UI_DidBeginSelection(UI_Key key);
-UI_API bool UI_DidEndSelection(UI_Key key);
 
 UI_API bool UI_IsClickingDown(UI_Key key);
 
@@ -739,10 +728,6 @@ static float UI_XCoordFromColumn(int col, UI_String line, UI_FontUsage font) {
 	DS_ProfExit();
 	return x;
 }
-
-// @cleanup
-static UI_ImmediateState* UI_PrevFrameState() { return &UI_STATE.imm_old; }
-static UI_ImmediateState* UI_NewFrameState() { return &UI_STATE.imm_new; }
 
 static UI_String UI_GetLineString(int line, const UI_Text* text) {
 	DS_ProfEnter();
@@ -1054,7 +1039,8 @@ UI_API bool UI_EditNumber(UI_Key key, UI_Size w, UI_Size h, void* value, bool is
 
 	bool activate_by_enter = UI_Pressed(key) && UI_InputWasPressed(UI_Input_Enter);
 	bool activate_by_click = UI_Clicked(key) && !has_moved_mouse_after_press && UI_InputWasReleased(UI_Input_MouseLeft);
-	bool activate_by_keyboard_navigation = UI_DidBeginSelection(key) && !UI_InputIsDown(UI_Input_MouseLeft); // this UI_InputIsDown for mouse is a bit of a dumb hack
+	bool did_begin_selection = UI_STATE.selected_box_new == key && UI_STATE.selected_box != key;
+	bool activate_by_keyboard_navigation = did_begin_selection && !UI_InputIsDown(UI_Input_MouseLeft); // this UI_InputIsDown for mouse is a bit of a dumb hack
 	bool activate = activate_by_enter || activate_by_click || activate_by_keyboard_navigation;
 
 	bool text_edit_was_activated = activate && UI_STATE.edit_number.editing_text != key;
@@ -1238,11 +1224,11 @@ UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, UI_Text text, b
 
 	bool was_editing = *editing;
 
-	if (UI_Pressed(key) || UI_DidBeginSelection(key)) {
+	if (UI_Pressed(key) || (UI_STATE.selected_box_new == key && UI_STATE.selected_box != key)) {
 		*editing = true;
 	}
 
-	if (UI_DidEndSelection(key)) {
+	if ((UI_STATE.selected_box_new != key && UI_STATE.selected_box == key)) {
 		*editing = false;
 	}
 
@@ -1256,7 +1242,6 @@ UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, UI_Text text, b
 
 	if (*editing) {
 		UI_STATE.edit_text.editing_frame_idx = UI_STATE.frame_idx;
-		UI_STATE.imm_new.active_edit_text_box = key;
 
 		if (!was_editing ||
 			(UI_InputWasPressedOrRepeat(UI_Input_A) && UI_InputIsDown(UI_Input_Control)))
@@ -1264,11 +1249,6 @@ UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, UI_Text text, b
 			UI_EditTextSelectAll(&text, selection);
 		}
 
-		// move selection?
-		//if (UI_Pressed(key, UI_Input_MouseLeft)) {
-		//}
-
-		
 		if (UI_InputWasPressedOrRepeat(UI_Input_Right)) {
 			UI_EditTextArrowKeyInputX(1, &text, selection, font);
 		}
@@ -1374,10 +1354,10 @@ UI_API bool UI_Checkbox(UI_Key key, bool* value) {
 	UI_PopStyle(inner_style);
 	UI_PopBox(box);
 
-	bool clicked = UI_Clicked(inner->key);
-	if (clicked) *value = !*value;
+	bool pressed = UI_Pressed(inner->key);
+	if (pressed) *value = !*value;
 	DS_ProfExit();
-	return clicked;
+	return pressed;
 }
 
 UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string) {
@@ -1581,7 +1561,7 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 		float r = 5.f;
 		{
 			float hovered = box->lazy_is_hovered * (1.f - box->lazy_is_holding_down); // We don't want to show the hover highlight when holding down
-			const UI_Color top = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 50.f) };
+			const UI_Color top = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 25.f) };
 			const UI_Color bot = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 10.f) };
 			UI_DrawRectCorners corners = {
 				{top, top, bot, bot},
@@ -1590,7 +1570,7 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 			UI_DrawRectEx(box_rect, &corners, scissor);
 		}
 		{
-			const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 100.f) };
+			const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 50.f) };
 			const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 20.f) };
 			UI_DrawRectCorners corners = {
 				{top, top, bot, bot},
@@ -1669,13 +1649,13 @@ UI_API bool UI_Pressed(UI_Key key) {
 
 UI_API bool UI_PressedEx(UI_Key key, UI_Input mouse_button) {
 	bool pressed = UI_IsHovered(key) && UI_InputWasPressed(mouse_button);
-	pressed = pressed || (UI_STATE.imm_old.selected_box == key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter));
+	pressed = pressed || (UI_STATE.selected_box == key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter));
 	return pressed;
 }
 
 UI_API bool UI_PressedIdleEx(UI_Key key, UI_Input mouse_button) {
 	bool pressed = UI_IsHoveredIdle(key) && UI_InputWasPressed(mouse_button);
-	pressed = pressed || (UI_STATE.imm_old.selected_box == key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter));
+	pressed = pressed || (UI_STATE.selected_box == key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter));
 	return pressed;
 }
 
@@ -1684,8 +1664,8 @@ UI_API bool UI_PressedIdle(UI_Key key) {
 }
 
 UI_API bool UI_Clicked(UI_Key key) {
-	bool is_holding_down = UI_STATE.imm_old.deepest_clicking_down_box == key;
-	bool clicked = is_holding_down && (UI_InputWasReleased(UI_Input_MouseLeft) || (UI_STATE.selection_is_visible && UI_InputWasReleased(UI_Input_Enter)));
+	bool clicked = UI_STATE.clicking_down_box == key &&
+		(UI_InputWasReleased(UI_Input_MouseLeft) || (UI_STATE.selection_is_visible && UI_InputWasReleased(UI_Input_Enter)));
 	return clicked;
 }
 
@@ -1709,23 +1689,15 @@ UI_API bool UI_DoubleClickedIdle(UI_Key key) {
 }
 
 UI_API bool UI_IsSelected(UI_Key key) {
-	return key == UI_STATE.imm_old.selected_box;
+	return key == UI_STATE.selected_box;
 }
 
-UI_API bool UI_IsEditTextActive(UI_Key box) {
-	return box == UI_STATE.imm_new.active_edit_text_box; // hmm... we really should make a convention for imm_new vs imm_old calls
-}
-
-UI_API bool UI_DidBeginSelection(UI_Key key) {
-	return key == UI_STATE.imm_old.selected_box && key != UI_STATE.imm_old.selected_box_old;
-}
-
-UI_API bool UI_DidEndSelection(UI_Key key) {
-	return key != UI_STATE.imm_old.selected_box && key == UI_STATE.imm_old.selected_box_old;
-}
+// UI_API bool UI_IsEditTextActive(UI_Key box) {
+// 	return box == UI_STATE.imm_new.active_edit_text_box; // hmm... we really should make a convention for imm_new vs imm_old calls
+// }
 
 UI_API bool UI_IsClickingDown(UI_Key key) {
-	return UI_STATE.imm_old.deepest_clicking_down_box == key;
+	return UI_STATE.clicking_down_box == key;
 }
 
 UI_API bool UI_IsHovered(UI_Key key) {
@@ -1793,13 +1765,13 @@ UI_API void UI_PopStyle(UI_Style* style) {
 
 UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key) {
 	UI_Box* box = NULL;
-	DS_MapFind(&UI_STATE.imm_old.box_from_key, key, &box);
+	DS_MapFind(&UI_STATE.prev_frame_box_from_key, key, &box);
 	return box;
 }
 
 UI_API UI_Box* UI_BoxFromKey(UI_Key key) {
 	UI_Box* box = NULL;
-	DS_MapFind(&UI_STATE.imm_new.box_from_key, key, &box);
+	DS_MapFind(&UI_STATE.box_from_key, key, &box);
 	return box;
 }
 
@@ -1842,7 +1814,6 @@ UI_API bool UI_SelectionMovementInput(UI_Box* node, UI_Key* out_new_selected_box
 				}
 				if (n->flags & UI_BoxFlag_Selectable) {
 					*out_new_selected_box = n->key;
-					// UI_STATE.imm_new.selected_box = n->key;
 					result = true;
 					goto end;
 				}
@@ -1870,7 +1841,6 @@ UI_API bool UI_SelectionMovementInput(UI_Box* node, UI_Key* out_new_selected_box
 
 				if (n->flags & UI_BoxFlag_Selectable) {
 					*out_new_selected_box = n->key;
-					//UI_STATE.imm_new.selected_box = n->key;
 					result = true;
 					goto end;
 				}
@@ -1894,7 +1864,7 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 	DS_ProfEnter();
 	
 	UI_Box* box = DS_New(UI_Box, UI_FrameArena());
-	bool newly_added = DS_MapInsert(&UI_STATE.imm_new.box_from_key, key, box);
+	bool newly_added = DS_MapInsert(&UI_STATE.box_from_key, key, box);
 	DS_CHECK(newly_added); // If this fails, then a box with the same key has already been added during this frame!
 
 	box->key = key;
@@ -1904,23 +1874,22 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 	box->flags = flags;
 	box->style = UI_PeekStyle();
 
-	if (UI_STATE.imm_old.deepest_clicking_down_box == key &&
+	if (UI_STATE.clicking_down_box == key &&
 		(UI_InputIsDown(UI_Input_MouseLeft) || (UI_STATE.selection_is_visible && UI_InputIsDown(UI_Input_Enter))))
 	{
-		UI_STATE.imm_new.deepest_clicking_down_box = key; // Keep holding down this box
+		UI_STATE.clicking_down_box_new = key;
 	}
 
 	if ((flags & UI_BoxFlag_Clickable) && UI_Pressed(box->key)) {
-		UI_STATE.imm_new.deepest_clicking_down_box = key;
-
+		UI_STATE.clicking_down_box_new = key;
 		if (box->flags & UI_BoxFlag_Selectable) {
-			UI_STATE.imm_new.selected_box = key; // Select this box
+			UI_STATE.selected_box_new = key; // Select this box
 		}
 	}
 	else {
 		// Keep currently selected box selected, unless overwritten by pressing some other box
-		if (UI_STATE.imm_old.selected_box == key && UI_STATE.imm_new.selected_box == UI_INVALID_KEY) {
-			UI_STATE.imm_new.selected_box = key;
+		if (UI_STATE.selected_box == key && UI_STATE.selected_box_new == UI_INVALID_KEY) {
+			UI_STATE.selected_box_new = key;
 		}
 	}
 
@@ -1929,24 +1898,16 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 			UI_Key new_selected_box;
 			if (UI_SelectionMovementInput(box->prev_frame, &new_selected_box)) {
 				if (UI_STATE.selection_is_visible) { // only move if selection is already visible; otherwise first make it visible
-					UI_STATE.imm_new.selected_box = new_selected_box;
+					UI_STATE.selected_box_new = new_selected_box;
 				}
 				UI_STATE.selection_is_visible = true;
 			}
-
-			// Find the deepest hovered box of the new mouse position, using the previous frame's box tree
-			// for (UI_Box* b = box->prev_frame; b;) {
-			// 	if (UI_PointIsInRect(b->computed_rect_clipped, UI_STATE.mouse_pos)) {
-			// 		UI_STATE.deepest_hovered_box_prev_frame = b;
-			// 		b = b->first_child[0];
-			// 		continue;
-			// 	}
-			// 	b = b->next[1];
-			// }
 		}
 
-		box->lazy_is_hovered = UI_Lerp(box->prev_frame->lazy_is_hovered, (float)UI_IsHoveredIdle(box->key), 0.2f);
-		box->lazy_is_holding_down = UI_Lerp(box->prev_frame->lazy_is_holding_down, (float)UI_IsClickingDown(box->key), 0.2f);
+		float is_hovered = (float)UI_IsHoveredIdle(box->key);
+		float is_clicking = (float)UI_IsClickingDown(box->key);
+		box->lazy_is_hovered = is_hovered > box->prev_frame->lazy_is_hovered ? is_hovered : UI_Lerp(box->prev_frame->lazy_is_hovered, is_hovered, 0.2f);
+		box->lazy_is_holding_down = is_clicking > box->prev_frame->lazy_is_holding_down ? is_clicking : UI_Lerp(box->prev_frame->lazy_is_holding_down, is_clicking, 0.2f);
 	}
 
 	DS_ProfExit();
@@ -2008,38 +1969,26 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 	UI_STATE.icons_font = UI_STATE.inputs.icons_font;
 	UI_CHECK(UI_STATE.base_font != NULL && UI_STATE.icons_font != NULL);
 
-	{
-		DS_Arena temp = UI_STATE.old_frame_arena;
-		UI_STATE.old_frame_arena = UI_STATE.new_frame_arena;
-		UI_STATE.new_frame_arena = temp;
-		DS_ArenaReset(&UI_STATE.new_frame_arena);
-	}
+	DS_Arena prev_frame_arena = UI_STATE.prev_frame_arena;
+	UI_STATE.prev_frame_arena = UI_STATE.frame_arena;
+	UI_STATE.frame_arena = prev_frame_arena;
+	DS_ArenaReset(&UI_STATE.frame_arena);
 
-	UI_STATE.imm_old = UI_STATE.imm_new;
-	memset(&UI_STATE.imm_new, 0, sizeof(UI_STATE.imm_new));
-	DS_MapInit(&UI_STATE.imm_new.box_from_key, &UI_STATE.new_frame_arena);
-	//DS_MapInit(&UI_STATE.imm_new.data_from_key, &UI_STATE.new_frame_arena);
-	//DS_ArrInit(&UI_STATE.imm_new.roots, &UI_STATE.new_frame_arena);
+	UI_STATE.prev_frame_box_from_key = UI_STATE.box_from_key;
+	DS_MapInit(&UI_STATE.box_from_key, &UI_STATE.frame_arena);
 	
+	UI_STATE.clicking_down_box = UI_STATE.clicking_down_box_new;
+	UI_STATE.clicking_down_box_new = UI_INVALID_KEY;
+	UI_STATE.selected_box = UI_STATE.selected_box_new;
+	UI_STATE.selected_box_new = UI_INVALID_KEY;
+
 	UI_STATE.frame_idx += 1;
 
-	//UI_STATE.frame_has_split_atlas = false;
-	DS_ArrInit(&UI_STATE.draw_calls, &UI_STATE.new_frame_arena);
-	//UI_.atlas_needs_reupload = false;
+	DS_ArrInit(&UI_STATE.draw_calls, &UI_STATE.frame_arena);
 
-	{ // Early input
-		UI_STATE.imm_new.selected_box_old = UI_STATE.imm_old.selected_box;
-		// UI_STATE.deepest_hovered_box_prev_frame = NULL;
-
-		// Recurse through the trees and do movement input
-		/*for (int i = 0; i < UI_STATE.imm_old.roots.length; i++) {
-			
-		}*/
-
-		// When clicking somewhere or pressing escape, by default, hide the selection box
-		if (UI_InputWasPressed(UI_Input_MouseLeft) || UI_InputWasPressed(UI_Input_Escape)) {
-			UI_STATE.selection_is_visible = false;
-		}
+	// When clicking somewhere or pressing escape, by default, hide the selection box
+	if (UI_InputWasPressed(UI_Input_MouseLeft) || UI_InputWasPressed(UI_Input_Escape)) {
+		UI_STATE.selection_is_visible = false;
 	}
 
 	// Push default style
@@ -2058,8 +2007,8 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 }
 
 UI_API void UI_Deinit(void) {
-	DS_ArenaDeinit(&UI_STATE.new_frame_arena);
-	DS_ArenaDeinit(&UI_STATE.old_frame_arena);
+	DS_ArenaDeinit(&UI_STATE.prev_frame_arena);
+	DS_ArenaDeinit(&UI_STATE.frame_arena);
 
 	UI_STATE.backend.destroy_buffer(0);
 	UI_STATE.backend.destroy_buffer(1);
@@ -2074,8 +2023,8 @@ UI_API void UI_Init(DS_Arena* persistent_arena, const UI_Backend* backend) {
 	memset(&UI_STATE, 0, sizeof(UI_STATE));
 	UI_STATE.persistent_arena = persistent_arena;
 	UI_STATE.backend = *backend;
-	DS_ArenaInit(&UI_STATE.old_frame_arena, DS_KIB(4), DS_HEAP);
-	DS_ArenaInit(&UI_STATE.new_frame_arena, DS_KIB(4), DS_HEAP);
+	DS_ArenaInit(&UI_STATE.prev_frame_arena, DS_KIB(4), DS_HEAP);
+	DS_ArenaInit(&UI_STATE.frame_arena, DS_KIB(4), DS_HEAP);
 
 	stbtt_PackBegin(&UI_STATE.pack_context, NULL, UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE, 0, UI_GLYPH_PADDING, NULL);
 
