@@ -155,13 +155,6 @@ typedef struct UI_Style {
 	UI_Vec2 child_padding;
 } UI_Style;
 
-//typedef union UI_Data {
-//	UI_Vec2 _v2;
-//	float _float;
-//	int _int;
-//	bool _bool;
-//} UI_Data;
-
 typedef struct UI_Box UI_Box;
 struct UI_Box {
 	UI_Key key;
@@ -186,7 +179,6 @@ struct UI_Box {
 	float lazy_is_holding_down;
 
 	// These will be computed with UI_ComputeBox.
-	// TODO: switch to `computed_rect`
 	UI_Vec2 computed_position; // in absolute screen space coordinates
 	UI_Vec2 computed_unexpanded_size;
 	UI_Vec2 computed_size;
@@ -333,12 +325,12 @@ typedef struct UI_Outputs {
 	// bool texture_atlas_was_updated; // new data was written into texture_atlas_cpu_local_data
 } UI_Outputs;
 
-typedef struct UI_EditTextRequest {
+typedef struct UI_EditTextModify {
 	bool has_edit;
 	UI_Mark replace_from; // TODO: add byteoffsets to these for maximum information to the user
 	UI_Mark replace_to;
 	UI_String replace_with;
-} UI_EditTextRequest;
+} UI_EditTextModify;
 
 typedef DS_Map(UI_Key, UI_Box*) UI_BoxFromKeyMap;
 
@@ -384,11 +376,13 @@ typedef struct UI_State {
 	UI_Key clicking_down_box_new;
 	UI_Key selected_box;
 	UI_Key selected_box_new;
-
+	
 	DS_DynArray(UI_Box*) box_stack;
 	DS_DynArray(UI_Style*) style_stack;
 
-	// Draw state
+	float scrollbar_origin_before_press;
+
+	// -- Draw state --
 	uint32_t* draw_indices; // NULL by default
 	UI_DrawVertex* draw_vertices; // NULL by default
 	uint32_t draw_next_vertex;
@@ -396,31 +390,18 @@ typedef struct UI_State {
 	UI_TextureID draw_active_texture;
 	DS_DynArray(UI_DrawCall) draw_calls;
 
-	struct {
-		float scrollbar_origin_before_press;
-	} scrollable_area_state;
+	// -- Splitters state --
+	UI_Key holding_splitter_key; // UI_INVALID_KEY when not holding anything
+	int holding_splitter_index;
 
-	struct {
-		UI_Key holding_splitter_key; // UI_INVALID_KEY when not holding anything
-		int holding_splitter_index;
-	} splitters_state;
+	// -- Edit number state --
+	uint64_t edit_number_value_before_press;
+	UI_Text edit_number_text;
 
-	struct {
-		uint64_t value_before_press;
-		UI_Text text;
-		UI_Key editing_text; // 0 means not editing text
-		UI_Selection editing_text_selection;
-	} edit_number;
-
-	struct {
-		UI_Key active_key; // UI_INVALID_KEY means nothing is active
-		UI_Selection active_selection;
-
-		uint64_t editing_frame_idx;
-		UI_Box* draw_selection_from_box; // NULL by default
-		UI_Selection draw_selection_from_box_sel;
-	} edit_text;
-
+	// -- Text editing state --
+	UI_Key text_editing_box;
+	UI_Key text_editing_box_new;
+	UI_Selection edit_text_selection;
 } UI_State;
 
 // The color palette here is the same as in Raylib
@@ -549,13 +530,13 @@ UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, UI_String initia
 UI_API void UI_TextDeinit(UI_Text* text);
 UI_API void UI_TextSet(UI_Text* text, UI_String value);
 
-// In the future, I could remove the UI_Text type and make all of the functions work with just a regular UI_String type. But for now, let's depend on UI_Text
-UI_API UI_Box* UI_EditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool* editing, UI_Selection* selection, UI_EditTextRequest* out_edit_request);
-UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text);
+// You may pass NULL to `out_modify`, in which case the modification will be done automatically
+UI_API UI_Box* UI_EditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
+UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
+UI_API void UI_EditTextApplyModify(UI_Text* text, const UI_EditTextModify* modify);
 
-// Lower-level edit text routines
-UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool* editing, UI_Selection* selection, UI_EditTextRequest* out_edit_request);
-UI_API void UI_ApplyEditTextRequest(UI_Text* text, const UI_EditTextRequest* request);
+// EditTextCore does not modify the text, but instead returns a modification request.
+// UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, const UI_Text* text, UI_EditTextModify* out_modify);
 
 // * `anchor_x` / `anchor_y` can be 0 or 1: A value of 0 means anchoring the scrollbar to left / top, 1 means anchoring it to right / bottom.
 UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y);
@@ -951,7 +932,7 @@ static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection
 //	DS_ProfExit();
 //}
 
-UI_API void UI_ApplyEditTextRequest(UI_Text* text, const UI_EditTextRequest* request) {
+UI_API void UI_EditTextApplyModify(UI_Text* text, const UI_EditTextModify* request) {
 	if (!request->has_edit) return;
 
 	// @speed: I think we could optimize this function by combining the erase and insert steps
@@ -1025,7 +1006,7 @@ UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection) {
 	DS_ProfExit();
 }
 
-UI_API bool UI_EditNumber(UI_Key key, UI_Size w, UI_Size h, void* value, bool is_float) {
+static bool UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, bool is_float) {
 	DS_ProfEnter();
 	uint64_t value_before;
 	memcpy(&value_before, value, 8);
@@ -1043,33 +1024,25 @@ UI_API bool UI_EditNumber(UI_Key key, UI_Size w, UI_Size h, void* value, bool is
 	bool activate_by_keyboard_navigation = did_begin_selection && !UI_InputIsDown(UI_Input_MouseLeft); // this UI_InputIsDown for mouse is a bit of a dumb hack
 	bool activate = activate_by_enter || activate_by_click || activate_by_keyboard_navigation;
 
-	bool text_edit_was_activated = activate && UI_STATE.edit_number.editing_text != key;
-	if (text_edit_was_activated) {
-		UI_STATE.edit_number.editing_text = key;
+	bool text_edit_was_activated = activate && UI_STATE.text_editing_box != key;
 
-		DS_ArrInit(&UI_STATE.edit_number.text.text, DS_HEAP);
-		DS_ArrPushN(&UI_STATE.edit_number.text.text, value_str.data, value_str.size);
-		UI_EditTextSelectAll(&UI_STATE.edit_number.text, &UI_STATE.edit_number.editing_text_selection);
+	if (text_edit_was_activated) {
+		// Maybe we could make this into an utility like "UI_RefreshSelection". It's to pretend that the selection was moved over into this box to activate the UI_EditText
+		UI_STATE.selected_box = UI_INVALID_KEY;
+		UI_STATE.selected_box_new = key;
+		UI_TextSet(&UI_STATE.edit_number_text, value_str);
 	}
 
-	if (UI_STATE.edit_number.editing_text == key) {
-		bool editing = true;
-		UI_EditTextRequest request;
-		UI_EditTextCore(key, w, h, UI_STATE.edit_number.text, &editing, &UI_STATE.edit_number.editing_text_selection, &request);
-		UI_ApplyEditTextRequest(&UI_STATE.edit_number.text, &request);
+	if (UI_STATE.text_editing_box == key || text_edit_was_activated) {
+		UI_EditText(key, w, h, &UI_STATE.edit_number_text, NULL);
 
 		if (is_float) {
 			double v;
-			if (STR_ParseFloat(UI_TextToStr(UI_STATE.edit_number.text), &v)) *(double*)value = v;
+			if (STR_ParseFloat(UI_TextToStr(UI_STATE.edit_number_text), &v)) *(double*)value = v;
 		}
 		else {
 			int64_t v;
-			if (STR_ParseI64(UI_TextToStr(UI_STATE.edit_number.text), &v)) *(int64_t*)value = v;
-		}
-
-		if (!text_edit_was_activated && !editing) {
-			UI_STATE.edit_number.editing_text = UI_INVALID_KEY;
-			// if pressing enter when editing text, then immediately we stop editing the text... but then it means we count that as upcoming click.
+			if (STR_ParseI64(UI_TextToStr(UI_STATE.edit_number_text), &v)) *(int64_t*)value = v;
 		}
 	}
 	else {
@@ -1077,7 +1050,7 @@ UI_API bool UI_EditNumber(UI_Key key, UI_Size w, UI_Size h, void* value, bool is
 			UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_PressingStaysWithoutHover, value_str);
 
 		if (UI_Pressed(box->key)) {
-			memcpy(&UI_STATE.edit_number.value_before_press, value, 8);
+			memcpy(&UI_STATE.edit_number_value_before_press, value, 8);
 		}
 
 		if (UI_IsHovered(box->key)) {
@@ -1087,7 +1060,7 @@ UI_API bool UI_EditNumber(UI_Key key, UI_Size w, UI_Size h, void* value, bool is
 		if (dragging) {
 			UI_STATE.outputs.lock_and_hide_cursor = true;
 
-			double initial_value = is_float ? *(double*)&UI_STATE.edit_number.value_before_press : *(int64_t*)&UI_STATE.edit_number.value_before_press;
+			double initial_value = is_float ? *(double*)&UI_STATE.edit_number_value_before_press : *(int64_t*)&UI_STATE.edit_number_value_before_press;
 			double new_value = initial_value + UI_STATE.mouse_travel_distance_after_press.x * 0.05f;
 
 			if (is_float) {
@@ -1105,29 +1078,29 @@ UI_API bool UI_EditNumber(UI_Key key, UI_Size w, UI_Size h, void* value, bool is
 }
 
 UI_API bool UI_EditInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value) {
-	bool edited = UI_EditNumber(key, w, h, value, false);
+	bool edited = UI_EditNumber_(key, w, h, value, false);
 	return edited;
 }
 
 UI_API bool UI_EditFloat(UI_Key key, UI_Size w, UI_Size h, float* value) {
 	double value_double = *value;
-	bool edited = UI_EditNumber(key, w, h, &value_double, true);
+	bool edited = UI_EditNumber_(key, w, h, &value_double, true);
 	*value = (float)value_double;
 	return edited;
 }
 
 UI_API bool UI_EditDouble(UI_Key key, UI_Size w, UI_Size h, double* value) {
-	bool edited = UI_EditNumber(key, w, h, value, true);
+	bool edited = UI_EditNumber_(key, w, h, value, true);
 	return edited;
 }
 
-UI_API UI_Box* UI_EditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text filepath, bool* editing, UI_Selection* selection, UI_EditTextRequest* out_edit_request) {
+UI_API UI_Box* UI_EditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* filepath, UI_EditTextModify* out_modify) {
 	DS_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, UI_BoxFlag_LayoutInX);
 	UI_PushBox(box);
 
 	UI_Key edit_text_key = UI_KEY1(key);
-	UI_EditTextCore(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath, editing, selection, out_edit_request);
+	UI_EditText(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath, out_modify);
 
 	UI_Style* button_style = UI_PushStyle();
 	button_style->font.font = UI_STATE.icons_font;
@@ -1158,7 +1131,7 @@ UI_API UI_Box* UI_EditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text filepat
 	return box;
 }
 
-static void UI_EditTextRequestReplaceRange(UI_Selection* selection, UI_Mark from, UI_Mark to, UI_String with, UI_EditTextRequest* out_edit_request) {
+static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from, UI_Mark to, UI_String with, UI_EditTextModify* out_edit_request) {
 	UI_CHECK(!out_edit_request->has_edit);
 	out_edit_request->has_edit = true;
 	out_edit_request->replace_from = selection->range[0];
@@ -1197,64 +1170,55 @@ UI_API void UI_TextDeinit(UI_Text* text) {
 }
 
 UI_API void UI_TextSet(UI_Text* text, UI_String value) {
+	DS_ArrClear(&text->text);
 	DS_ArrPushN(&text->text, value.data, value.size);
 }
 
-UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text) {
-	bool is_active = UI_STATE.edit_text.active_key == key;
-	
-	UI_EditTextRequest request;
-	UI_Box* box = UI_EditTextCore(key, w, h, *text, &is_active, &UI_STATE.edit_text.active_selection, &request);
-	UI_ApplyEditTextRequest(text, &request);
-	
-	if (is_active) UI_STATE.edit_text.active_key = key;
-	return box;
-}
-
-UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, UI_Text text, bool* editing, UI_Selection* selection, UI_EditTextRequest* out_edit_request)
-{
+UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify) {
 	DS_ProfEnter();
 	UI_FontUsage font = UI_PeekStyle()->font;
-	memset(out_edit_request, 0, sizeof(*out_edit_request));
+
+	UI_EditTextModify default_modify;
+	UI_EditTextModify* modify = out_modify ? out_modify : &default_modify;
+	memset(modify, 0, sizeof(*modify));
 
 	UI_Box* outer = UI_AddBox(key, w, h, UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_Clickable);
 	UI_PushBox(outer);
 
-	UI_Box* inner = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, UI_TextToStr(text));
+	UI_Box* inner = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, UI_TextToStr(*text));
 
-	bool was_editing = *editing;
-
-	if (UI_Pressed(key) || (UI_STATE.selected_box_new == key && UI_STATE.selected_box != key)) {
-		*editing = true;
+	bool editing = UI_STATE.text_editing_box == key;
+	bool pressed_this = UI_Pressed(key);
+	
+	if (pressed_this || (UI_STATE.selected_box_new == key && UI_STATE.selected_box != key)) {
+		editing = true;
 	}
 
-	if ((UI_STATE.selected_box_new != key && UI_STATE.selected_box == key)) {
-		*editing = false;
+	if ((UI_InputWasPressed(UI_Input_MouseLeft) && !pressed_this) ||
+		(UI_STATE.text_editing_box == key && UI_InputWasPressed(UI_Input_Enter)) ||
+		UI_InputWasPressed(UI_Input_Escape) ||
+		UI_STATE.selected_box_new != key)
+	{
+		editing = false;
 	}
 
-	if (*editing && was_editing && UI_InputWasPressed(UI_Input_Enter)) {
-		*editing = false;
-	}
+	if (editing) {
+		UI_STATE.text_editing_box_new = key;
 
-	if (*editing && UI_InputWasPressed(UI_Input_Escape)) {
-		*editing = false;
-	}
+		UI_Selection* selection = &UI_STATE.edit_text_selection;
 
-	if (*editing) {
-		UI_STATE.edit_text.editing_frame_idx = UI_STATE.frame_idx;
-
-		if (!was_editing ||
+		if (UI_STATE.text_editing_box != key ||
 			(UI_InputWasPressedOrRepeat(UI_Input_A) && UI_InputIsDown(UI_Input_Control)))
 		{
-			UI_EditTextSelectAll(&text, selection);
+			UI_EditTextSelectAll(text, selection);
 		}
 
 		if (UI_InputWasPressedOrRepeat(UI_Input_Right)) {
-			UI_EditTextArrowKeyInputX(1, &text, selection, font);
+			UI_EditTextArrowKeyInputX(1, text, selection, font);
 		}
 
 		if (UI_InputWasPressedOrRepeat(UI_Input_Left)) {
-			UI_EditTextArrowKeyInputX(-1, &text, selection, font);
+			UI_EditTextArrowKeyInputX(-1, text, selection, font);
 		}
 
 		if (UI_STATE.inputs.text_input_utf32_length > 0) {
@@ -1262,7 +1226,7 @@ UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, UI_Text text, b
 			for (int i = 0; i < UI_STATE.inputs.text_input_utf32_length; i++) {
 				STR_PrintRune(&text_input, UI_STATE.inputs.text_input_utf32[i]);
 			}
-			UI_EditTextRequestReplaceRange(selection, selection->range[0], selection->range[1], text_input.str, out_edit_request);
+			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], text_input.str, modify);
 		}
 
 		if (UI_InputWasPressedOrRepeat(UI_Input_Home)) {
@@ -1292,9 +1256,9 @@ UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, UI_Text text, b
 		// Ctrl C
 		if (UI_InputWasPressedOrRepeat(UI_Input_C) && UI_InputIsDown(UI_Input_Control)) {
 			if (UI_STATE.inputs.set_clipboard_string_fn) {
-				int min = UI_MarkToByteOffset(selection->range[0], &text);
-				int max = UI_MarkToByteOffset(selection->range[1], &text);
-				UI_STATE.inputs.set_clipboard_string_fn(STR_Slice(UI_TextToStr(text), min, max), UI_STATE.inputs.user_data);
+				int min = UI_MarkToByteOffset(selection->range[0], text);
+				int max = UI_MarkToByteOffset(selection->range[1], text);
+				UI_STATE.inputs.set_clipboard_string_fn(STR_Slice(UI_TextToStr(*text), min, max), UI_STATE.inputs.user_data);
 			}
 		}
 
@@ -1302,25 +1266,29 @@ UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, UI_Text text, b
 		if (UI_InputWasPressedOrRepeat(UI_Input_V) && UI_InputIsDown(UI_Input_Control)) {
 			if (UI_STATE.inputs.get_clipboard_string_fn) {
 				UI_String str = UI_STATE.inputs.get_clipboard_string_fn(UI_STATE.inputs.user_data);
-				UI_EditTextRequestReplaceRange(selection, selection->range[0], selection->range[1], str, out_edit_request);
+				UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], str, modify);
 			}
 		}
 
 		if (UI_InputWasPressedOrRepeat(UI_Input_Backspace)) {
 			if (UI_MarkEquals(selection->range[0], selection->range[1])) {
-				UI_MoveMarkH(&selection->range[0], &text, -1, UI_InputIsDown(UI_Input_Control));
+				UI_MoveMarkH(&selection->range[0], text, -1, UI_InputIsDown(UI_Input_Control));
 			}
-			UI_EditTextRequestReplaceRange(selection, selection->range[0], selection->range[1], STR_(""), out_edit_request);
+			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], STR_(""), modify);
 		}
 
-		UI_STATE.edit_text.draw_selection_from_box = inner;
-		UI_STATE.edit_text.draw_selection_from_box_sel = *selection;
+		// UI_STATE.edit_text.draw_selection_from_box = inner;
+		// UI_STATE.edit_text.draw_selection_from_box_sel = *selection;
 	}
 
 	UI_PopBox(outer);
 
 	if (UI_IsHovered(outer->key)) {
 		UI_STATE.outputs.cursor = UI_MouseCursor_I_beam;
+	}
+
+	if (out_modify == NULL) {
+		UI_EditTextApplyModify(text, modify);
 	}
 
 	DS_ProfExit();
@@ -1480,13 +1448,13 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 			// scrollbar inputs
 
 			if (UI_Pressed(scrollbar->key)) {
-				UI_STATE.scrollable_area_state.scrollbar_origin_before_press = offset._[y];
+				UI_STATE.scrollbar_origin_before_press = offset._[y];
 			}
 
 			if (UI_IsClickingDown(scrollbar->key)) {
 				float mouse_delta = UI_STATE.mouse_pos._[y] - UI_STATE.last_released_mouse_pos._[y];
 				float ratio_of_scrollbar_moved = mouse_delta / rail_line_length_px;
-				offset._[y] = UI_STATE.scrollable_area_state.scrollbar_origin_before_press - ratio_of_scrollbar_moved * content_length_px;
+				offset._[y] = UI_STATE.scrollbar_origin_before_press - ratio_of_scrollbar_moved * content_length_px;
 			}
 
 			if (UI_IsClickingDown(pad_before_bar->key) || UI_IsClickingDown(pad_after_bar->key)) {
@@ -1561,7 +1529,7 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 		float r = 5.f;
 		{
 			float hovered = box->lazy_is_hovered * (1.f - box->lazy_is_holding_down); // We don't want to show the hover highlight when holding down
-			const UI_Color top = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 25.f) };
+			const UI_Color top = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 20.f) };
 			const UI_Color bot = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 10.f) };
 			UI_DrawRectCorners corners = {
 				{top, top, bot, bot},
@@ -1570,7 +1538,7 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 			UI_DrawRectEx(box_rect, &corners, scissor);
 		}
 		{
-			const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 50.f) };
+			const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 100.f) };
 			const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 20.f) };
 			UI_DrawRectCorners corners = {
 				{top, top, bot, bot},
@@ -1614,15 +1582,14 @@ UI_API void UI_DrawBox(UI_Box* box) {
 		UI_DrawText(box->text, box->style->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, box->style->text_color, scissor);
 	}
 
-	// if editing text, draw the selection rect
-	if (UI_STATE.edit_text.editing_frame_idx == UI_STATE.frame_idx && UI_STATE.edit_text.draw_selection_from_box == box) {
-		UI_Selection sel = UI_STATE.edit_text.draw_selection_from_box_sel;
-		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{ 255, 255, 255, 50 }, scissor);
+	if (box->parent && UI_STATE.text_editing_box_new == box->parent->key) {
+		UI_Selection sel = UI_STATE.edit_text_selection;
+		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 50}, scissor);
 
 		UI_Mark end = sel.range[sel.end];
-		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{ 255, 255, 255, 255 }, scissor);
+		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 255}, scissor);
 	}
-
+	
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
 		UI_DrawBox(child);
 	}
@@ -1906,7 +1873,7 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 
 		float is_hovered = (float)UI_IsHoveredIdle(box->key);
 		float is_clicking = (float)UI_IsClickingDown(box->key);
-		box->lazy_is_hovered = is_hovered > box->prev_frame->lazy_is_hovered ? is_hovered : UI_Lerp(box->prev_frame->lazy_is_hovered, is_hovered, 0.2f);
+		box->lazy_is_hovered = is_hovered;//is_hovered > box->prev_frame->lazy_is_hovered ? is_hovered : UI_Lerp(box->prev_frame->lazy_is_hovered, is_hovered, 0.4f);
 		box->lazy_is_holding_down = is_clicking > box->prev_frame->lazy_is_holding_down ? is_clicking : UI_Lerp(box->prev_frame->lazy_is_holding_down, is_clicking, 0.2f);
 	}
 
@@ -1981,6 +1948,8 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 	UI_STATE.clicking_down_box_new = UI_INVALID_KEY;
 	UI_STATE.selected_box = UI_STATE.selected_box_new;
 	UI_STATE.selected_box_new = UI_INVALID_KEY;
+	UI_STATE.text_editing_box = UI_STATE.text_editing_box_new;
+	UI_STATE.text_editing_box_new = UI_INVALID_KEY;
 
 	UI_STATE.frame_idx += 1;
 
@@ -2015,6 +1984,8 @@ UI_API void UI_Deinit(void) {
 	UI_STATE.backend.destroy_atlas(0);
 
 	DS_MemFree(DS_HEAP, UI_STATE.atlas_buffer_grayscale);
+
+	UI_TextDeinit(&UI_STATE.edit_number_text);
 }
 
 UI_API void UI_Init(DS_Arena* persistent_arena, const UI_Backend* backend) {
@@ -2076,6 +2047,8 @@ UI_API void UI_Init(DS_Arena* persistent_arena, const UI_Backend* backend) {
 	DS_ArrInit(&UI_STATE.style_stack, UI_STATE.persistent_arena);
 	DS_ArrInit(&UI_STATE.box_stack, UI_STATE.persistent_arena);
 	DS_ArrPush(&UI_STATE.box_stack, NULL);
+
+	UI_TextInit(DS_HEAP, &UI_STATE.edit_number_text, STR_(""));
 
 	DS_ProfExit();
 }
@@ -2319,8 +2292,8 @@ UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 		panel_end_offsets[i] = panel_end_offsets[i] * normalize_factor;
 	}
 
-	if (UI_STATE.splitters_state.holding_splitter_key == key) {
-		int holding_splitter = UI_STATE.splitters_state.holding_splitter_index;
+	if (UI_STATE.holding_splitter_key == key) {
+		int holding_splitter = UI_STATE.holding_splitter_index;
 		float split_position = UI_STATE.mouse_pos._[X] - area.min._[X];
 
 		if (UI_InputIsDown(UI_Input_Alt)) {
@@ -2353,7 +2326,7 @@ UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 	}
 
 	if (!UI_InputIsDown(UI_Input_MouseLeft)) {
-		UI_STATE.splitters_state.holding_splitter_key = UI_INVALID_KEY;
+		UI_STATE.holding_splitter_key = UI_INVALID_KEY;
 	}
 
 	int hovering_splitter_index;
@@ -2361,8 +2334,8 @@ UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 		UI_STATE.outputs.cursor = X == UI_Axis_X ? UI_MouseCursor_ResizeH : UI_MouseCursor_ResizeV;
 
 		if (UI_InputWasPressed(UI_Input_MouseLeft)) {
-			UI_STATE.splitters_state.holding_splitter_key = key;
-			UI_STATE.splitters_state.holding_splitter_index = hovering_splitter_index;
+			UI_STATE.holding_splitter_key = key;
+			UI_STATE.holding_splitter_index = hovering_splitter_index;
 		}
 	}
 
@@ -2370,8 +2343,8 @@ UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 }
 
 UI_API bool UI_SplittersGetHoldingIndex(UI_Key key, int* out_index) {
-	*out_index = UI_STATE.splitters_state.holding_splitter_index;
-	return UI_STATE.splitters_state.holding_splitter_key == key;
+	*out_index = UI_STATE.holding_splitter_index;
+	return UI_STATE.holding_splitter_key == key;
 }
 
 UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_count, float* panel_end_offsets, int* out_splitter_index) {

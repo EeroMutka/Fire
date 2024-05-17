@@ -118,7 +118,15 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 		UI_PushBox(row);
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Enter text: "));
-		UI_EditText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text);
+		UI_EditText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text, NULL);
+		UI_PopBox(row);
+	}
+
+	{
+		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+		UI_PushBox(row);
+		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Enter second text: "));
+		UI_EditText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text_2, NULL);
 		UI_PopBox(row);
 	}
 
@@ -191,7 +199,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 				//UI_EditTextRequest edit_request;
 				//bool editing_this = was_editing_this;
-				UI_EditText(key, UI_SizeFit(), UI_SizeFit(), &tree->text);
+				UI_EditText(key, UI_SizeFit(), UI_SizeFit(), &tree->text, NULL);
 				//UI_ApplyEditTextRequest(&tree->text, &edit_request);
 
 				//if (editing_this) editing_text = key;
