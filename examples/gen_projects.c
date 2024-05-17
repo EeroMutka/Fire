@@ -28,13 +28,13 @@ int main() {
 		.c_runtime_library_dll = true, // glslang.lib uses /MD
 	};
 	
-	const char *vk_sdk = getenv("VULKAN_SDK");
+	const char* vk_sdk = getenv("VULKAN_SDK");
 	if (vk_sdk == NULL) {
 		printf("WARNING: Vulkan SDK not found (\"VULKAN_SDK\" environment variable is missing).\n"
 			"    Example projects which use Fire GPU won't be generated.");
 	}
 	
-	BUILD_Project *projects[128];
+	BUILD_Project* projects[128];
 	int projects_count = 0;
 	
 	//////////////////////
