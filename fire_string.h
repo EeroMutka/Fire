@@ -58,8 +58,6 @@ typedef struct STR {
 #define STR__(x) {(char*)x, sizeof(x)-1} // STR literal that works in C initializer lists
 #endif
 
-typedef uint32_t STR_Rune;
-
 typedef struct STR_Builder {
 	STR_ARENA* arena;
 	STR str;
@@ -71,14 +69,14 @@ typedef struct STR_Builder {
 typedef struct { STR* data; int size; } STR_Array;
 
 #define STR_IsUtf8FirstByte(c) (((c) & 0xC0) != 0x80) /* is c the start of a utf8 sequence? */
-#define STR_Each(str, r, i) (int i=0, r = 0, i##_next=0; (r=STR_NextRune(str, &i##_next)); i=i##_next)
-#define STR_EachReverse(str, r, i) (int i=str.size, r = 0; r=STR_PrevRune(str, &i);)
+#define STR_Each(str, r, i) (int i=0, r = 0, i##_next=0; (r=STR_NextCodepoint(str, &i##_next)); i=i##_next)
+#define STR_EachReverse(str, r, i) (int i=str.size, r = 0; r=STR_PrevCodepoint(str, &i);)
 
 // OLD formatting rules:
 // ~s                       - STR
 // ~c                       - c-style string
 // ~~                       - escape for ~
-// TODO: ~r                 - rune
+// TODO: ~r                 - codepoint
 // ~u8, ~u16, ~u32, ~u64    - unsigned integers
 // ~i8, ~i16, ~i32, ~i64    - signed integers
 // ~x8, ~x16, ~x32, ~x64    - hexadecimal integers
@@ -89,7 +87,7 @@ STR_API void OLD_PrintS(STR_Builder* s, STR str); // write string
 STR_API void OLD_PrintSRepeat(STR_Builder* s, STR str, int count);
 STR_API void OLD_PrintC(STR_Builder* s, const char* c_str);
 STR_API void OLD_PrintB(STR_Builder* s, char b); // print ASCII-byte
-STR_API void OLD_PrintR(STR_Builder* s, STR_Rune r); // print unicode rune
+STR_API void OLD_PrintR(STR_Builder* s, uint32_t r); // print unicode codepoint
 STR_API STR OLD_APrint(STR_ARENA* arena, const char* fmt, ...); // arena-print
 
 typedef struct STR_Formatter {
@@ -109,7 +107,7 @@ typedef struct STR_Formatter {
 %u   -  uint32
 %llu -  uint64
 %f   -  float/double
-%c   -  UTF8 codepoint (rune)
+%c   -  UTF8 codepoint (codepoint)
 %%   -  %
 %hhx -  hexadecimal uint8
 %hx  -  hexadecimal uint16
@@ -130,7 +128,7 @@ STR_API STR STR_FormTempV(const char* fmt, ...);
 STR_API void STR_Print(STR_Builder* s, const char* string);
 STR_API void STR_PrintV(STR_Builder* s, STR string);
 STR_API void STR_PrintF(STR_Builder* s, const char* fmt, ...);
-STR_API void STR_PrintRune(STR_Builder* s, STR_Rune rune);
+STR_API void STR_PrintC(STR_Builder* s, uint32_t codepoint); // Print unicode codepoint
 
 STR_API char* STR_Init(STR_ARENA* arena, STR s);
 STR_API char* STR_InitTemp(STR s);
@@ -160,44 +158,44 @@ STR_API STR STR_FloatToStr(STR_ARENA* arena, double value, int min_decimals);
 STR_API int STR_IntToStr_(char* buffer, uint64_t data, bool is_signed, int radix); // NOT null-terminated, the size of the string is returned.
 STR_API int STR_FloatToStr_(char* buffer, double value, int min_decimals); // NOT null-terminated, the size of the string is returned.
 
-STR_API int STR_RuneToUTF8(char* output, STR_Rune r); // returns the number of bytes written
-STR_API STR_Rune STR_UTF8ToRune(STR str);
-STR_API int STR_RuneSizeAsUTF8(STR_Rune r);
+STR_API int STR_CodepointToUTF8(char* output, uint32_t codepoint); // returns the number of bytes written
+STR_API uint32_t STR_UTF8ToCodepoint(STR str);
+STR_API int STR_CodepointSizeAsUTF8(uint32_t codepoint);
 
 // Returns the character on `byteoffset`, then increments it.
 // Will returns 0 if byteoffset >= str.size
-STR_API STR_Rune STR_NextRune(STR str, int* byteoffset);
+STR_API uint32_t STR_NextCodepoint(STR str, int* byteoffset);
 
 // Decrements `bytecounter`, then returns the character on it.
 // Will returns 0 if byteoffset < 0
-STR_API STR_Rune STR_PrevRune(STR str, int* byteoffset);
+STR_API uint32_t STR_PrevCodepoint(STR str, int* byteoffset);
 
-STR_API int STR_RuneCount(STR str);
+STR_API int STR_CodepointCount(STR str);
 
 // -- String view utilities -------------
 
 STR_API STR STR_Advance(STR* str, int size);
 STR_API STR STR_Clone(STR_ARENA* arena, STR str);
 
-STR_API STR STR_BeforeFirst(STR str, STR_Rune rune); // returns `str` if no rune is found
-STR_API STR STR_BeforeLast(STR str, STR_Rune rune);  // returns `str` if no rune is found
-STR_API STR STR_AfterFirst(STR str, STR_Rune rune);  // returns `str` if no rune is found
-STR_API STR STR_AfterLast(STR str, STR_Rune rune);   // returns `str` if no rune is found
+STR_API STR STR_BeforeFirst(STR str, uint32_t codepoint); // returns `str` if no codepoint is found
+STR_API STR STR_BeforeLast(STR str, uint32_t codepoint);  // returns `str` if no codepoint is found
+STR_API STR STR_AfterFirst(STR str, uint32_t codepoint);  // returns `str` if no codepoint is found
+STR_API STR STR_AfterLast(STR str, uint32_t codepoint);   // returns `str` if no codepoint is found
 
 STR_API bool STR_Find(STR str, const char* substr, int* out_offset);
 STR_API bool STR_FindV(STR str, STR substr, int* out_offset);
-STR_API STR STR_ParseUntilAndSkip(STR* remaining, STR_Rune rune); // cuts forward until `rune` or end of the string is reached
-STR_API bool STR_FindFirst(STR str, STR_Rune rune, int* out_offset);
-STR_API bool STR_FindLast(STR str, STR_Rune rune, int* out_offset);
+STR_API STR STR_ParseUntilAndSkip(STR* remaining, uint32_t codepoint); // cuts forward until `codepoint` or end of the string is reached
+STR_API bool STR_FindFirst(STR str, uint32_t codepoint, int* out_offset);
+STR_API bool STR_FindLast(STR str, uint32_t codepoint, int* out_offset);
 STR_API bool STR_LastIdxOfAnyChar(STR str, STR chars, int* out_index);
 STR_API bool STR_Contains(STR str, const char* substr);
 STR_API bool STR_ContainsV(STR str, STR substr);
-STR_API bool STR_ContainsRune(STR str, STR_Rune rune);
+STR_API bool STR_ContainsCodepoint(STR str, uint32_t codepoint);
 
 STR_API STR STR_Replace(STR_ARENA* arena, STR str, STR search_for, STR replace_with);
 STR_API STR STR_ReplaceMulti(STR_ARENA* arena, STR str, STR_Array search_for, STR_Array replace_with);
 STR_API STR STR_ToLower(STR_ARENA* arena, STR str);
-STR_API STR_Rune STR_RuneToLower(STR_Rune r);
+STR_API uint32_t STR_CodepointToLower(uint32_t codepoint);
 
 STR_API bool STR_EndsWith(STR str, const char* end);
 STR_API bool STR_EndsWithV(STR str, STR end);
@@ -242,27 +240,27 @@ static bool STR_ASCIISetContains(STR_ASCIISet set, char c) {
 	return (set.bytes[c / 8] & 1 << (c % 8)) != 0;
 }
 
-STR_API STR STR_ParseUntilAndSkip(STR* remaining, STR_Rune rune) {
+STR_API STR STR_ParseUntilAndSkip(STR* remaining, uint32_t codepoint) {
 	STR line = { remaining->data, 0 };
 
 	for (;;) {
-		int r_size = 0;
-		STR_Rune r = STR_NextRune(*remaining, &r_size);
-		if (r == 0) break;
+		int cp_size = 0;
+		uint32_t cp = STR_NextCodepoint(*remaining, &cp_size);
+		if (cp == 0) break;
 
-		remaining->data += r_size;
-		remaining->size -= r_size;
+		remaining->data += cp_size;
+		remaining->size -= cp_size;
 
-		if (r == rune) break;
-		line.size += r_size;
+		if (cp == codepoint) break;
+		line.size += cp_size;
 	}
 
 	return line;
 }
 
-STR_API bool STR_FindFirst(STR str, STR_Rune rune, int* out_offset) {
+STR_API bool STR_FindFirst(STR str, uint32_t codepoint, int* out_offset) {
 	for STR_Each(str, r, offset) {
-		if (r == rune) {
+		if (r == codepoint) {
 			*out_offset = offset;
 			return true;
 		}
@@ -270,9 +268,9 @@ STR_API bool STR_FindFirst(STR str, STR_Rune rune, int* out_offset) {
 	return false;
 }
 
-STR_API bool STR_FindLast(STR str, STR_Rune rune, int* out_offset) {
+STR_API bool STR_FindLast(STR str, uint32_t codepoint, int* out_offset) {
 	for STR_EachReverse(str, r, offset) {
-		if (r == rune) {
+		if (r == codepoint) {
 			*out_offset = offset;
 			return true;
 		}
@@ -297,34 +295,34 @@ STR_API bool STR_LastIdxOfAnyChar(STR str, STR chars, int* out_index) {
 	return found;
 }
 
-STR_API STR STR_BeforeFirst(STR str, STR_Rune rune) {
+STR_API STR STR_BeforeFirst(STR str, uint32_t codepoint) {
 	int offset = str.size;
-	STR_FindFirst(str, rune, &offset);
+	STR_FindFirst(str, codepoint, &offset);
 	STR result = { str.data, offset };
 	return result;
 }
 
-STR_API STR STR_BeforeLast(STR str, STR_Rune rune) {
+STR_API STR STR_BeforeLast(STR str, uint32_t codepoint) {
 	int offset = str.size;
-	STR_FindLast(str, rune, &offset);
+	STR_FindLast(str, codepoint, &offset);
 	STR result = { str.data, offset };
 	return result;
 }
 
-STR_API STR STR_AfterFirst(STR str, STR_Rune rune) {
+STR_API STR STR_AfterFirst(STR str, uint32_t codepoint) {
 	int offset = str.size;
 	STR result = str;
-	if (STR_FindFirst(str, rune, &offset)) {
-		result = STR_SliceAfter(str, offset + STR_RuneSizeAsUTF8(rune));
+	if (STR_FindFirst(str, codepoint, &offset)) {
+		result = STR_SliceAfter(str, offset + STR_CodepointSizeAsUTF8(codepoint));
 	}
 	return result;
 }
 
-STR_API STR STR_AfterLast(STR str, STR_Rune rune) {
+STR_API STR STR_AfterLast(STR str, uint32_t codepoint) {
 	int offset = str.size;
 	STR result = str;
-	if (STR_FindLast(str, rune, &offset)) {
-		result = STR_SliceAfter(str, offset + STR_RuneSizeAsUTF8(rune));
+	if (STR_FindLast(str, codepoint, &offset)) {
+		result = STR_SliceAfter(str, offset + STR_CodepointSizeAsUTF8(codepoint));
 	}
 	return result;
 }
@@ -338,7 +336,7 @@ STR_API bool STR_EqualsCaseInsensitiveV(STR a, STR b) {
 	bool equals = a.size == b.size;
 	if (equals) {
 		for (int i = 0; i < a.size; i++) {
-			if (STR_RuneToLower(a.data[i]) != STR_RuneToLower(b.data[i])) {
+			if (STR_CodepointToLower(a.data[i]) != STR_CodepointToLower(b.data[i])) {
 				equals = false;
 				break;
 			}
@@ -413,9 +411,9 @@ STR_API bool STR_Find(STR str, const char* substr, int* out_offset) {
 	return found;
 };
 
-STR_API bool STR_ContainsRune(STR str, STR_Rune rune) {
+STR_API bool STR_ContainsCodepoint(STR str, uint32_t codepoint) {
 	for STR_Each(str, r, i) {
-		if (r == rune) return true;
+		if (r == codepoint) return true;
 	}
 	return false;
 }
@@ -728,15 +726,15 @@ static const uint32_t STR_UTF8_OFFSETS[6] = {
 	0x03C82080UL, 0xFA082080UL, 0x82082080UL
 };
 
-STR_API int STR_RuneSizeAsUTF8(STR_Rune r) {
-	char _[4]; int size = STR_RuneToUTF8(_, r);
+STR_API int STR_CodepointSizeAsUTF8(uint32_t codepoint) {
+	char _[4]; int size = STR_CodepointToUTF8(_, codepoint);
 	return size;
 }
 
-STR_API int STR_RuneToUTF8(char* output, STR_Rune r) {
+STR_API int STR_CodepointToUTF8(char* output, uint32_t codepoint) {
 	// Original implementation by Jeff Bezanson from https://www.cprogramming.com/tutorial/utf8.c (u8_wc_toutf8, public domain)
 	STR_ProfEnter();
-	uint32_t ch = r;
+	uint32_t ch = codepoint;
 	int result = 0;
 	if (ch < 0x80) {
 		*output++ = (char)ch;
@@ -764,33 +762,28 @@ STR_API int STR_RuneToUTF8(char* output, STR_Rune r) {
 	return result;
 }
 
-STR_API STR_Rune STR_UTF8ToRune(STR str) {
+STR_API uint32_t STR_UTF8ToCodepoint(STR str) {
 	int offset = 0;
-	return STR_NextRune(str, &offset);
+	return STR_NextCodepoint(str, &offset);
 }
 
-STR_API STR_Rune STR_NextRune(STR str, int* byteoffset) {
+STR_API uint32_t STR_NextCodepoint(STR str, int* byteoffset) {
+	// Original implementation by Jeff Bezanson from https://www.cprogramming.com/tutorial/unicode.html (u8_nextchar, public domain)
 	if (*byteoffset >= str.size) return 0;
-	STR_ProfEnter();
-	STR_CHECK(*byteoffset >= 0);
-
-	// Original implementation by Jeff Bezanson from https://www.cprogramming.com/tutorial/unicode.html (public domain)
 
 	uint32_t ch = 0;
 	int sz = 0;
-
 	do {
 		ch <<= 6;
-		ch += str.data[(*byteoffset)++];
+		ch += (unsigned char)str.data[(*byteoffset)++];
 		sz++;
 	} while (*byteoffset < str.size && !STR_IsUtf8FirstByte(str.data[*byteoffset]));
 	ch -= STR_UTF8_OFFSETS[sz - 1];
-
-	STR_ProfExit();
-	return (STR_Rune)ch;
+	
+	return (uint32_t)ch;
 }
 
-STR_API STR_Rune STR_PrevRune(STR str, int* byteoffset) {
+STR_API uint32_t STR_PrevCodepoint(STR str, int* byteoffset) {
 	// See https://www.cprogramming.com/tutorial/unicode.html
 	if (*byteoffset <= 0) return 0;
 
@@ -799,10 +792,10 @@ STR_API STR_Rune STR_PrevRune(STR str, int* byteoffset) {
 		STR_IsUtf8FirstByte(str.data[--(*byteoffset)]) || --(*byteoffset));
 
 	int b = *byteoffset;
-	return STR_NextRune(str, &b);
+	return STR_NextCodepoint(str, &b);
 }
 
-STR_API int STR_RuneCount(STR str) {
+STR_API int STR_CodepointCount(STR str) {
 	STR_ProfEnter();
 	int i = 0;
 	for STR_Each(str, r, offset) {
@@ -905,11 +898,11 @@ static double STR_ToFloat_(const char* str, int* success) {
 	else if (*str == '+') str++;
 
 	// check for nan and inf
-	if (STR_RuneToLower(str[0]) == 'n' && STR_RuneToLower(str[1]) == 'a' && STR_RuneToLower(str[2]) == 'n') {
+	if (STR_CodepointToLower(str[0]) == 'n' && STR_CodepointToLower(str[1]) == 'a' && STR_CodepointToLower(str[2]) == 'n') {
 		if (success != NULL) *success = 1;
 		return NAN;
 	}
-	if (STR_RuneToLower(str[0]) == 'i' && STR_RuneToLower(str[1]) == 'n' && STR_RuneToLower(str[2]) == 'f') {
+	if (STR_CodepointToLower(str[0]) == 'i' && STR_CodepointToLower(str[1]) == 'n' && STR_CodepointToLower(str[2]) == 'f') {
 		if (success != NULL) *success = 1;
 		return sign * INFINITY;
 	}
@@ -1083,8 +1076,8 @@ STR_API STR STR_Advance(STR* str, int size) {
 	return result;
 }
 
-STR_API STR_Rune STR_RuneToLower(STR_Rune r) { // TODO: utf8
-	return r >= 'A' && r <= 'Z' ? r + 32 : r;
+STR_API uint32_t STR_CodepointToLower(uint32_t codepoint) { // TODO: handle unicode
+	return codepoint >= 'A' && codepoint <= 'Z' ? codepoint + 32 : codepoint;
 }
 
 STR_API STR STR_ToLower(STR_ARENA* arena, STR str) {
@@ -1094,7 +1087,7 @@ STR_API STR STR_ToLower(STR_ARENA* arena, STR str) {
 	char* data = (char*)result.data; // normally, strings are const char*, but let's just ignore that here
 
 	for (int i = 0; i < result.size; i++) {
-		data[i] = STR_RuneToLower(result.data[i]);
+		data[i] = STR_CodepointToLower(result.data[i]);
 	}
 	STR_ProfExit();
 	return result;
@@ -1189,7 +1182,7 @@ STR_API char* STR_Form(STR_ARENA* arena, const char* fmt, ...) {
 	va_list args; va_start(args, fmt);
 	STR_Builder builder = { arena };
 	STR_PrintF_(&builder, fmt, args);
-	STR_PrintRune(&builder, '\0');
+	STR_PrintC(&builder, '\0');
 	va_end(args);
 	return (char*)builder.str.data;
 }
@@ -1198,7 +1191,7 @@ STR_API char* STR_FormTemp(const char* fmt, ...) {
 	va_list args; va_start(args, fmt);
 	STR_Builder builder = { STR_ACTIVE_TEMP_ARENA };
 	STR_PrintF_(&builder, fmt, args);
-	STR_PrintRune(&builder, '\0');
+	STR_PrintC(&builder, '\0');
 	va_end(args);
 	return (char*)builder.str.data;
 }
@@ -1251,9 +1244,9 @@ STR_API void STR_PrintF(STR_Builder* s, const char* fmt, ...) {
 	va_end(args);
 }
 
-STR_API void STR_PrintRune(STR_Builder* s, STR_Rune rune) {
+STR_API void STR_PrintC(STR_Builder* s, uint32_t codepoint) {
 	char buffer[4];
-	STR str = { buffer, STR_RuneToUTF8(buffer, rune) };
+	STR str = { buffer, STR_CodepointToUTF8(buffer, codepoint) };
 	STR_PrintV(s, str);
 }
 
@@ -1285,9 +1278,9 @@ STR_API void OLD_PrintB(STR_Builder* s, char b) {
 	OLD_PrintS(s, str);
 }
 
-STR_API void OLD_PrintR(STR_Builder* s, STR_Rune r) {
+STR_API void OLD_PrintR(STR_Builder* s, uint32_t r) {
 	char buffer[4];
-	STR str = { buffer, STR_RuneToUTF8(buffer, r) };
+	STR str = { buffer, STR_CodepointToUTF8(buffer, r) };
 	OLD_PrintS(s, str);
 }
 

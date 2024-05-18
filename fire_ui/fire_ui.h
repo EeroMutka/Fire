@@ -608,7 +608,7 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 // Call this *after *calling UI_Splitters
 UI_API bool UI_SplittersGetHoldingIndex(UI_Key key, int* out_index);
 
-UI_API float UI_RuneWidth(uint32_t rune, UI_FontUsage font);
+UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontUsage font);
 UI_API float UI_TextWidth(UI_String text, UI_FontUsage font);
 
 // Returns true when newly added, false when existing
@@ -697,13 +697,13 @@ UI_API UI_Box* UI_DropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_String str
 	return box;
 }
 
-static float UI_XCoordFromColumn(int col, UI_String line, UI_FontUsage font) {
+static float UI_XFromColumn(int col, UI_String line, UI_FontUsage font) {
 	DS_ProfEnter();
 	float x = 0.f;
 	int i = 0;
 	for STR_Each(line, r, offset) {
 		if (i == col) break;
-		x += UI_RuneWidth((STR_Rune)r, font);
+		x += UI_GlyphWidth(r, font);
 		i++;
 	}
 	DS_ProfExit();
@@ -723,7 +723,7 @@ static bool UI_MarkIsValid(UI_Mark mark, const UI_Text* text) {
 	if (mark.line < 0 || mark.line > text->line_offsets.length) return false;
 
 	UI_String line_str = UI_GetLineString(mark.line, text);
-	return mark.col >= 0 && mark.col <= STR_RuneCount(line_str);
+	return mark.col >= 0 && mark.col <= STR_CodepointCount(line_str);
 }
 
 static int UI_MarkToByteOffset(UI_Mark mark, const UI_Text* text) {
@@ -745,9 +745,9 @@ static int UI_MarkToByteOffset(UI_Mark mark, const UI_Text* text) {
 	return result;
 }
 
-static UI_Vec2 UI_XYCoordFromMark(const UI_Text* text, UI_Mark mark, UI_FontUsage font) {
+static UI_Vec2 UI_XYFromMark(const UI_Text* text, UI_Mark mark, UI_FontUsage font) {
 	DS_ProfEnter();
-	float x = UI_XCoordFromColumn(mark.col, UI_GetLineString(mark.line, text), font);
+	float x = UI_XFromColumn(mark.col, UI_GetLineString(mark.line, text), font);
 	UI_Vec2 result = { x, font.size * mark.line };
 	DS_ProfExit();
 	return result;
@@ -755,8 +755,8 @@ static UI_Vec2 UI_XYCoordFromMark(const UI_Text* text, UI_Mark mark, UI_FontUsag
 
 static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_origin, UI_String text, UI_FontUsage font, UI_Color color, UI_ScissorRect scissor) {
 	DS_ProfEnter();
-	float min_pos_x = UI_XCoordFromColumn(min.col, text, font);
-	float max_pos_x = UI_XCoordFromColumn(max.col, text, font); // this is not OK with multiline!
+	float min_pos_x = UI_XFromColumn(min.col, text, font);
+	float max_pos_x = UI_XFromColumn(max.col, text, font); // this is not OK with multiline!
 
 	for (int line = min.line; line <= max.line; line++) {
 		UI_Rect rect;
@@ -842,11 +842,11 @@ static void UI_MoveMarkByWord(UI_Mark* mark, const UI_Text* text, int dir) {
 	bool was_whitespace = false;
 	bool was_alnum = false;
 	int i = 0;
-	STR_Rune r;
+	uint32_t r;
 
-	STR_Rune(*next_rune_fn)(UI_String, int*) = dir > 0 ? STR_NextRune : STR_PrevRune;
+	uint32_t (*next_codepoint_fn)(UI_String, int*) = dir > 0 ? STR_NextCodepoint : STR_PrevCodepoint;
 
-	for (; r = next_rune_fn(UI_TextToStr(*text), &byteoffset); i++) {
+	for (; r = next_codepoint_fn(UI_TextToStr(*text), &byteoffset); i++) {
 		bool whitespace = r == ' ' || r == '\t';
 		bool alnum = (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_';
 
@@ -877,11 +877,11 @@ static void UI_MoveMarkH(UI_Mark* mark, const UI_Text* text, int dir, bool ctrl)
 	else if (mark->col + dir < 0) {
 		if (mark->line > 0) {
 			mark->line -= 1;
-			mark->col = STR_RuneCount(UI_GetLineString(mark->line, text));
+			mark->col = STR_CodepointCount(UI_GetLineString(mark->line, text));
 		}
 	}
 	else {
-		int end_col = STR_RuneCount(UI_GetLineString(mark->line, text));
+		int end_col = STR_CodepointCount(UI_GetLineString(mark->line, text));
 
 		if (mark->col + dir > end_col) {
 			if (mark->line < text->line_offsets.length) {
@@ -912,7 +912,7 @@ static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection
 		UI_Mark* end = &selection->range[selection->end];
 		UI_MoveMarkH(end, text, dir, UI_InputIsDown(UI_Input_Control));
 
-		selection->cursor_x = UI_XYCoordFromMark(text, *end, font).x;
+		selection->cursor_x = UI_XYFromMark(text, *end, font).x;
 
 		if (!shift) {
 			selection->range[1 - selection->end] = *end;
@@ -967,7 +967,7 @@ UI_API void UI_EditTextApplyModify(UI_Text* text, const UI_EditTextModify* reque
 
 		// Should we try to do a new kind of text editing - optionally without storing line offsets?
 		if (lines_count > 1) UI_TODO();
-		mark.col += STR_RuneCount(insertion);
+		mark.col += STR_CodepointCount(insertion);
 
 		/*
 		StrRangeArray line_ranges = StrSplit(UI_FrameArena(), insertion, '\n');
@@ -1000,7 +1000,7 @@ UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection) {
 	selection->range[0] = UI_MARK{0};
 	selection->range[1] = UI_MARK{
 		text->line_offsets.length,
-		STR_RuneCount(UI_GetLineString(text->line_offsets.length, text)),
+		STR_CodepointCount(UI_GetLineString(text->line_offsets.length, text)),
 	};
 	selection->end = 1;
 	DS_ProfExit();
@@ -1152,7 +1152,7 @@ static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from,
 	mark.line += lines_count - 1;
 	if (lines_count > 1) mark.col = 0;
 
-	mark.col += STR_RuneCount(last_line_str);
+	mark.col += STR_CodepointCount(last_line_str);
 	selection->range[0] = mark;
 	selection->range[1] = mark;
 }
@@ -1224,7 +1224,7 @@ UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_E
 		if (UI_STATE.inputs.text_input_utf32_length > 0) {
 			STR_Builder text_input = { UI_FrameArena() };
 			for (int i = 0; i < UI_STATE.inputs.text_input_utf32_length; i++) {
-				STR_PrintRune(&text_input, UI_STATE.inputs.text_input_utf32[i]);
+				STR_PrintC(&text_input, UI_STATE.inputs.text_input_utf32[i]);
 			}
 			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], text_input.str, modify);
 		}
@@ -2398,9 +2398,9 @@ UI_API void UI_FontDeinit(UI_Font* font) {
 	DS_MapDeinit(&font->glyph_map);
 }
 
-static UI_CachedGlyph UI_GetCachedGlyph(uint32_t rune, UI_FontUsage font, int* out_atlas_index) {
+static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontUsage font, int* out_atlas_index) {
 	int atlas_index = 0;
-	UI_CachedGlyphKey key = { rune, (int)font.size };
+	UI_CachedGlyphKey key = { codepoint, (int)font.size };
 
 	UI_CachedGlyph* glyph = NULL;
 	if (DS_MapGetOrAddPtr(&font.font->glyph_map, key, &glyph)) {
@@ -2417,7 +2417,7 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t rune, UI_FontUsage font, int* o
 		stbtt_pack_range pack_range = {0};
 		pack_range.font_size = font.size;
 		pack_range.first_unicode_codepoint_in_range = 0;
-		pack_range.array_of_unicode_codepoints = (int*)&rune;
+		pack_range.array_of_unicode_codepoints = (int*)&codepoint;
 		pack_range.num_chars = 1;
 		pack_range.chardata_for_range = &packed_char;
 
@@ -2473,10 +2473,10 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t rune, UI_FontUsage font, int* o
 	return *glyph;
 }
 
-UI_API float UI_RuneWidth(uint32_t rune, UI_FontUsage font) {
-	UI_CachedGlyph glyph = UI_GetCachedGlyph(rune, font, NULL);
+UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontUsage font) {
+	UI_CachedGlyph glyph = UI_GetCachedGlyph(codepoint, font, NULL);
 	return glyph.x_advance;
-	//bool ok = DS_MapFind(&font->atlas->glyphs, &((UI_FontAtlasKey){rune, font->id}), &val);
+	//bool ok = DS_MapFind(&font->atlas->glyphs, &((UI_FontAtlasKey){codepoint, font->id}), &val);
 	//if (!ok) {
 	//	DS_MapFind(&font->atlas->glyphs, &((UI_FontAtlasKey){INVALID_GLYPH, font->id}), &val);
 	//}
@@ -2487,7 +2487,7 @@ UI_API float UI_TextWidth(UI_String text, UI_FontUsage font) {
 	DS_ProfEnter();
 	float w = 0.f;
 	for STR_Each(text, r, i) {
-		w += UI_RuneWidth((STR_Rune)r, font);
+		w += UI_GlyphWidth(r, font);
 	}
 	DS_ProfExit();
 	return w;
@@ -3049,6 +3049,81 @@ UI_API void UI_DrawPolyline(const UI_Vec2* points, int points_count, float thick
 UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor) {
 	UI_DrawPolylineEx(points, points_count, thickness, color, true, 0.7f, scissor);
 }
+
+			#define isutf(c) (((c)&0xC0)!=0x80)
+			static const uint32_t offsetsFromUTF8[6] = {
+				0x00000000UL, 0x00003080UL, 0x000E2080UL,
+				0x03C82080UL, 0xFA082080UL, 0x82082080UL
+			};
+
+			static uint32_t u8_nextchar(char *s, int *i)
+			{
+				uint32_t ch = 0;
+				int sz = 0;
+
+				do {
+					ch <<= 6;
+					ch += (unsigned char)s[(*i)++];
+					sz++;
+				} while (s[*i] && !isutf(s[*i]));
+				ch -= offsetsFromUTF8[sz-1];
+
+				return ch;
+			}
+
+			static const char trailingBytesForUTF8[256] = {
+				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+				1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+				2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, 3,3,3,3,3,3,3,3,4,4,4,4,5,5,5,5
+			};
+
+			/* conversions without error checking
+			only works for valid UTF-8, i.e. no 5- or 6-byte sequences
+			srcsz = source size in bytes, or -1 if 0-terminated
+			sz = dest size in # of wide characters
+
+			returns # characters converted
+			dest will always be L'\0'-terminated, even if there isn't enough room
+			for all the characters.
+			if sz = srcsz+1 (i.e. 4*srcsz+4 bytes), there will always be enough space.
+			*/
+			static int u8_toucs(uint32_t *dest, int sz, char *src, int srcsz)
+			{
+				uint32_t ch;
+				char *src_end = src + srcsz;
+				int nb;
+				int i=0;
+
+				while (i < sz-1) {
+					nb = trailingBytesForUTF8[(unsigned char)*src];
+					if (srcsz == -1) {
+						if (*src == 0)
+							goto done_toucs;
+					}
+					else {
+						if (src + nb >= src_end)
+							goto done_toucs;
+					}
+					ch = 0;
+					switch (nb) {
+						/* these fall through deliberately */
+					case 3: ch += (unsigned char)*src++; ch <<= 6;
+					case 2: ch += (unsigned char)*src++; ch <<= 6;
+					case 1: ch += (unsigned char)*src++; ch <<= 6;
+					case 0: ch += (unsigned char)*src++;
+					}
+					ch -= offsetsFromUTF8[nb];
+					dest[i++] = ch;
+				}
+			done_toucs:
+				dest[i] = 0;
+				return i;
+			}
 
 UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {
 	DS_ProfEnter();

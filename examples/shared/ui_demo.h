@@ -122,6 +122,8 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_PopBox(row);
 	}
 
+	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
+
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 		UI_PushBox(row);
