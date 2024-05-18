@@ -194,7 +194,7 @@ typedef struct UI_Mark {
 #define UI_MARK  UI_LangAgnosticLiteral(UI_Mark)
 
 typedef struct UI_Selection {
-	UI_Mark range[2]; // These should be sorted so that range[0] represents a mark before range[1]. You can sort them using `UI_SelectionFixOrder`.
+	UI_Mark range[2]; // These must be sorted so that range[0] represents a mark before range[1]. You can sort them using `UI_SelectionFixOrder`.
 	uint32_t end;
 	float cursor_x;
 } UI_Selection;
@@ -697,7 +697,21 @@ UI_API UI_Box* UI_DropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_String str
 	return box;
 }
 
-static float UI_XFromColumn(int col, UI_String line, UI_FontUsage font) {
+static int UI_ColumnFromXOffset(float x, UI_String line, UI_FontUsage font) {
+	DS_ProfEnter();
+	int column = 0;
+	float start_x = 0.f;
+	for STR_Each(line, r, offset) {
+		float glyph_width = UI_GlyphWidth(r, font);
+		float mid_x = start_x + 0.5f * glyph_width;
+		if (x >= mid_x) column++;
+		start_x += glyph_width;
+	}
+	DS_ProfExit();
+	return column;
+}
+
+static float UI_XOffsetFromColumn(int col, UI_String line, UI_FontUsage font) {
 	DS_ProfEnter();
 	float x = 0.f;
 	int i = 0;
@@ -745,9 +759,9 @@ static int UI_MarkToByteOffset(UI_Mark mark, const UI_Text* text) {
 	return result;
 }
 
-static UI_Vec2 UI_XYFromMark(const UI_Text* text, UI_Mark mark, UI_FontUsage font) {
+static UI_Vec2 UI_XYOffsetFromMark(const UI_Text* text, UI_Mark mark, UI_FontUsage font) {
 	DS_ProfEnter();
-	float x = UI_XFromColumn(mark.col, UI_GetLineString(mark.line, text), font);
+	float x = UI_XOffsetFromColumn(mark.col, UI_GetLineString(mark.line, text), font);
 	UI_Vec2 result = { x, font.size * mark.line };
 	DS_ProfExit();
 	return result;
@@ -755,8 +769,8 @@ static UI_Vec2 UI_XYFromMark(const UI_Text* text, UI_Mark mark, UI_FontUsage fon
 
 static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_origin, UI_String text, UI_FontUsage font, UI_Color color, UI_ScissorRect scissor) {
 	DS_ProfEnter();
-	float min_pos_x = UI_XFromColumn(min.col, text, font);
-	float max_pos_x = UI_XFromColumn(max.col, text, font); // this is not OK with multiline!
+	float min_pos_x = UI_XOffsetFromColumn(min.col, text, font);
+	float max_pos_x = UI_XOffsetFromColumn(max.col, text, font); // this is not OK with multiline!
 
 	for (int line = min.line; line <= max.line; line++) {
 		UI_Rect rect;
@@ -912,7 +926,7 @@ static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection
 		UI_Mark* end = &selection->range[selection->end];
 		UI_MoveMarkH(end, text, dir, UI_InputIsDown(UI_Input_Control));
 
-		selection->cursor_x = UI_XYFromMark(text, *end, font).x;
+		selection->cursor_x = UI_XYOffsetFromMark(text, *end, font).x;
 
 		if (!shift) {
 			selection->range[1 - selection->end] = *end;
@@ -1176,7 +1190,8 @@ UI_API void UI_TextSet(UI_Text* text, UI_String value) {
 
 UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify) {
 	DS_ProfEnter();
-	UI_FontUsage font = UI_PeekStyle()->font;
+	UI_Style* style = UI_PeekStyle();
+	UI_FontUsage font = style->font;
 
 	UI_EditTextModify default_modify;
 	UI_EditTextModify* modify = out_modify ? out_modify : &default_modify;
@@ -1189,8 +1204,9 @@ UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_E
 
 	bool editing = UI_STATE.text_editing_box == key;
 	bool pressed_this = UI_Pressed(key);
+	bool activate_by_becoming_selected = UI_STATE.selected_box_new == key && UI_STATE.selected_box != key;
 	
-	if (pressed_this || (UI_STATE.selected_box_new == key && UI_STATE.selected_box != key)) {
+	if (pressed_this || activate_by_becoming_selected) {
 		editing = true;
 	}
 
@@ -1207,7 +1223,7 @@ UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_E
 
 		UI_Selection* selection = &UI_STATE.edit_text_selection;
 
-		if (UI_STATE.text_editing_box != key ||
+		if (activate_by_becoming_selected ||
 			(UI_InputWasPressedOrRepeat(UI_Input_A) && UI_InputIsDown(UI_Input_Control)))
 		{
 			UI_EditTextSelectAll(text, selection);
@@ -1221,6 +1237,17 @@ UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_E
 			UI_EditTextArrowKeyInputX(-1, text, selection, font);
 		}
 
+		if (pressed_this || UI_STATE.mouse_clicking_down_box == key) {
+			if (inner->prev_frame) {
+				float origin = inner->prev_frame->computed_position.x + style->text_padding.x;
+			
+				int col = UI_ColumnFromXOffset(UI_STATE.mouse_pos.x - origin, UI_GetLineString(0, text), font);
+				selection->range[selection->end].col = col;
+				if (pressed_this) selection->range[1 - selection->end].col = col;
+				UI_SelectionFixOrder(selection);
+			}
+		}
+		
 		if (UI_STATE.inputs.text_input_utf32_length > 0) {
 			STR_Builder text_input = { UI_FrameArena() };
 			for (int i = 0; i < UI_STATE.inputs.text_input_utf32_length; i++) {
@@ -1583,6 +1610,10 @@ UI_API void UI_DrawBox(UI_Box* box) {
 	}
 
 	if (box->parent && UI_STATE.text_editing_box_new == box->parent->key) {
+		//UI_Vec2 P = box->computed_position;
+		//P.x += box->style->text_padding.x;
+		//UI_DrawLine(P, UI_AddV2(P, UI_VEC2{0, 5.f}), 2.f, UI_BLUE, NULL);
+
 		UI_Selection sel = UI_STATE.edit_text_selection;
 		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 50}, scissor);
 

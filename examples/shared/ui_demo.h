@@ -42,8 +42,8 @@ static void UIDemoInit(UIDemoState* state, DS_Arena* persist) {
 	UIDemoAddTreeSpecie(state, UI_KEY(), STR_("Birch"), STR_("Birch is most commonly found in the Northern hemisphere."));
 	UIDemoAddTreeSpecie(state, UI_KEY(), STR_("Cedar"), STR_("Cedar wood is a natural repellent to moths."));
 
-	UI_TextInit(persist, &state->dummy_text, STR_(""));
-	UI_TextInit(persist, &state->dummy_text_2, STR_(""));
+	UI_TextInit(persist, &state->dummy_text, STR_("Strawberry"));
+	UI_TextInit(persist, &state->dummy_text_2, STR_("Lingonberry"));
 }
 
 static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
