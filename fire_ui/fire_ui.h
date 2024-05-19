@@ -513,42 +513,35 @@ UI_API void UI_PopBox(UI_Box* box);
 UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags);
 UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string);
 
-UI_API UI_Box* UI_Button(UI_Key key, UI_Size w, UI_Size h, UI_String string);
+UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string);
+UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string);
 
-UI_API bool UI_Checkbox(UI_Key key, bool* value);
+UI_API void UI_AddCheckbox(UI_Key key, bool* value);
+
+// You may pass NULL to `out_modify`, in which case the modification will be done automatically
+UI_API UI_Box* UI_AddValueEditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
+UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
+UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* modify);
+
+UI_API UI_Box* UI_AddValueEditInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value);
+UI_API UI_Box* UI_AddValueEditFloat(UI_Key key, UI_Size w, UI_Size h, float* value);
+UI_API UI_Box* UI_AddValueEditDouble(UI_Key key, UI_Size w, UI_Size h, double* value);
 
 // * may return NULL
 UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, UI_String text);
 UI_API void UI_PopCollapsing(UI_Box* box);
 
-// Returns true if the value was modified
-UI_API bool UI_EditInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value);
-UI_API bool UI_EditFloat(UI_Key key, UI_Size w, UI_Size h, float* value);
-UI_API bool UI_EditDouble(UI_Key key, UI_Size w, UI_Size h, double* value);
-
-// UI_API bool UI_IsEditTextActive(UI_Key box);
-
 UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, UI_String initial_value);
 UI_API void UI_TextDeinit(UI_Text* text);
 UI_API void UI_TextSet(UI_Text* text, UI_String value);
-
-// You may pass NULL to `out_modify`, in which case the modification will be done automatically
-UI_API UI_Box* UI_EditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
-UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
-UI_API void UI_EditTextApplyModify(UI_Text* text, const UI_EditTextModify* modify);
-
-// EditTextCore does not modify the text, but instead returns a modification request.
-// UI_API UI_Box* UI_EditTextCore(UI_Key key, UI_Size w, UI_Size h, const UI_Text* text, UI_EditTextModify* out_modify);
 
 // * `anchor_x` / `anchor_y` can be 0 or 1: A value of 0 means anchoring the scrollbar to left / top, 1 means anchoring it to right / bottom.
 UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y);
 UI_API void UI_PopScrollArea(UI_Box* box);
 
-UI_API UI_Box* UI_DropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_String string);
-
-UI_API UI_Box* UI_ArrangersPush(UI_Key key, UI_Size w, UI_Size h);
-UI_API void UI_ArrangersPop(UI_Box* box, UI_ArrangersRequest* out_edit_request);
-UI_API void UI_Arranger(UI_Key key, UI_Size w, UI_Size h);
+UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h);
+UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request);
+UI_API void UI_AddArranger(UI_Key key, UI_Size w, UI_Size h);
 
 // --------------------------------------
 
@@ -557,14 +550,8 @@ UI_API UI_Style* UI_MakeStyle(void);
 UI_API void UI_PopStyle(UI_Style* style);
 UI_API UI_Style* UI_PeekStyle(void);
 
-// Sometimes you may want to know if a box was, say, hovered during the last frame and only after that decide whether or not to create the box for this frame.
-// Or, you might want to ask if a box existed during the previous frame. In either case, you may call call `UI_BoxFromKey` even if that box hasn't been added (yet).
-// NEW PHILOSOPHY: We should provide an API to get an "old box" from key if we really want that!
-//UI_API UI_Box* UI_BoxFromKey(UI_Key key);
-//UI_API UI_Data* UI_DataFromKey(UI_Key key);
-
 UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key); // Returns NULL if a box with this key did not exist
-UI_API UI_Box* UI_BoxFromKey(UI_Key key); // Returns NULL if a box with this key has not been created this frame so far.
+UI_API UI_Box* UI_BoxFromKey(UI_Key key); // Returns NULL if a box with this key has not been created this frame so far
 
 UI_API bool UI_BoxIsAParentOf(UI_Box* box, UI_Box* child);
 
@@ -605,7 +592,7 @@ UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 
 UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_count, float* panel_end_offsets, int* out_index);
 
-// Call this *after *calling UI_Splitters
+// UI_Splitters must be called before calling UI_SplittersGetHoldingIndex
 UI_API bool UI_SplittersGetHoldingIndex(UI_Key key, int* out_index);
 
 UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontUsage font);
@@ -630,7 +617,6 @@ UI_API inline void UI_AddTriangleIndices(uint32_t a, uint32_t b, uint32_t c, UI_
 UI_API inline void UI_AddQuadIndices(uint32_t a, uint32_t b, uint32_t c, uint32_t d, UI_TextureID texture);
 UI_API void UI_AddTriangleIndicesAndClip(uint32_t a, uint32_t b, uint32_t c, UI_TextureID texture, UI_ScissorRect scissor);
 UI_API void UI_AddQuadIndicesAndClip(uint32_t a, uint32_t b, uint32_t c, uint32_t d, UI_TextureID texture, UI_ScissorRect scissor);
-
 
 UI_API void UI_DrawRect(UI_Rect rect, UI_Color color, UI_ScissorRect scissor);
 UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, UI_ScissorRect scissor);
@@ -657,7 +643,7 @@ UI_API void UI_DrawPolyline(const UI_Vec2* points, int points_count, float thick
 UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor);
 UI_API void UI_DrawPolylineEx(const UI_Vec2* points, int points_count, float thickness, UI_Color color, bool loop, float split_miter_threshold, UI_ScissorRect scissor);
 
-#ifdef /* ---------------- */ UI_IMPLEMENTATION /* ---------------- */
+#ifdef /********************/ UI_IMPLEMENTATION /********************/
 
 // -- Global state ---------
 UI_API UI_State UI_STATE;
@@ -676,15 +662,15 @@ static const UI_Vec2 UI_WHITE_PIXEL_UV = { 0.5f / (float)UI_GLYPH_MAP_SIZE, 0.5f
 UI_API inline bool UI_MarkGreaterThan(UI_Mark a, UI_Mark b) { return a.line > b.line || (a.line == b.line && a.col > b.col); }
 UI_API inline bool UI_MarkLessThan(UI_Mark a, UI_Mark b) { return a.line < b.line || (a.line == b.line && a.col < b.col); }
 
-UI_API UI_Box* UI_Button(UI_Key key, UI_Size w, UI_Size h, UI_String string) {
-	UI_BoxFlags flags = UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
+UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string) {
+	flags |= UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
 	UI_Box* box = UI_AddBoxWithText(key, w, h, flags, string);
 	return box;
 }
 
-UI_API UI_Box* UI_DropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_String string) {
-	UI_Box* box = UI_AddBox(key, w, h,
-		UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground);
+UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string) {
+	flags |= UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder |UI_BoxFlag_DrawTransparentBackground;
+	UI_Box* box = UI_AddBox(key, w, h, flags);
 	UI_PushBox(box);
 
 	UI_AddBoxWithText(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0, string);
@@ -946,7 +932,7 @@ static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection
 //	DS_ProfExit();
 //}
 
-UI_API void UI_EditTextApplyModify(UI_Text* text, const UI_EditTextModify* request) {
+UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* request) {
 	if (!request->has_edit) return;
 
 	// @speed: I think we could optimize this function by combining the erase and insert steps
@@ -1020,11 +1006,10 @@ UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection) {
 	DS_ProfExit();
 }
 
-static bool UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, bool is_float) {
+static UI_Box* UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, bool is_float) {
 	DS_ProfEnter();
-	uint64_t value_before;
-	memcpy(&value_before, value, 8);
 
+	UI_Box* box = NULL;
 	bool dragging = UI_IsClickingDown(key) && UI_InputIsDown(UI_Input_MouseLeft);
 	bool has_moved_mouse_after_press = UI_Abs(UI_STATE.mouse_travel_distance_after_press.x) >= 2.f;
 
@@ -1048,7 +1033,7 @@ static bool UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, bool i
 	}
 
 	if (UI_STATE.text_editing_box == key || text_edit_was_activated) {
-		UI_EditText(key, w, h, &UI_STATE.edit_number_text, NULL);
+		box = UI_AddValueEditText(key, w, h, &UI_STATE.edit_number_text, NULL);
 
 		if (is_float) {
 			double v;
@@ -1060,7 +1045,7 @@ static bool UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, bool i
 		}
 	}
 	else {
-		UI_Box* box = UI_AddBoxWithText(key, w, h,
+		box = UI_AddBoxWithText(key, w, h,
 			UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_PressingStaysWithoutHover, value_str);
 
 		if (UI_Pressed(box->key)) {
@@ -1086,39 +1071,36 @@ static bool UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, bool i
 		}
 	}
 
-	bool edited = memcmp(&value_before, value, 8) != 0;
 	DS_ProfExit();
-	return edited;
+	return box;
 }
 
-UI_API bool UI_EditInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value) {
-	bool edited = UI_EditNumber_(key, w, h, value, false);
-	return edited;
+UI_API UI_Box* UI_AddValueEditInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value) {
+	return UI_EditNumber_(key, w, h, value, false);
 }
 
-UI_API bool UI_EditFloat(UI_Key key, UI_Size w, UI_Size h, float* value) {
+UI_API UI_Box* UI_AddValueEditFloat(UI_Key key, UI_Size w, UI_Size h, float* value) {
 	double value_double = *value;
-	bool edited = UI_EditNumber_(key, w, h, &value_double, true);
+	UI_Box* box = UI_EditNumber_(key, w, h, &value_double, true);
 	*value = (float)value_double;
-	return edited;
+	return box;
 }
 
-UI_API bool UI_EditDouble(UI_Key key, UI_Size w, UI_Size h, double* value) {
-	bool edited = UI_EditNumber_(key, w, h, value, true);
-	return edited;
+UI_API UI_Box* UI_AddValueEditDouble(UI_Key key, UI_Size w, UI_Size h, double* value) {
+	return UI_EditNumber_(key, w, h, value, true);
 }
 
-UI_API UI_Box* UI_EditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* filepath, UI_EditTextModify* out_modify) {
+UI_API UI_Box* UI_AddValueEditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* filepath, UI_EditTextModify* out_modify) {
 	DS_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, UI_BoxFlag_LayoutInX);
 	UI_PushBox(box);
 
 	UI_Key edit_text_key = UI_KEY1(key);
-	UI_EditText(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath, out_modify);
+	UI_AddValueEditText(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath, out_modify);
 
 	UI_Style* button_style = UI_PushStyle();
 	button_style->font.font = UI_STATE.icons_font;
-	UI_Box* button = UI_Button(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), STR_("\x42"));
+	UI_Box* button = UI_AddButton(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, STR_("\x42"));
 	UI_PopStyle(button_style);
 
 	if (UI_Clicked(button->key)) {
@@ -1188,7 +1170,7 @@ UI_API void UI_TextSet(UI_Text* text, UI_String value) {
 	DS_ArrPushN(&text->text, value.data, value.size);
 }
 
-UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify) {
+UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify) {
 	DS_ProfEnter();
 	UI_Style* style = UI_PeekStyle();
 	UI_FontUsage font = style->font;
@@ -1274,11 +1256,11 @@ UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_E
 			// UI_SelectionFixOrder(selection);
 		}
 
-		if (UI_InputWasPressedOrRepeat(UI_Input_X) && UI_InputIsDown(UI_Input_Control)) {
-			UI_TODO(); // UI_CopySelectionToClipboard(selection, text);
-			UI_TODO(); //UI_EraseRangeSel(text, selection, font);
-			// result.edited = true;
-		}
+		//if (UI_InputWasPressedOrRepeat(UI_Input_X) && UI_InputIsDown(UI_Input_Control)) {
+		//	UI_TODO(); // UI_CopySelectionToClipboard(selection, text);
+		//	UI_TODO(); //UI_EraseRangeSel(text, selection, font);
+		//	// result.edited = true;
+		//}
 
 		// Ctrl C
 		if (UI_InputWasPressedOrRepeat(UI_Input_C) && UI_InputIsDown(UI_Input_Control)) {
@@ -1315,14 +1297,14 @@ UI_API UI_Box* UI_EditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_E
 	}
 
 	if (out_modify == NULL) {
-		UI_EditTextApplyModify(text, modify);
+		UI_ApplyEditTextModify(text, modify);
 	}
 
 	DS_ProfExit();
 	return outer;
 }
 
-UI_API bool UI_Checkbox(UI_Key key, bool* value) {
+UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
 	DS_ProfEnter();
 	UI_Style* style = UI_PeekStyle();
 	float h = style->font.size + 2.f * style->text_padding.y;
@@ -1349,10 +1331,8 @@ UI_API bool UI_Checkbox(UI_Key key, bool* value) {
 	UI_PopStyle(inner_style);
 	UI_PopBox(box);
 
-	bool pressed = UI_Pressed(inner->key);
-	if (pressed) *value = !*value;
+	if (UI_Pressed(inner->key)) *value = !*value;
 	DS_ProfExit();
-	return pressed;
 }
 
 UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string) {
@@ -3202,7 +3182,7 @@ UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI
 	return s;
 }
 
-UI_API UI_Box* UI_ArrangersPush(UI_Key key, UI_Size w, UI_Size h) {
+UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h) {
 	DS_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, /*UI_BoxFlag_NoScissor*/0);
 	UI_PushBox(box);
@@ -3215,7 +3195,7 @@ UI_API UI_Box* UI_ArrangersPush(UI_Key key, UI_Size w, UI_Size h) {
 	return box;
 }
 
-UI_API void UI_ArrangersPop(UI_Box* box, UI_ArrangersRequest* out_edit_request) {
+UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request) {
 	DS_ProfEnter();
 	UI_PopBox(box);
 	UI_BoxEx* ex = (UI_BoxEx*)box->user_ptr; // may be NULL
@@ -3295,7 +3275,7 @@ UI_API void UI_ArrangersPop(UI_Box* box, UI_ArrangersRequest* out_edit_request) 
 	DS_ProfExit();
 }
 
-UI_API void UI_Arranger(UI_Key key, UI_Size w, UI_Size h) {
+UI_API void UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 	DS_ProfEnter();
 	UI_Box* box = UI_AddBoxWithText(key, w, h, UI_BoxFlag_Clickable, STR_(":"));
 

@@ -90,14 +90,14 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 	UI_PushBox(main_area);
 
-	UI_Box* click_me = UI_Button(UI_KEY(), UI_SizeFit(), UI_SizeFit(), STR_("Click me!"));
+	UI_Box* click_me = UI_AddButton(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Click me!"));
 	if (UI_Clicked(click_me->key)) {
 		printf("Button says thanks you!\n");
 	}
 
 	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
 
-	UI_Box* another_button = UI_Button(UI_KEY(), UI_SizeFit(), UI_SizeFit(), STR_("Another button"));
+	UI_Box* another_button = UI_AddButton(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Another button"));
 	if (UI_Clicked(another_button->key)) {
 		printf("Another button was clicked. He's not as thankful.\n");
 	}
@@ -107,8 +107,8 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX | UI_BoxFlag_DrawBorder | UI_BoxFlag_ChildPadding);
 		UI_PushBox(row);
-		UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Greedy button (does nothing)"));
-		UI_Button(UI_KEY(), UI_SizeFit(), UI_SizeFit(), STR_("Humble button (does nothing)"));
+		UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, STR_("Greedy button (does nothing)"));
+		UI_AddButton(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Humble button (does nothing)"));
 		UI_PopBox(row);
 	}
 
@@ -118,7 +118,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 		UI_PushBox(row);
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Enter text: "));
-		UI_EditText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text, NULL);
+		UI_AddValueEditText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text, NULL);
 		UI_PopBox(row);
 	}
 
@@ -128,7 +128,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 		UI_PushBox(row);
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Enter second text: "));
-		UI_EditText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text_2, NULL);
+		UI_AddValueEditText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text_2, NULL);
 		UI_PopBox(row);
 	}
 
@@ -139,7 +139,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_PushBox(row);
 		static float my_float = 320.5f;
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Edit float: "));
-		UI_EditFloat(UI_KEY(), UI_SizeFit(), UI_SizeFit(), &my_float);
+		UI_AddValueEditFloat(UI_KEY(), UI_SizeFit(), UI_SizeFit(), &my_float);
 		UI_PopBox(row);
 	}
 
@@ -150,7 +150,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_PushBox(row);
 		static int64_t my_int = 8281;
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Edit int: "));
-		UI_EditInt(UI_KEY(), UI_SizeFit(), UI_SizeFit(), &my_int);
+		UI_AddValueEditInt(UI_KEY(), UI_SizeFit(), UI_SizeFit(), &my_int);
 		UI_PopBox(row);
 	}
 
@@ -162,7 +162,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("A bunch of checkboxes:"));
 
 		static bool checkboxes[5];
-		for (int i = 0; i < 5; i++) UI_Checkbox(UI_KEY1(i), &checkboxes[i]);
+		for (int i = 0; i < 5; i++) UI_AddCheckbox(UI_KEY1(i), &checkboxes[i]);
 
 		UI_PopBox(row);
 	}
@@ -172,7 +172,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	{ // Arrangers 
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("And here we have some useful tree facts."));
 
-		UI_Box* arrangers = UI_ArrangersPush(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit());
+		UI_Box* arrangers = UI_PushArrangerSet(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit());
 
 		for (int i = 0; i < state->trees.length; i++) {
 			UIDemoTreeSpecie* tree = &state->trees.data[i];
@@ -181,9 +181,9 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 				UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawOpaqueBackground);
 			UI_PushBox(tree_box);
 
-			UI_Arranger(UI_KEY1(tree->key), UI_SizeFit(), UI_SizeFit());
+			UI_AddArranger(UI_KEY1(tree->key), UI_SizeFit(), UI_SizeFit());
 
-			UI_Checkbox(UI_KEY1(tree->key), &tree->show);
+			UI_AddCheckbox(UI_KEY1(tree->key), &tree->show);
 			UI_AddBoxWithText(UI_KEY1(tree->key), UI_SizeFit(), UI_SizeFit(), 0, tree->name);
 
 			if (tree->show) {
@@ -201,7 +201,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 				//UI_EditTextRequest edit_request;
 				//bool editing_this = was_editing_this;
-				UI_EditText(key, UI_SizeFit(), UI_SizeFit(), &tree->text, NULL);
+				UI_AddValueEditText(key, UI_SizeFit(), UI_SizeFit(), &tree->text, NULL);
 				//UI_ApplyEditTextRequest(&tree->text, &edit_request);
 
 				//if (editing_this) editing_text = key;
@@ -214,7 +214,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		}
 
 		UI_ArrangersRequest edit_request;
-		UI_ArrangersPop(arrangers, &edit_request);
+		UI_PopArrangerSet(arrangers, &edit_request);
 
 		if (edit_request.move_from != edit_request.move_to) {
 			UIDemoTreeSpecie moved = DS_ArrGet(state->trees, edit_request.move_from);
@@ -241,7 +241,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	};
 
 	for (int i = 0; i < UI_ArrayCount(lorem_ipsum_lines); i++) {
-		UI_Box* button = UI_Button(UI_KEY1(i), UI_SizeFit(), UI_SizeFit(), lorem_ipsum_lines[i]);
+		UI_Box* button = UI_AddButton(UI_KEY1(i), UI_SizeFit(), UI_SizeFit(), 0, lorem_ipsum_lines[i]);
 		if (UI_Clicked(button->key)) {
 			printf("Clicked button index %d\n", i);
 		}
@@ -287,7 +287,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		if (deepest_hovered_root_prev != dropdown->key) dropdown->flags |= UI_BoxFlag_NoHover;
 		UI_PushBox(dropdown);
 
-		if (UI_Clicked(UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Say Hello!"))->key)) {
+		if (UI_Clicked(UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, STR_("Say Hello!"))->key)) {
 			printf("Hello!\n");
 		}
 
@@ -300,7 +300,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 			UI_PushBox(row);
 			UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Curious checkbox"));
 
-			UI_Checkbox(UI_KEY(), &curious_checkbox_active);
+			UI_AddCheckbox(UI_KEY(), &curious_checkbox_active);
 
 			UI_PopBox(row);
 		}
@@ -314,12 +314,12 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 			}
 		}
 
-		UI_Box* nested_dropdown_button = UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Open nested dropdown:"));
+		UI_Box* nested_dropdown_button = UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, STR_("Open nested dropdown:"));
 		if (UI_Pressed(nested_dropdown_button->key)) {
 			nested_dropdown_is_open = true;
 		}
 
-		if (UI_Clicked(UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFlex(1.f), STR_("Exit Program"))->key)) {
+		if (UI_Clicked(UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFlex(1.f), 0, STR_("Exit Program"))->key)) {
 			exit(0);
 		}
 
@@ -344,9 +344,9 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 			if (UI_IsMouseInsideOf(nested_dropdown->key)) deepest_hovered_root = nested_dropdown->key;
 			if (deepest_hovered_root_prev != nested_dropdown->key) nested_dropdown->flags |= UI_BoxFlag_NoHover;
 			UI_PushBox(nested_dropdown);
-			UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Do nothing (1)"));
-			UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Do nothing (2)"));
-			UI_Button(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), STR_("Do nothing (3)"));
+			UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, STR_("Do nothing (1)"));
+			UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, STR_("Do nothing (2)"));
+			UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, STR_("Do nothing (3)"));
 			UI_PopBox(nested_dropdown);
 
 			UI_Vec2 pos = {
