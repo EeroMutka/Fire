@@ -211,6 +211,7 @@ static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11Device
 	D3D11_RASTERIZER_DESC raster_desc = {0};
 	raster_desc.FillMode = D3D11_FILL_SOLID;
 	raster_desc.CullMode = D3D11_CULL_NONE;
+	raster_desc.MultisampleEnable = true; // MSAA
 	//raster_desc.CullMode = D3D11_CULL_BACK;
 	device->CreateRasterizerState(&raster_desc, &state.raster_state);
 
