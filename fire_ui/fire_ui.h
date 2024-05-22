@@ -141,10 +141,6 @@ typedef struct UI_ArrangersRequest {
 	int move_to; // index of the moved element after the move
 } UI_ArrangersRequest;
 
-typedef struct UI_BoxEx {
-	UI_ArrangerSet* arranger_set; // may be NULL
-} UI_BoxEx; // TODO
-
 typedef struct UI_Style {
 	UI_FontUsage font;
 	UI_Color border_color;
@@ -154,6 +150,18 @@ typedef struct UI_Style {
 	UI_Vec2 text_padding;
 	UI_Vec2 child_padding;
 } UI_Style;
+
+// If I have two functions, those function must be able to independently associate extra data to a box.
+// I think either a hash table, or a linked list of "extra data" could be good.
+
+typedef struct UI_BoxCustomDataHeader UI_BoxCustomDataHeader;
+struct UI_BoxCustomDataHeader {
+	UI_Key key;
+	UI_BoxCustomDataHeader* next;
+	int debug_size;
+};
+
+typedef void(*UI_BoxDrawCallback)(UI_Box* box);
 
 typedef struct UI_Box UI_Box;
 struct UI_Box {
@@ -173,6 +181,8 @@ struct UI_Box {
 	UI_Vec2 offset;
 
 	UI_Style* style;
+	
+	UI_BoxDrawCallback draw_callback;
 
 	// Persistent / animated state
 	float lazy_is_hovered;
@@ -184,7 +194,7 @@ struct UI_Box {
 	UI_Vec2 computed_size;
 	UI_Rect computed_rect_clipped;
 
-	void* user_ptr; // NULL by default. Unused by the library
+	UI_BoxCustomDataHeader* custom_data_list;
 };
 
 typedef struct UI_Mark {
@@ -489,6 +499,7 @@ UI_API void UI_EndFrame(UI_Outputs* outputs/*, GPU_Graph *graph, GPU_DescriptorA
  the entire tree of UI features that you want to support.
 */
 UI_API void UI_DrawBox(UI_Box* box);
+UI_API void UI_DrawBoxDefault(UI_Box* box);
 UI_API void UI_DrawBoxBackdrop(UI_Box* box);
 
 // -- Tree builder API with implicit context -------
@@ -552,6 +563,9 @@ UI_API UI_Style* UI_PeekStyle(void);
 
 UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key); // Returns NULL if a box with this key did not exist
 UI_API UI_Box* UI_BoxFromKey(UI_Key key); // Returns NULL if a box with this key has not been created this frame so far
+
+UI_API void UI_BoxAddCustomData(UI_Box* box, UI_Key key, void* ptr, int size);
+UI_API void* UI_BoxGetCustomData(UI_Box* box, UI_Key key, int size); // NULL is returned if no custom data using the provided key is found
 
 UI_API bool UI_BoxIsAParentOf(UI_Box* box, UI_Box* child);
 
@@ -1558,6 +1572,14 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 }
 
 UI_API void UI_DrawBox(UI_Box* box) {
+	if (box->draw_callback) {
+		box->draw_callback(box);
+	} else {
+		UI_DrawBoxDefault(box);
+	}
+}
+
+UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	DS_ProfEnter();
 
 	UI_CHECK(box->flags & UI_BoxFlag_HasComputedRects);
@@ -1746,6 +1768,27 @@ UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key) {
 	UI_Box* box = NULL;
 	DS_MapFind(&UI_STATE.prev_frame_box_from_key, key, &box);
 	return box;
+}
+
+UI_API void UI_BoxAddCustomData(UI_Box* box, UI_Key key, void* ptr, int size) {
+	UI_BoxCustomDataHeader* header = (UI_BoxCustomDataHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxCustomDataHeader) + size);
+	header->key = key;
+	header->next = box->custom_data_list;
+	header->debug_size = size;
+	box->custom_data_list = header;
+	memcpy(header + 1, ptr, size);
+}
+
+UI_API void* UI_BoxGetCustomData(UI_Box* box, UI_Key key, int size) {
+	void* result = NULL;
+	for (UI_BoxCustomDataHeader* it = box->custom_data_list; it; it = it->next) {
+		if (it->key == key) {
+			UI_CHECK(size == it->debug_size);
+			result = it + 1;
+			break;
+		}
+	}
+	return result;
 }
 
 UI_API UI_Box* UI_BoxFromKey(UI_Key key) {
@@ -3182,15 +3225,16 @@ UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI
 	return s;
 }
 
+static const UI_Key UI_ArrangerSetKey = UI_KEY();
+
 UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h) {
 	DS_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, /*UI_BoxFlag_NoScissor*/0);
 	UI_PushBox(box);
-	UI_BoxEx* ex = DS_New(UI_BoxEx, UI_FrameArena());
-	box->user_ptr = ex;
-
-	UI_ArrangerSet* set = DS_New(UI_ArrangerSet, UI_FrameArena());
-	ex->arranger_set = set;
+	
+	UI_ArrangerSet arranger_set = {0};
+	UI_BoxAddCustomData(box, UI_ArrangerSetKey, &arranger_set, sizeof(UI_ArrangerSet));
+	
 	DS_ProfExit();
 	return box;
 }
@@ -3198,13 +3242,14 @@ UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h) {
 UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request) {
 	DS_ProfEnter();
 	UI_PopBox(box);
-	UI_BoxEx* ex = (UI_BoxEx*)box->user_ptr; // may be NULL
-	UI_CHECK(ex && ex->arranger_set);
+	
+	UI_ArrangerSet* arranger_set = (UI_ArrangerSet*)UI_BoxGetCustomData(box, UI_ArrangerSetKey, sizeof(UI_ArrangerSet));
+	UI_CHECK(arranger_set);
 
 	float box_origin_prev_frame = box->prev_frame ? box->prev_frame->computed_position.y : 0.f;
 	float mouse_rel_y = UI_STATE.mouse_pos.y - box_origin_prev_frame;
 
-	UI_Box* dragging = ex->arranger_set->dragging_elem; // may be NULL
+	UI_Box* dragging = arranger_set->dragging_elem; // may be NULL
 
 	// here we compute `computed_position` for each box using relative coordinates
 	UI_BoxComputeRects(box, UI_VEC2{ 0, 0 });
@@ -3285,19 +3330,14 @@ UI_API void UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 	}
 
 	if (holding_down) {
-
-		// need to get the box delta
-		// UI_.mouse_pos_before_press.y - UI_.mouse_pos.y
-		// box delta
-
 		// find the element
 
 		UI_Box* elem = box;
 		for (; elem; elem = elem->parent) {
-			if (elem->parent && elem->parent->user_ptr) {
-				UI_BoxEx* ex = (UI_BoxEx*)elem->parent->user_ptr;
-				if (ex->arranger_set) {
-					ex->arranger_set->dragging_elem = elem;
+			if (elem->parent) {
+				UI_ArrangerSet* arranger_set = (UI_ArrangerSet*)UI_BoxGetCustomData(elem->parent, UI_ArrangerSetKey, sizeof(UI_ArrangerSet));
+				if (arranger_set) {
+					arranger_set->dragging_elem = elem;
 					break;
 				}
 			}
