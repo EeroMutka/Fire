@@ -564,6 +564,8 @@ UI_API UI_Style* UI_PeekStyle(void);
 UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key); // Returns NULL if a box with this key did not exist
 UI_API UI_Box* UI_BoxFromKey(UI_Key key); // Returns NULL if a box with this key has not been created this frame so far
 
+#define UI_BoxAddCustomVal(BOX, KEY, VALUE) UI_BoxAddCustomData(BOX, KEY, &(VALUE), sizeof(VALUE))
+#define UI_BoxGetCustomVal(T, BOX, KEY)     (T*)UI_BoxGetCustomData(BOX, KEY, sizeof(T))
 UI_API void UI_BoxAddCustomData(UI_Box* box, UI_Key key, void* ptr, int size);
 UI_API void* UI_BoxGetCustomData(UI_Box* box, UI_Key key, int size); // NULL is returned if no custom data using the provided key is found
 
