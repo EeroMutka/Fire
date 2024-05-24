@@ -1145,7 +1145,7 @@ OS_API OS_String OS_ClipboardGetText(OS_Arena* arena) {
 OS_API void OS_ClipboardSetText(OS_String text) {
 	if (!OpenClipboard(NULL)) return;
 	OS_Arena* temp = OS_TempArenaBegin();
-	{
+	if (text.size > 0) {
 		EmptyClipboard();
 
 		int utf16_len;
