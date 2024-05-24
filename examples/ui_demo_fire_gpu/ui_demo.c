@@ -24,6 +24,7 @@
 #include <stdio.h>
 
 #include "fire_ui/fire_ui.h"
+#include "fire_ui/fire_ui_color_pickers.h"
 #include "fire_ui/fire_ui_backend_fire_gpu.h"
 #include "fire_ui/fire_ui_backend_fire_os.h"
 

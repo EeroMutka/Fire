@@ -413,6 +413,7 @@ typedef struct UI_State {
 	// -- Text editing state --
 	UI_Key text_editing_box;
 	UI_Key text_editing_box_new;
+	bool edit_text_should_refresh; // implicit parameter to the next call to UI_AddValueEditText
 	UI_Selection edit_text_selection;
 } UI_State;
 
@@ -1042,13 +1043,13 @@ static UI_Box* UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, boo
 	bool text_edit_was_activated = activate && UI_STATE.text_editing_box != key;
 
 	if (text_edit_was_activated) {
-		// Maybe we could make this into an utility like "UI_RefreshSelection". It's to pretend that the selection was moved over into this box to activate the UI_EditText
-		UI_STATE.selected_box = UI_INVALID_KEY;
+		UI_STATE.edit_text_should_refresh = true;
 		UI_STATE.selected_box_new = key;
 		UI_TextSet(&UI_STATE.edit_number_text, value_str);
 	}
 
-	if (UI_STATE.text_editing_box == key || text_edit_was_activated) {
+	bool text_editing_this = UI_STATE.text_editing_box == key && UI_STATE.selected_box_new == UI_INVALID_KEY; // The `selected_box_new` check is here as keyboard navigation could have already selected a different box
+	if (text_editing_this || text_edit_was_activated) {
 		box = UI_AddValueEditText(key, w, h, &UI_STATE.edit_number_text, NULL);
 
 		if (is_float) {
@@ -1202,7 +1203,7 @@ UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* te
 
 	bool editing = UI_STATE.text_editing_box == key;
 	bool pressed_this = UI_Pressed(key);
-	bool activate_by_becoming_selected = UI_STATE.selected_box_new == key && UI_STATE.selected_box != key;
+	bool activate_by_becoming_selected = UI_STATE.selected_box_new == key && UI_STATE.selected_box != key || UI_STATE.edit_text_should_refresh;
 	
 	if (pressed_this || activate_by_becoming_selected) {
 		editing = true;
@@ -1222,6 +1223,7 @@ UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* te
 		UI_Selection* selection = &UI_STATE.edit_text_selection;
 
 		if (activate_by_becoming_selected ||
+			UI_STATE.edit_text_should_refresh ||
 			(UI_InputWasPressedOrRepeat(UI_Input_A) && UI_InputIsDown(UI_Input_Control)))
 		{
 			UI_EditTextSelectAll(text, selection);
@@ -1305,6 +1307,8 @@ UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* te
 		// UI_STATE.edit_text.draw_selection_from_box = inner;
 		// UI_STATE.edit_text.draw_selection_from_box_sel = *selection;
 	}
+
+	UI_STATE.edit_text_should_refresh = false;
 
 	UI_PopBox(outer);
 

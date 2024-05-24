@@ -314,6 +314,9 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 			}
 		}
 
+		static float hue = 0.f, saturation = 0.f, value = 0.f, alpha = 0.5f;
+		UI_ColorPicker(UI_KEY(), &hue, &saturation, &value, &alpha);
+
 		UI_Box* nested_dropdown_button = UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, STR_("Open nested dropdown:"));
 		if (UI_Pressed(nested_dropdown_button->key)) {
 			nested_dropdown_is_open = true;
