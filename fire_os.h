@@ -238,12 +238,11 @@ typedef enum OS_Key {
 	OS_Key_RightSuper = 347,
 	//OS_Key_Menu = 348,
 
-	// Press/release events won't be generated for the following, but you may use them to query for OS_IsKeyDown.
-	// TODO: OS_IsKeyDown?
-	//OS_Key_Shift = 349,
-	//OS_Key_Control = 350,
-	//OS_Key_Alt = 351,
-	//OS_Key_Super = 352,
+	// Press/release events won't be generated for shift/control/alt/super, but you may use them with OS_KeyIsDown
+	OS_Key_Shift = 349,
+	OS_Key_Control = 350,
+	OS_Key_Alt = 351,
+	OS_Key_Super = 352,
 
 	OS_Key_MouseLeft = 353,
 	OS_Key_MouseRight = 354,
@@ -289,11 +288,6 @@ typedef struct OS_Event {
 	float raw_mouse_input[2]; // for RawMouseInput event
 } OS_Event;
 
-typedef struct OS_EventArray {
-	OS_Event* events;
-	int count;
-} OS_EventArray;
-
 //typedef uint8_t OS_KeyStateFlags;
 //typedef enum OS_KeyStateFlag {
 //	OS_KeyStateFlag_IsDown = 1 << 0,
@@ -335,6 +329,15 @@ typedef struct OS_Window {
 		uint32_t left, top, right, bottom;
 	} pre_fullscreen_state; // When calling OS_SetFullscreen, some information about the previous window state needs to be saved in these fields
 } OS_Window;
+
+typedef struct OS_EventFrame {
+	OS_Event* events;
+	int events_count;
+	bool key_is_down[OS_Key_COUNT];
+	float mouse_x, mouse_y;
+	float raw_mouse_dx, raw_mouse_dy;
+	float mouse_wheel_delta;
+} OS_EventFrame;
 
 typedef struct OS_ArenaBlockHeader {
 	int size_including_header;
@@ -507,7 +510,6 @@ OS_API double OS_DurationInSeconds(OS_Tick start, OS_Tick end);
 
 // -- Window creation ---------------------------------------------------------
 
-//OS_API bool OS_InputIsDown(const OS_Inputs* inputs, OS_Input input);
 //OS_API bool OS_InputWasPressed(const OS_Inputs* inputs, OS_Input input);
 //OS_API bool OS_InputWasPressedOrRepeat(const OS_Inputs* inputs, OS_Input input);
 //OS_API bool OS_InputWasReleased(const OS_Inputs* inputs, OS_Input input);
@@ -535,9 +537,11 @@ OS_API bool OS_SetFullscreen(OS_Window* window, bool fullscreen);
 
 OS_API bool OS_WindowPollEvent(OS_Window* window, OS_Event* event, OS_WindowOnResize on_resize, void* user_data);
 OS_API bool OS_WindowShouldClose(OS_Window* window);
+
 OS_API void OS_WindowGetMousePosition(OS_Window* window, float* x, float* y);
 
-//OS_API OS_EventArray OS_WindowPollEvents(OS_Arena* arena, OS_Window* window, OS_WindowOnResize on_resize, void* user_data);
+OS_API bool OS_WindowPollEvents(OS_Arena* arena, OS_Window* window, OS_EventFrame* events, OS_WindowOnResize on_resize, void* user_data); // Returns false if window should close
+OS_API bool OS_KeyIsDown(OS_EventFrame* events, OS_Key key);
 
 OS_API void OS_SetMouseCursor(OS_MouseCursor cursor);
 OS_API void OS_SetMouseCursorLockAndHide(bool lock_and_hide);
@@ -2023,17 +2027,45 @@ OS_API void OS_WindowGetMousePosition(OS_Window* window, float* x, float* y) {
 	*y = (float)cursor_pos.y;
 }
 
-//OS_API OS_EventArray OS_WindowPollEvents(OS_Arena* arena, OS_Window* window, OS_WindowOnResize on_resize, void* user_data) {
-//	OS_Vec(OS_Event) events = {arena};
-//	for (OS_Event event; OS_WindowPollEvent(window, &event, on_resize, user_data);) {
-//		OS_VecPush(&events, event);
-//	}
-//	OS_EventArray result = {events.data, events.length};
-//	return result;
-//}
-
 OS_API bool OS_WindowShouldClose(OS_Window* window) {
 	return window->should_close;
+}
+
+OS_API bool OS_KeyIsDown(OS_EventFrame* events, OS_Key key) {
+	switch (key) {
+		default: break;
+		case OS_Key_Shift:   return events->key_is_down[OS_Key_LeftShift] || events->key_is_down[OS_Key_RightShift];
+		case OS_Key_Control: return events->key_is_down[OS_Key_LeftControl] || events->key_is_down[OS_Key_RightControl];
+		case OS_Key_Alt:     return events->key_is_down[OS_Key_LeftAlt] || events->key_is_down[OS_Key_RightAlt];
+		case OS_Key_Super:   return events->key_is_down[OS_Key_LeftSuper] || events->key_is_down[OS_Key_RightSuper];
+	}
+	return events->key_is_down[key];
+}
+
+OS_API bool OS_WindowPollEvents(OS_Arena* arena, OS_Window* window, OS_EventFrame* events, OS_WindowOnResize on_resize, void* user_data) {
+	events->raw_mouse_dx = 0.f;
+	events->raw_mouse_dy = 0.f;
+	events->mouse_wheel_delta = 0.f;
+	OS_Vec(OS_Event) events_array = {arena};
+
+	for (OS_Event event; OS_WindowPollEvent(window, &event, on_resize, user_data);) {
+		if (event.kind == OS_EventKind_RawMouseInput) {
+			events->raw_mouse_dx += event.raw_mouse_input[0];
+			events->raw_mouse_dy += event.raw_mouse_input[1];
+		}
+		if (event.kind == OS_EventKind_MouseWheel) {
+			events->mouse_wheel_delta += event.mouse_wheel;
+		}
+		OS_VecPush(&events_array, event);
+	}
+	
+	memcpy(events->key_is_down, window->key_is_down, sizeof(window->key_is_down));
+	events->events = events_array.data;
+	events->events_count = events_array.length;
+	OS_WindowGetMousePosition(window, &events->mouse_x, &events->mouse_y);
+
+	bool result = !OS_WindowShouldClose(window);
+	return result;
 }
 
 OS_API bool OS_WindowPollEvent(OS_Window* window, OS_Event* event, OS_WindowOnResize on_resize, void* user_data) {

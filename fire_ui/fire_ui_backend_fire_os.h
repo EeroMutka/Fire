@@ -72,9 +72,10 @@ static void UI_OS_RegisterInputEvent(UI_Inputs* ui_inputs, const OS_Event* event
 		ui_inputs->mouse_raw_delta.y += event->raw_mouse_input[1];
 	}
 	if (event->kind == OS_EventKind_TextCharacter) {
-		UI_CHECK(ui_inputs->text_input_utf32_length < UI_ArrayCount(ui_inputs->text_input_utf32));
-		ui_inputs->text_input_utf32[ui_inputs->text_input_utf32_length] = event->text_character;
-		ui_inputs->text_input_utf32_length++;
+		if (ui_inputs->text_input_utf32_length < UI_ArrayCount(ui_inputs->text_input_utf32)) {
+			ui_inputs->text_input_utf32[ui_inputs->text_input_utf32_length] = event->text_character;
+			ui_inputs->text_input_utf32_length++;
+		}
 	}
 }
 
