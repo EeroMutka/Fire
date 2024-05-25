@@ -247,6 +247,7 @@ typedef struct UI_DrawRectCorners {
 } UI_DrawRectCorners;
 
 typedef enum UI_Input {
+	UI_Input_Invalid,
 	UI_Input_MouseLeft,
 	UI_Input_MouseRight,
 	UI_Input_MouseMiddle,
@@ -273,13 +274,20 @@ typedef enum UI_Input {
 	UI_Input_COUNT,
 } UI_Input;
 
-typedef uint8_t UI_InputStates;
-typedef enum UI_InputState {
-	UI_InputState_IsDown = 1 << 0,
-	UI_InputState_WasPressed = 1 << 1,
-	UI_InputState_WasPressedOrRepeat = 1 << 2,
-	UI_InputState_WasReleased = 1 << 3,
-} UI_InputState;
+typedef uint8_t UI_InputEvents;
+typedef enum UI_InputEvent {
+	UI_InputEvent_PressOrRepeat = 1 << 0,
+	UI_InputEvent_Press = 1 << 1,
+	UI_InputEvent_Release = 1 << 2,
+} UI_InputEvent;
+
+//typedef uint8_t UI_InputStates;
+//typedef enum UI_InputState {
+//	UI_InputState_IsDown = 1 << 0,
+//	UI_InputState_WasPressed = 1 << 1,
+//	UI_InputState_WasPressedOrRepeated = 1 << 2,
+//	UI_InputState_WasReleased = 1 << 3,
+//} UI_InputState;
 
 typedef struct UI_Backend {
 	// `buffer_id` is a value between 0 and UI_MAX_BACKEND_BUFFERS - 1
@@ -297,7 +305,7 @@ typedef struct UI_Backend {
 } UI_Backend;
 
 typedef struct UI_Inputs {
-	UI_InputStates input_states[UI_Input_COUNT];
+	UI_InputEvents input_events[UI_Input_COUNT];
 
 	UI_Font* base_font;
 	UI_Font* icons_font;
@@ -365,6 +373,8 @@ typedef struct UI_State {
 
 	UI_Inputs inputs;
 	UI_Outputs outputs;
+
+	bool input_is_down[UI_Input_COUNT];
 
 	float time_since_pressed_lmb;
 
@@ -456,10 +466,10 @@ typedef const UI_Rect* UI_ScissorRect; // may be NULL for no scissor
 extern UI_State UI_STATE;
 // -----------------------
 
-UI_API inline bool UI_InputIsDown(UI_Input input) { return UI_STATE.inputs.input_states[input] & UI_InputState_IsDown; }
-UI_API inline bool UI_InputWasPressed(UI_Input input) { return UI_STATE.inputs.input_states[input] & UI_InputState_WasPressed; }
-UI_API inline bool UI_InputWasPressedOrRepeat(UI_Input input) { return UI_STATE.inputs.input_states[input] & UI_InputState_WasPressedOrRepeat; }
-UI_API inline bool UI_InputWasReleased(UI_Input input) { return UI_STATE.inputs.input_states[input] & UI_InputState_WasReleased; }
+UI_API inline bool UI_InputIsDown(UI_Input input) { return UI_STATE.input_is_down[input]; }
+UI_API inline bool UI_InputWasPressed(UI_Input input) { return UI_STATE.inputs.input_events[input] & UI_InputEvent_Press; }
+UI_API inline bool UI_InputWasPressedOrRepeated(UI_Input input) { return (UI_STATE.inputs.input_events[input] & UI_InputEvent_PressOrRepeat) != 0; }
+UI_API inline bool UI_InputWasReleased(UI_Input input) { return (UI_STATE.inputs.input_events[input] & UI_InputEvent_Release) != 0; }
 
 UI_API inline DS_Arena* UI_FrameArena(void) { return &UI_STATE.frame_arena; }
 
@@ -1229,16 +1239,16 @@ UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* te
 
 		if (activate_by_becoming_selected ||
 			UI_STATE.edit_text_should_refresh ||
-			(UI_InputWasPressedOrRepeat(UI_Input_A) && UI_InputIsDown(UI_Input_Control)))
+			(UI_InputWasPressedOrRepeated(UI_Input_A) && UI_InputIsDown(UI_Input_Control)))
 		{
 			UI_EditTextSelectAll(text, selection);
 		}
 
-		if (UI_InputWasPressedOrRepeat(UI_Input_Right)) {
+		if (UI_InputWasPressedOrRepeated(UI_Input_Right)) {
 			UI_EditTextArrowKeyInputX(1, text, selection, font);
 		}
 
-		if (UI_InputWasPressedOrRepeat(UI_Input_Left)) {
+		if (UI_InputWasPressedOrRepeated(UI_Input_Left)) {
 			UI_EditTextArrowKeyInputX(-1, text, selection, font);
 		}
 
@@ -1261,7 +1271,7 @@ UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* te
 			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], text_input.str, modify);
 		}
 
-		if (UI_InputWasPressedOrRepeat(UI_Input_Home)) {
+		if (UI_InputWasPressedOrRepeated(UI_Input_Home)) {
 			UI_Mark* end = &selection->range[selection->end];
 			end->col = 0;
 			if (!UI_InputIsDown(UI_Input_Shift)) {
@@ -1270,7 +1280,7 @@ UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* te
 			UI_SelectionFixOrder(selection);
 		}
 
-		if (UI_InputWasPressedOrRepeat(UI_Input_End)) {
+		if (UI_InputWasPressedOrRepeated(UI_Input_End)) {
 			UI_TODO(); // UI_Mark *end = &selection->range[selection->end];
 			// end->col = StrRuneCount(UI_GetLineString(end->line, text));
 			// if (!UI_InputIsDown(UI_Input_Shift)) {
@@ -1279,14 +1289,14 @@ UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* te
 			// UI_SelectionFixOrder(selection);
 		}
 
-		//if (UI_InputWasPressedOrRepeat(UI_Input_X) && UI_InputIsDown(UI_Input_Control)) {
+		//if (UI_InputWasPressedOrRepeated(UI_Input_X) && UI_InputIsDown(UI_Input_Control)) {
 		//	UI_TODO(); // UI_CopySelectionToClipboard(selection, text);
 		//	UI_TODO(); //UI_EraseRangeSel(text, selection, font);
 		//	// result.edited = true;
 		//}
 
 		// Ctrl C
-		if (UI_InputWasPressedOrRepeat(UI_Input_C) && UI_InputIsDown(UI_Input_Control)) {
+		if (UI_InputWasPressedOrRepeated(UI_Input_C) && UI_InputIsDown(UI_Input_Control)) {
 			if (UI_STATE.inputs.set_clipboard_string_fn) {
 				int min = UI_MarkToByteOffset(selection->range[0], text);
 				int max = UI_MarkToByteOffset(selection->range[1], text);
@@ -1295,14 +1305,14 @@ UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* te
 		}
 
 		// Ctrl V
-		if (UI_InputWasPressedOrRepeat(UI_Input_V) && UI_InputIsDown(UI_Input_Control)) {
+		if (UI_InputWasPressedOrRepeated(UI_Input_V) && UI_InputIsDown(UI_Input_Control)) {
 			if (UI_STATE.inputs.get_clipboard_string_fn) {
 				UI_String str = UI_STATE.inputs.get_clipboard_string_fn(UI_STATE.inputs.user_data);
 				UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], str, modify);
 			}
 		}
 
-		if (UI_InputWasPressedOrRepeat(UI_Input_Backspace)) {
+		if (UI_InputWasPressedOrRepeated(UI_Input_Backspace)) {
 			if (UI_MarkEquals(selection->range[0], selection->range[1])) {
 				UI_MoveMarkH(&selection->range[0], text, -1, UI_InputIsDown(UI_Input_Control));
 			}
@@ -1824,7 +1834,7 @@ UI_API bool UI_SelectionMovementInput(UI_Box* node, UI_Key* out_new_selected_box
 
 	bool result = false;
 	if (UI_IsSelected(node->key) && node->parent) {
-		if (UI_InputWasPressedOrRepeat(UI_Input_Down) || (UI_InputWasPressedOrRepeat(UI_Input_Tab) && !UI_InputIsDown(UI_Input_Shift))) {
+		if (UI_InputWasPressedOrRepeated(UI_Input_Down) || (UI_InputWasPressedOrRepeated(UI_Input_Tab) && !UI_InputIsDown(UI_Input_Shift))) {
 			UI_Box* n = node;
 			for (;;) {
 				if (n->first_child[0]) {
@@ -1852,7 +1862,7 @@ UI_API bool UI_SelectionMovementInput(UI_Box* node, UI_Key* out_new_selected_box
 				}
 			}
 		}
-		if (UI_InputWasPressedOrRepeat(UI_Input_Up) || (UI_InputWasPressedOrRepeat(UI_Input_Tab) && UI_InputIsDown(UI_Input_Shift))) {
+		if (UI_InputWasPressedOrRepeated(UI_Input_Up) || (UI_InputWasPressedOrRepeated(UI_Input_Tab) && UI_InputIsDown(UI_Input_Shift))) {
 			UI_Box* n = node;
 			for (;;) {
 				// go to the previous node
@@ -2033,6 +2043,15 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 	// When clicking somewhere or pressing escape, by default, hide the selection box
 	if (UI_InputWasPressed(UI_Input_MouseLeft) || UI_InputWasPressed(UI_Input_Escape)) {
 		UI_STATE.selection_is_visible = false;
+	}
+
+	for (int i = 0; i < UI_Input_COUNT; i++) {
+		if (inputs->input_events[i] & UI_InputEvent_Press) {
+			UI_STATE.input_is_down[i] = true;
+		}
+		if (inputs->input_events[i] & UI_InputEvent_Release) {
+			UI_STATE.input_is_down[i] = false;
+		}
 	}
 
 	// Push default style

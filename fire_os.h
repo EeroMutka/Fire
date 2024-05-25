@@ -108,152 +108,154 @@ typedef struct OS_FileInfo {
 } OS_FileInfo;
 typedef struct { OS_FileInfo* data; int length; } OS_FileInfoArray;
 
-typedef enum OS_Input {
-	OS_Input_Invalid = 0,
+typedef enum OS_Key {
+	OS_Key_Invalid = 0,
 
-	OS_Input_Space = 32,
-	OS_Input_Apostrophe = 39,   /* ' */
-	OS_Input_Comma = 44,        /* , */
-	OS_Input_Minus = 45,        /* - */
-	OS_Input_Period = 46,       /* . */
-	OS_Input_Slash = 47,        /* / */
+	OS_Key_Space = 32,
+	OS_Key_Apostrophe = 39,   /* ' */
+	OS_Key_Comma = 44,        /* , */
+	OS_Key_Minus = 45,        /* - */
+	OS_Key_Period = 46,       /* . */
+	OS_Key_Slash = 47,        /* / */
 
-	OS_Input_0 = 48,
-	OS_Input_1 = 49,
-	OS_Input_2 = 50,
-	OS_Input_3 = 51,
-	OS_Input_4 = 52,
-	OS_Input_5 = 53,
-	OS_Input_6 = 54,
-	OS_Input_7 = 55,
-	OS_Input_8 = 56,
-	OS_Input_9 = 57,
+	OS_Key_0 = 48,
+	OS_Key_1 = 49,
+	OS_Key_2 = 50,
+	OS_Key_3 = 51,
+	OS_Key_4 = 52,
+	OS_Key_5 = 53,
+	OS_Key_6 = 54,
+	OS_Key_7 = 55,
+	OS_Key_8 = 56,
+	OS_Key_9 = 57,
 
-	OS_Input_Semicolon = 59,    /* ; */
-	OS_Input_Equal = 61,        /* = */
-	OS_Input_LeftBracket = 91,  /* [ */
-	OS_Input_Backslash = 92,    /* \ */
-	OS_Input_RightBracket = 93, /* ] */
-	OS_Input_GraveAccent = 96,  /* ` */
+	OS_Key_Semicolon = 59,    /* ; */
+	OS_Key_Equal = 61,        /* = */
+	OS_Key_LeftBracket = 91,  /* [ */
+	OS_Key_Backslash = 92,    /* \ */
+	OS_Key_RightBracket = 93, /* ] */
+	OS_Key_GraveAccent = 96,  /* ` */
 
-	OS_Input_A = 65,
-	OS_Input_B = 66,
-	OS_Input_C = 67,
-	OS_Input_D = 68,
-	OS_Input_E = 69,
-	OS_Input_F = 70,
-	OS_Input_G = 71,
-	OS_Input_H = 72,
-	OS_Input_I = 73,
-	OS_Input_J = 74,
-	OS_Input_K = 75,
-	OS_Input_L = 76,
-	OS_Input_M = 77,
-	OS_Input_N = 78,
-	OS_Input_O = 79,
-	OS_Input_P = 80,
-	OS_Input_Q = 81,
-	OS_Input_R = 82,
-	OS_Input_S = 83,
-	OS_Input_T = 84,
-	OS_Input_U = 85,
-	OS_Input_V = 86,
-	OS_Input_W = 87,
-	OS_Input_X = 88,
-	OS_Input_Y = 89,
-	OS_Input_Z = 90,
+	OS_Key_A = 65,
+	OS_Key_B = 66,
+	OS_Key_C = 67,
+	OS_Key_D = 68,
+	OS_Key_E = 69,
+	OS_Key_F = 70,
+	OS_Key_G = 71,
+	OS_Key_H = 72,
+	OS_Key_I = 73,
+	OS_Key_J = 74,
+	OS_Key_K = 75,
+	OS_Key_L = 76,
+	OS_Key_M = 77,
+	OS_Key_N = 78,
+	OS_Key_O = 79,
+	OS_Key_P = 80,
+	OS_Key_Q = 81,
+	OS_Key_R = 82,
+	OS_Key_S = 83,
+	OS_Key_T = 84,
+	OS_Key_U = 85,
+	OS_Key_V = 86,
+	OS_Key_W = 87,
+	OS_Key_X = 88,
+	OS_Key_Y = 89,
+	OS_Key_Z = 90,
 
-	OS_Input_Escape = 256,
-	OS_Input_Enter = 257,
-	OS_Input_Tab = 258,
-	OS_Input_Backspace = 259,
-	OS_Input_Insert = 260,
-	OS_Input_Delete = 261,
-	OS_Input_Right = 262,
-	OS_Input_Left = 263,
-	OS_Input_Down = 264,
-	OS_Input_Up = 265,
-	OS_Input_PageUp = 266,
-	OS_Input_PageDown = 267,
-	OS_Input_Home = 268,
-	OS_Input_End = 269,
-	OS_Input_CapsLock = 280,
-	OS_Input_ScrollLock = 281,
-	OS_Input_NumLock = 282,
-	OS_Input_PrintScreen = 283,
-	OS_Input_Pause = 284,
+	OS_Key_Escape = 256,
+	OS_Key_Enter = 257,
+	OS_Key_Tab = 258,
+	OS_Key_Backspace = 259,
+	OS_Key_Insert = 260,
+	OS_Key_Delete = 261,
+	OS_Key_Right = 262,
+	OS_Key_Left = 263,
+	OS_Key_Down = 264,
+	OS_Key_Up = 265,
+	OS_Key_PageUp = 266,
+	OS_Key_PageDown = 267,
+	OS_Key_Home = 268,
+	OS_Key_End = 269,
+	OS_Key_CapsLock = 280,
+	OS_Key_ScrollLock = 281,
+	OS_Key_NumLock = 282,
+	OS_Key_PrintScreen = 283,
+	OS_Key_Pause = 284,
 
-	OS_Input_F1 = 290,
-	OS_Input_F2 = 291,
-	OS_Input_F3 = 292,
-	OS_Input_F4 = 293,
-	OS_Input_F5 = 294,
-	OS_Input_F6 = 295,
-	OS_Input_F7 = 296,
-	OS_Input_F8 = 297,
-	OS_Input_F9 = 298,
-	OS_Input_F10 = 299,
-	OS_Input_F11 = 300,
-	OS_Input_F12 = 301,
-	OS_Input_F13 = 302,
-	OS_Input_F14 = 303,
-	OS_Input_F15 = 304,
-	OS_Input_F16 = 305,
-	OS_Input_F17 = 306,
-	OS_Input_F18 = 307,
-	OS_Input_F19 = 308,
-	OS_Input_F20 = 309,
-	OS_Input_F21 = 310,
-	OS_Input_F22 = 311,
-	OS_Input_F23 = 312,
-	OS_Input_F24 = 313,
-	OS_Input_F25 = 314,
+	OS_Key_F1 = 290,
+	OS_Key_F2 = 291,
+	OS_Key_F3 = 292,
+	OS_Key_F4 = 293,
+	OS_Key_F5 = 294,
+	OS_Key_F6 = 295,
+	OS_Key_F7 = 296,
+	OS_Key_F8 = 297,
+	OS_Key_F9 = 298,
+	OS_Key_F10 = 299,
+	OS_Key_F11 = 300,
+	OS_Key_F12 = 301,
+	OS_Key_F13 = 302,
+	OS_Key_F14 = 303,
+	OS_Key_F15 = 304,
+	OS_Key_F16 = 305,
+	OS_Key_F17 = 306,
+	OS_Key_F18 = 307,
+	OS_Key_F19 = 308,
+	OS_Key_F20 = 309,
+	OS_Key_F21 = 310,
+	OS_Key_F22 = 311,
+	OS_Key_F23 = 312,
+	OS_Key_F24 = 313,
+	OS_Key_F25 = 314,
 
-	//OS_Input_KP_0 = 320,
-	//OS_Input_KP_1 = 321,
-	//OS_Input_KP_2 = 322,
-	//OS_Input_KP_3 = 323,
-	//OS_Input_KP_4 = 324,
-	//OS_Input_KP_5 = 325,
-	//OS_Input_KP_6 = 326,
-	//OS_Input_KP_7 = 327,
-	//OS_Input_KP_8 = 328,
-	//OS_Input_KP_9 = 329,
+	//OS_Key_KP_0 = 320,
+	//OS_Key_KP_1 = 321,
+	//OS_Key_KP_2 = 322,
+	//OS_Key_KP_3 = 323,
+	//OS_Key_KP_4 = 324,
+	//OS_Key_KP_5 = 325,
+	//OS_Key_KP_6 = 326,
+	//OS_Key_KP_7 = 327,
+	//OS_Key_KP_8 = 328,
+	//OS_Key_KP_9 = 329,
 
-	//OS_Input_KP_Decimal = 330,
-	//OS_Input_KP_Divide = 331,
-	//OS_Input_KP_Multiply = 332,
-	//OS_Input_KP_Subtract = 333,
-	//OS_Input_KP_Add = 334,
-	//OS_Input_KP_Enter = 335,
-	//OS_Input_KP_Equal = 336,
+	//OS_Key_KP_Decimal = 330,
+	//OS_Key_KP_Divide = 331,
+	//OS_Key_KP_Multiply = 332,
+	//OS_Key_KP_Subtract = 333,
+	//OS_Key_KP_Add = 334,
+	//OS_Key_KP_Enter = 335,
+	//OS_Key_KP_Equal = 336,
 
-	OS_Input_LeftShift = 340,
-	OS_Input_LeftControl = 341,
-	OS_Input_LeftAlt = 342,
-	OS_Input_LeftSuper = 343,
-	OS_Input_RightShift = 344,
-	OS_Input_RightControl = 345,
-	OS_Input_RightAlt = 346,
-	OS_Input_RightSuper = 347,
-	//OS_Input_Menu = 348,
+	OS_Key_LeftShift = 340,
+	OS_Key_LeftControl = 341,
+	OS_Key_LeftAlt = 342,
+	OS_Key_LeftSuper = 343,
+	OS_Key_RightShift = 344,
+	OS_Key_RightControl = 345,
+	OS_Key_RightAlt = 346,
+	OS_Key_RightSuper = 347,
+	//OS_Key_Menu = 348,
 
-	OS_Input_Shift = 349,
-	OS_Input_Control = 350,
-	OS_Input_Alt = 351,
-	OS_Input_Super = 352,
+	// Press/release events won't be generated for the following, but you may use them to query for OS_IsKeyDown.
+	// TODO: OS_IsKeyDown?
+	//OS_Key_Shift = 349,
+	//OS_Key_Control = 350,
+	//OS_Key_Alt = 351,
+	//OS_Key_Super = 352,
 
-	OS_Input_MouseLeft = 353,
-	OS_Input_MouseRight = 354,
-	OS_Input_MouseMiddle = 355,
-	//OS_Input_Mouse_4 = 356,
-	//OS_Input_Mouse_5 = 357,
-	//OS_Input_Mouse_6 = 358,
-	//OS_Input_Mouse_7 = 359,
-	//OS_Input_Mouse_8 = 360,
+	OS_Key_MouseLeft = 353,
+	OS_Key_MouseRight = 354,
+	OS_Key_MouseMiddle = 355,
+	//OS_Key_Mouse_4 = 356,
+	//OS_Key_Mouse_5 = 357,
+	//OS_Key_Mouse_6 = 358,
+	//OS_Key_Mouse_7 = 359,
+	//OS_Key_Mouse_8 = 360,
 
-	OS_Input_COUNT,
-} OS_Input;
+	OS_Key_COUNT,
+} OS_Key;
 
 typedef enum OS_MouseCursor {
 	OS_MouseCursor_Arrow,
@@ -270,28 +272,43 @@ typedef enum OS_MouseCursor {
 
 typedef void(*OS_WindowOnResize)(uint32_t width, uint32_t height, void* user_data);
 
-typedef uint8_t OS_InputStateFlags;
-typedef enum OS_InputStateFlag {
-	OS_InputStateFlag_IsDown = 1 << 0,
-	OS_InputStateFlag_WasPressed = 1 << 1,
-	OS_InputStateFlag_WasPressedOrRepeat = 1 << 2,
-	OS_InputStateFlag_WasReleased = 1 << 3,
-} OS_InputStateFlag;
+typedef enum OS_EventKind {
+	OS_EventKind_Press,
+	OS_EventKind_Release,
+	OS_EventKind_TextCharacter,
+	OS_EventKind_MouseWheel,
+} OS_EventKind;
 
-typedef struct OS_Inputs {
-	// if we do keep a public list of `OS_Input` states, and in general keep the ABI public,
-	// it means that whatever library uses `foundation_os` for getting input doesn't actually their user
-	// to use `foundation_os`. The user COULD pull the rug and provide their own initialized `fWindowEvents`!
+typedef struct OS_Event {
+	OS_EventKind kind;
+	OS_Key key; // for Press and Release events
+	bool is_repeat; // for Press events
+	uint32_t text_character; // Unicode character
+	float mouse_wheel; // +1.0 means the wheel was rotated forward by one detent (scroll step)
+} OS_Event;
 
-	uint32_t mouse_x, mouse_y; // mouse position in window pixel coordinates (+x right, +y down)
-	int32_t mouse_raw_dx, mouse_raw_dy; // raw mouse motion, +x right, +y down
-	float mouse_wheel_delta; // +1.0 means the wheel was rotated forward by one detent (scroll step)
+//typedef uint8_t OS_KeyStateFlags;
+//typedef enum OS_KeyStateFlag {
+//	OS_KeyStateFlag_IsDown = 1 << 0,
+//	OS_KeyStateFlag_WasPressed = 1 << 1,
+//	OS_KeyStateFlag_WasPressedOrRepeat = 1 << 2,
+//	OS_KeyStateFlag_WasReleased = 1 << 3,
+//} OS_KeyStateFlag;
 
-	OS_InputStateFlags input_states[OS_Input_COUNT];
-
-	uint32_t* text_input_utf32;
-	int text_input_utf32_length;
-} OS_Inputs;
+//typedef struct OS_Inputs {
+//	// if we do keep a public list of `OS_Input` states, and in general keep the ABI public,
+//	// it means that whatever library uses `foundation_os` for getting input doesn't actually their user
+//	// to use `foundation_os`. The user COULD pull the rug and provide their own initialized `fWindowEvents`!
+//
+//	uint32_t mouse_x, mouse_y; // mouse position in window pixel coordinates (+x right, +y down)
+//	int32_t mouse_raw_dx, mouse_raw_dy; // raw mouse motion, +x right, +y down
+//	float mouse_wheel_delta; // +1.0 means the wheel was rotated forward by one detent (scroll step)
+//
+//	OS_KeyStateFlags input_states[OS_Key_COUNT];
+//
+//	uint32_t* text_input_utf32;
+//	int text_input_utf32_length;
+//} OS_Inputs;
 
 typedef struct OS_Log OS_Log;
 struct OS_Log {
@@ -300,6 +317,12 @@ struct OS_Log {
 
 typedef struct OS_Window {
 	OS_WindowHandle handle;
+
+	bool key_is_down[OS_Key_COUNT];
+	
+	bool queue_release_next_key;
+	int queue_release_next_key_idx;
+
 	struct {
 		uint32_t left, top, right, bottom;
 	} pre_fullscreen_state; // When calling OS_SetFullscreen, some information about the previous window state needs to be saved in these fields
@@ -476,34 +499,34 @@ OS_API double OS_DurationInSeconds(OS_Tick start, OS_Tick end);
 
 // -- Window creation ---------------------------------------------------------
 
-OS_API bool OS_InputIsDown(const OS_Inputs* inputs, OS_Input input);
-OS_API bool OS_InputWasPressed(const OS_Inputs* inputs, OS_Input input);
-OS_API bool OS_InputWasPressedOrRepeat(const OS_Inputs* inputs, OS_Input input);
-OS_API bool OS_InputWasReleased(const OS_Inputs* inputs, OS_Input input);
+//OS_API bool OS_InputIsDown(const OS_Inputs* inputs, OS_Input input);
+//OS_API bool OS_InputWasPressed(const OS_Inputs* inputs, OS_Input input);
+//OS_API bool OS_InputWasPressedOrRepeat(const OS_Inputs* inputs, OS_Input input);
+//OS_API bool OS_InputWasReleased(const OS_Inputs* inputs, OS_Input input);
 
-/*
- NOTE: After calling `OS_WindowCreateNoShow`, the window will remain hidden.
- To show the window, you must explicitly call `OS_WindowShow`. This separation is there so that you
- can get rid of the initial flicker that normally happens when you create a window, then do some work
- such as initialize a graphics OS_API, and finally present a frame. If you instead first call `create`,
- then initialize the graphics OS_API, and only then call `show`, there won't be any flicker as the
- window doesn't have to wait for the initialization.
-*/
-OS_API OS_Window OS_WindowCreateHidden(uint32_t width, uint32_t height, OS_String name);
-OS_API void OS_WindowShow_(OS_Window* window);
-
+// After calling `OS_WindowCreateHidden`, the window will remain hidden.
+// To show the window, you must explicitly call `OS_WindowShow`. This separation is there so that you
+// can get rid of the initial flicker that normally happens when you create a window, then do some work
+// such as initialize a graphics OS_API, and finally present a frame. If you instead first call `create`,
+// then initialize the graphics OS_API, and only then call `show`, there won't be any flicker as the
+// window doesn't have to wait for the initialization.
 OS_API OS_Window OS_WindowCreate(uint32_t width, uint32_t height, OS_String name);
+OS_API OS_Window OS_WindowCreateHidden(uint32_t width, uint32_t height, OS_String name);
+OS_API void OS_WindowShow(OS_Window* window);
 
 OS_API bool OS_SetFullscreen(OS_Window* window, bool fullscreen);
 
-// * Returns `false` when the window is closed.
-// * The reason we provide a callback for window resizes instead of returning the size is that, when resizing, Windows doesn't
+// * Returns false when the window is closed.
+// * The reason for having `on_resize` as a callback is that when resizing, Windows doesn't
 //   let us exit the event loop until the user lets go of the mouse. This means that if you want to draw into the window
-//   while resizing to make it feel smooth, you have to do it from a callback internally. So, if you want to draw while resizing,
-//   you should do it inside `on_resize`.
+//   while resizing to make it feel smooth, you have to do it from a callback internally.
 // * on_resize may be NULL
 // * inputs is a stateful data structure and should be initialized and kept around across multiple frames. TODO: refactor this and return an array of events instead.
-OS_API bool OS_WindowPoll(OS_Arena* arena, OS_Inputs* inputs, OS_Window* window, OS_WindowOnResize on_resize, void* user_data);
+// OS_API bool OS_WindowPoll(OS_Arena* arena, OS_Inputs* inputs, OS_Window* window, OS_WindowOnResize on_resize, void* user_data);
+// OS_API bool OS_WindowUpdate(OS_Window* window);
+
+OS_API bool OS_WindowPollEvent(OS_Window* window, OS_Event* event, OS_WindowOnResize on_resize, void* user_data);
+OS_API void OS_WindowGetMousePosition(OS_Window* window, float* x, float* y);
 
 OS_API void OS_SetMouseCursor(OS_MouseCursor cursor);
 OS_API void OS_LockAndHideMouseCursor();
@@ -655,21 +678,25 @@ OS_API bool OS_ReadEntireFile(OS_Arena* arena, OS_String file_path, OS_String* o
 	return ok;
 }
 
-OS_API bool OS_InputIsDown(const OS_Inputs* inputs, OS_Input input) {
-	return inputs->input_states[input] & OS_InputStateFlag_IsDown;
-}
-
-OS_API bool OS_InputWasPressed(const OS_Inputs* inputs, OS_Input input) {
-	return inputs->input_states[input] & OS_InputStateFlag_WasPressed;
-}
-
-OS_API bool OS_InputWasPressedOrRepeat(const OS_Inputs* inputs, OS_Input input) {
-	return inputs->input_states[input] & OS_InputStateFlag_WasPressedOrRepeat;
-}
-
-OS_API bool OS_InputWasReleased(const OS_Inputs* inputs, OS_Input input) {
-	return inputs->input_states[input] & OS_InputStateFlag_WasReleased;
-}
+//OS_API bool OS_InputIsDown(const OS_Inputs* inputs, OS_Input input) {
+//	return false;
+//	//return inputs->input_states[input] & OS_KeyStateFlag_IsDown;
+//}
+//
+//OS_API bool OS_InputWasPressed(const OS_Inputs* inputs, OS_Input input) {
+//	return false;
+//	//return inputs->input_states[input] & OS_KeyStateFlag_WasPressed;
+//}
+//
+//OS_API bool OS_InputWasPressedOrRepeat(const OS_Inputs* inputs, OS_Input input) {
+//	return false;
+//	//return inputs->input_states[input] & OS_KeyStateFlag_WasPressedOrRepeat;
+//}
+//
+//OS_API bool OS_InputWasReleased(const OS_Inputs* inputs, OS_Input input) {
+//	//return inputs->input_states[input] & OS_KeyStateFlag_WasReleased;
+//	return false;
+//}
 
 static char* OS_StrToCStr(OS_Arena* arena, OS_String s) {
 	char* data = OS_ArenaPush(arena, s.size + 1);
@@ -1602,88 +1629,183 @@ OS_API bool OS_RunCommand(OS_String* args, uint32_t args_count, uint32_t* out_ex
 
 // Window creation & input ------------------
 
-typedef struct WindowProcUserData {
+typedef struct OS_WindowProcUserData {
 	OS_Window* window;
-	OS_Inputs* inputs;
-
-	OS_Vec(uint32_t) text_input_utf32;
-
-	OS_WindowOnResize on_resize; // may be NULL
+	OS_Event* event;
+	OS_WindowOnResize on_resize;
 	void* user_data;
+	
+	bool has_event;
+	bool got_kill_focus;
+} OS_WindowProcUserData;
 
-	bool should_exit;
-} WindowProcUserData;
-
-static void UpdateKeyInputState(OS_Inputs* inputs, uint64_t vk, OS_InputStateFlags flags) {
-	OS_Input input = OS_Input_Invalid;
-
-	if ((vk >= OS_Input_0 && vk <= OS_Input_9) || (vk >= OS_Input_A && vk <= OS_Input_Z)) {
-		input = (OS_Input)vk;
+static OS_Key OS_KeyFromVK(uint64_t vk, uint16_t scancode) {
+	OS_Key key = OS_Key_Invalid;
+	if ((vk >= OS_Key_0 && vk <= OS_Key_9) || (vk >= OS_Key_A && vk <= OS_Key_Z)) {
+		key = (OS_Key)vk;
 	}
 	else if (vk >= VK_F1 && vk <= VK_F24) {
-		input = (OS_Input)(OS_Input_F1 + (vk - VK_F1));
+		key = (OS_Key)(OS_Key_F1 + (vk - VK_F1));
 	}
 	else switch (vk) {
-	case VK_SPACE: input = OS_Input_Space; break;
-	case VK_OEM_7: input = OS_Input_Apostrophe; break;
-	case VK_OEM_COMMA: input = OS_Input_Comma; break;
-	case VK_OEM_MINUS: input = OS_Input_Minus; break;
-	case VK_OEM_PERIOD: input = OS_Input_Period; break;
-	case VK_OEM_2: input = OS_Input_Slash; break;
-	case VK_OEM_1: input = OS_Input_Semicolon; break;
-	case VK_OEM_PLUS: input = OS_Input_Equal; break;
-	case VK_OEM_4: input = OS_Input_LeftBracket; break;
-	case VK_OEM_5: input = OS_Input_Backslash; break;
-	case VK_OEM_6: input = OS_Input_RightBracket; break;
-	case VK_OEM_3: input = OS_Input_GraveAccent; break;
-	case VK_ESCAPE: input = OS_Input_Escape; break;
-	case VK_RETURN: input = OS_Input_Enter; break;
-	case VK_TAB: input = OS_Input_Tab; break;
-	case VK_BACK: input = OS_Input_Backspace; break;
-	case VK_INSERT: input = OS_Input_Insert; break;
-	case VK_DELETE: input = OS_Input_Delete; break;
-	case VK_RIGHT: input = OS_Input_Right; break;
-	case VK_LEFT: input = OS_Input_Left; break;
-	case VK_DOWN: input = OS_Input_Down; break;
-	case VK_UP: input = OS_Input_Up; break;
-	case VK_PRIOR: input = OS_Input_PageUp; break;
-	case VK_NEXT: input = OS_Input_PageDown; break;
-	case VK_HOME: input = OS_Input_Home; break;
-	case VK_END: input = OS_Input_End; break;
-	case VK_CAPITAL: input = OS_Input_CapsLock; break;
-	case VK_NUMLOCK: input = OS_Input_NumLock; break;
-	case VK_SNAPSHOT: input = OS_Input_PrintScreen; break;
-	case VK_PAUSE: input = OS_Input_Pause; break;
+	case VK_SPACE: key = OS_Key_Space; break;
+	case VK_OEM_7: key = OS_Key_Apostrophe; break;
+	case VK_OEM_COMMA: key = OS_Key_Comma; break;
+	case VK_OEM_MINUS: key = OS_Key_Minus; break;
+	case VK_OEM_PERIOD: key = OS_Key_Period; break;
+	case VK_OEM_2: key = OS_Key_Slash; break;
+	case VK_OEM_1: key = OS_Key_Semicolon; break;
+	case VK_OEM_PLUS: key = OS_Key_Equal; break;
+	case VK_OEM_4: key = OS_Key_LeftBracket; break;
+	case VK_OEM_5: key = OS_Key_Backslash; break;
+	case VK_OEM_6: key = OS_Key_RightBracket; break;
+	case VK_OEM_3: key = OS_Key_GraveAccent; break;
+	case VK_ESCAPE: key = OS_Key_Escape; break;
+	case VK_RETURN: key = OS_Key_Enter; break;
+	case VK_TAB: key = OS_Key_Tab; break;
+	case VK_BACK: key = OS_Key_Backspace; break;
+	case VK_INSERT: key = OS_Key_Insert; break;
+	case VK_DELETE: key = OS_Key_Delete; break;
+	case VK_RIGHT: key = OS_Key_Right; break;
+	case VK_LEFT: key = OS_Key_Left; break;
+	case VK_DOWN: key = OS_Key_Down; break;
+	case VK_UP: key = OS_Key_Up; break;
+	case VK_PRIOR: key = OS_Key_PageUp; break;
+	case VK_NEXT: key = OS_Key_PageDown; break;
+	case VK_HOME: key = OS_Key_Home; break;
+	case VK_END: key = OS_Key_End; break;
+	case VK_CAPITAL: key = OS_Key_CapsLock; break;
+	case VK_NUMLOCK: key = OS_Key_NumLock; break;
+	case VK_SNAPSHOT: key = OS_Key_PrintScreen; break;
+	case VK_PAUSE: key = OS_Key_Pause; break;
+	case VK_LWIN: key = OS_Key_LeftSuper; break;
+	case VK_RWIN: key = OS_Key_RightSuper; break;
 	case VK_SHIFT: {
-		// TODO: I think we can also detect the right-vs-left from lParam bit 24
-		input = GetKeyState(VK_RSHIFT) & 0x8000 ? OS_Input_RightShift : OS_Input_LeftShift;
-		inputs->input_states[OS_Input_Shift] = flags;
+		key = (uint16_t)MapVirtualKeyW(scancode, MAPVK_VSC_TO_VK_EX) == VK_LSHIFT ? OS_Key_LeftShift : OS_Key_RightShift;
 	} break;
 	case VK_MENU: {
-		input = GetKeyState(VK_RMENU) & 0x8000 ? OS_Input_RightAlt : OS_Input_LeftAlt;
-		inputs->input_states[OS_Input_Alt] = flags;
+		key = (uint16_t)MapVirtualKeyW(scancode, MAPVK_VSC_TO_VK_EX) == VK_LMENU ? OS_Key_LeftAlt : OS_Key_RightAlt;
 	} break;
 	case VK_CONTROL: {
-		input = GetKeyState(VK_RCONTROL) & 0x8000 ? OS_Input_RightControl : OS_Input_LeftControl;
-		inputs->input_states[OS_Input_Control] = flags;
-	} break;
-	case VK_LWIN: {
-		input = OS_Input_LeftSuper;
-		inputs->input_states[OS_Input_Super] = flags;
-	} break;
-	case VK_RWIN: {
-		input = OS_Input_RightSuper;
-		inputs->input_states[OS_Input_Super] = flags;
+		key = (uint16_t)MapVirtualKeyW(scancode, MAPVK_VSC_TO_VK_EX) == VK_LCONTROL ? OS_Key_LeftControl : OS_Key_RightControl;
 	} break;
 
 	default: break;
 	}
-	inputs->input_states[input] = flags;
+	return key;
+}
+
+static bool OS_AddKeyEvent(OS_Window* window, OS_Event* event, OS_EventKind kind, bool is_repeat, OS_Key key) {
+	bool press = kind == OS_EventKind_Press;
+
+	bool generate_event = false;
+	if (key != OS_Key_Invalid) {
+
+		// Only generate the event if it matches our expected state
+		if (press) {
+			generate_event = !window->key_is_down[key] || is_repeat;
+		} else {
+			generate_event = window->key_is_down[key];
+		}
+
+		event->kind = kind;
+		event->key = key;
+		window->key_is_down[key] = press;
+	}
+
+	return generate_event;
 }
 
 static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t lParam) {
-	// `passed` will be NULL during window creation
-	WindowProcUserData* passed = (WindowProcUserData*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+	OS_WindowProcUserData* passed = (OS_WindowProcUserData*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+
+	int64_t result = 0;
+	if (passed) {
+		OS_Event* event = passed->event;
+		OS_Window* window = passed->window;
+
+		switch (uMsg) {
+		default: break;
+		//case WM_SETFOCUS:
+		case WM_KILLFOCUS: {
+			passed->got_kill_focus = true;
+		} break;
+		case WM_SYSKEYDOWN: // fallthrough
+		case WM_SYSKEYUP: // fallthrough
+		case WM_KEYDOWN: // fallthrough
+		case WM_KEYUP: {
+			bool is_repeat = (lParam & (1 << 30)) != 0;
+			OS_EventKind kind = uMsg == WM_KEYUP || uMsg == WM_SYSKEYUP ? OS_EventKind_Release : OS_EventKind_Press;
+			
+			// https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input#keystroke-message-flags
+			uint16_t scancode = LOBYTE(HIWORD(lParam));
+			bool is_extended_key = (HIWORD(lParam) & KF_EXTENDED) == KF_EXTENDED;
+			if (is_extended_key) scancode |= 0xE000;
+			
+			OS_Key key = OS_KeyFromVK(wParam, scancode);
+			passed->has_event = OS_AddKeyEvent(window, event, kind, is_repeat, key);
+		} break;
+		
+		case WM_LBUTTONDOWN: // fallthrough
+		case WM_RBUTTONDOWN: // fallthrough
+		case WM_MBUTTONDOWN: {
+			OS_Key key = OS_Key_Invalid;
+			if (uMsg == WM_LBUTTONDOWN) key = OS_Key_MouseLeft;
+			if (uMsg == WM_RBUTTONDOWN) key = OS_Key_MouseRight;
+			if (uMsg == WM_MBUTTONDOWN) key = OS_Key_MouseMiddle;
+			passed->has_event = OS_AddKeyEvent(window, event, OS_EventKind_Press, false, key);
+			
+			SetCapture(hWnd);
+		} break;
+		case WM_LBUTTONUP: // fallthrough
+		case WM_RBUTTONUP: // fallthrough
+		case WM_MBUTTONUP: {
+			OS_Key key = OS_Key_Invalid;
+			if (uMsg == WM_LBUTTONUP) key = OS_Key_MouseLeft;
+			if (uMsg == WM_RBUTTONUP) key = OS_Key_MouseRight;
+			if (uMsg == WM_MBUTTONUP) key = OS_Key_MouseMiddle;
+			passed->has_event = OS_AddKeyEvent(window, event, OS_EventKind_Release, false, key);
+			
+			if (!window->key_is_down[OS_Key_MouseLeft] &&
+				!window->key_is_down[OS_Key_MouseRight] &&
+				!window->key_is_down[OS_Key_MouseMiddle])
+			{
+				ReleaseCapture();
+			}
+		} break;
+		case WM_CHAR: {
+			// wParam contains the character as a 32-bit unicode codepoint.
+			if (wParam >= 32 && wParam != 127 /* ignore the DEL character on ctrl-backspace */) {
+				passed->has_event = true;
+				event->kind = OS_EventKind_TextCharacter;
+				event->text_character = (uint32_t)wParam;
+			}
+		} break;
+		case WM_SIZE: {
+			// "The low-order word of lParam specifies the new width of the client area."
+			// "The high-order word of lParam specifies the new height of the client area."
+			uint32_t width = (uint32_t)(lParam) & 0xFFFF;
+			uint32_t height = (uint32_t)(lParam >> 16);
+			if (passed->on_resize) {
+				passed->on_resize(width, height, passed->user_data);
+			}
+		} break;
+		case WM_MOUSEWHEEL: {
+			passed->has_event = true;
+			event->kind = OS_EventKind_MouseWheel;
+
+			int16_t wheel = (int16_t)(wParam >> 16);
+			event->mouse_wheel = (float)wheel / (float)WHEEL_DELTA;
+		} break;
+
+		}
+		result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
+	}
+	else {
+		result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
+	}
+	return result;
+#if 0
 
 	int64_t result = 0;
 	if (passed && (hWnd == (HWND)passed->window->handle)) {
@@ -1718,14 +1840,6 @@ static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t 
 			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
 		} break;
 
-		case WM_CHAR: {
-			// wParam contains the character as a 32-bit unicode codepoint.
-			if (wParam >= 32 && wParam != 127 /* ignore the DEL character on ctrl-backspace */)
-			{
-				OS_VecPush(&passed->text_input_utf32, (uint32_t)wParam);
-			}
-		} break;
-
 		case WM_SETCURSOR: {
 			if (LOWORD(lParam) == HTCLIENT) {
 				SetCursor(OS_current_cursor_handle);
@@ -1735,18 +1849,7 @@ static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t 
 			}
 		} break;
 
-		case WM_SIZE: {
-			// "The low-order word of lParam specifies the new width of the client area."
-			// "The high-order word of lParam specifies the new height of the client area."
-
-			uint32_t width = (uint32_t)(lParam) & 0xFFFF;
-			uint32_t height = (uint32_t)(lParam >> 16);
-			if (passed->on_resize) {
-				passed->on_resize(width, height, passed->user_data);
-			}
-			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
-		} break;
-
+		
 		case WM_CLOSE: // fallthrough
 		case WM_QUIT: {
 			passed->should_exit = true;
@@ -1757,33 +1860,28 @@ static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t 
 		case WM_KEYDOWN: {
 			bool is_repeat = (lParam & (1 << 30)) != 0;
 
-			OS_InputStateFlags flags = OS_InputStateFlag_IsDown | OS_InputStateFlag_WasPressedOrRepeat;
-			if (!is_repeat) flags |= OS_InputStateFlag_WasPressed;
+			OS_KeyStateFlags flags = OS_KeyStateFlag_IsDown | OS_KeyStateFlag_WasPressedOrRepeat;
+			if (!is_repeat) flags |= OS_KeyStateFlag_WasPressed;
 
-			//OS_InputStateFlags flags = is_repeat ?
-			//	OS_InputStateFlag_IsPressed | OS_InputStateFlag_DidBeginPressOrRepeat :
-			//	OS_InputStateFlag_IsPressed | OS_InputStateFlag_DidBeginPress;
+			//OS_KeyStateFlags flags = is_repeat ?
+			//	OS_KeyStateFlag_IsPressed | OS_KeyStateFlag_DidBeginPressOrRepeat :
+			//	OS_KeyStateFlag_IsPressed | OS_KeyStateFlag_DidBeginPress;
 
-			UpdateKeyInputState(inputs, wParam, flags);
+			OS_AddKeyEvent(inputs, wParam, flags);
 			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
 		} break;
 		case WM_SYSKEYUP: // fallthrough
 		case WM_KEYUP: {
 			// Right now, if you press and release a key within a single frame, our input system will miss that.
 			// TODO: either make it an event list, or fix this (but still disallow lose information about multiple keypresses per frame).
-			UpdateKeyInputState(inputs, wParam, OS_InputStateFlag_WasReleased);
+			OS_AddKeyEvent(inputs, wParam, OS_KeyStateFlag_WasReleased);
 			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
 		} break;
 
 			// NOTE: releasing mouse buttons is handled manually :ManualMouseReleaseEvents
-		case WM_LBUTTONDOWN: { inputs->input_states[OS_Input_MouseLeft] = OS_InputStateFlag_WasPressed | OS_InputStateFlag_IsDown; } break;
-		case WM_RBUTTONDOWN: { inputs->input_states[OS_Input_MouseRight] = OS_InputStateFlag_WasPressed | OS_InputStateFlag_IsDown; } break;
-		case WM_MBUTTONDOWN: { inputs->input_states[OS_Input_MouseMiddle] = OS_InputStateFlag_WasPressed | OS_InputStateFlag_IsDown; } break;
-
-		case WM_MOUSEWHEEL: {
-			int16_t wheel = (int16_t)(wParam >> 16);
-			inputs->mouse_wheel_delta = (float)wheel / (float)WHEEL_DELTA;
-		} break;
+		case WM_LBUTTONDOWN: { inputs->input_states[OS_Key_MouseLeft] = OS_KeyStateFlag_WasPressed | OS_KeyStateFlag_IsDown; } break;
+		case WM_RBUTTONDOWN: { inputs->input_states[OS_Key_MouseRight] = OS_KeyStateFlag_WasPressed | OS_KeyStateFlag_IsDown; } break;
+		case WM_MBUTTONDOWN: { inputs->input_states[OS_Key_MouseMiddle] = OS_KeyStateFlag_WasPressed | OS_KeyStateFlag_IsDown; } break;
 
 		case WM_COPYDATA: {
 			__debugbreak();
@@ -1795,6 +1893,7 @@ static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t 
 	}
 
 	return result;
+#endif
 }
 
 #define OS_WINDOW_CLASS_NAME L"OS_WindowModuleClassName"
@@ -1830,14 +1929,14 @@ static void OS_RegisterWindowClass() {
 	OS_CHECK(atom != 0);
 }
 
-OS_API void OS_WindowShow_(OS_Window* window) {
+OS_API void OS_WindowShow(OS_Window* window) {
 	OS_CHECK(UpdateWindow((HWND)window->handle) != 0);
 	ShowWindow((HWND)window->handle, SW_SHOW);
 }
 
 OS_API OS_Window OS_WindowCreate(uint32_t width, uint32_t height, OS_String name) {
 	OS_Window window = OS_WindowCreateHidden(width, height, name);
-	OS_WindowShow_(&window);
+	OS_WindowShow(&window);
 	return window;
 }
 
@@ -1955,8 +2054,61 @@ OS_API void OS_SetMouseCursor(OS_MouseCursor cursor) {
 
 OS_API void OS_LockAndHideMouseCursor() { OS_mouse_cursor_should_hide = true; }
 
+OS_API void OS_WindowGetMousePosition(OS_Window* window, float* x, float* y) {
+	POINT cursor_pos;
+	GetCursorPos(&cursor_pos);
+	ScreenToClient((HWND)window->handle, &cursor_pos);
+	*x = (float)cursor_pos.x;
+	*y = (float)cursor_pos.y;
+}
+
+OS_API bool OS_WindowPollEvent(OS_Window* window, OS_Event* event, OS_WindowOnResize on_resize, void* user_data) {
+
+	if (window->queue_release_next_key) {
+		bool found_held_key = false;
+		for (int i = window->queue_release_next_key_idx; i < OS_Key_COUNT; i++) {
+			if (window->key_is_down[i]) {
+				window->key_is_down[i] = false;
+				found_held_key = true;
+				event->kind = OS_EventKind_Release;
+				event->key = (OS_Key)i;
+				window->queue_release_next_key_idx = i + 1;
+				break;
+			}
+		}
+		window->queue_release_next_key = found_held_key;
+		if (found_held_key) return true;
+	}
+
+	OS_WindowProcUserData passed = {0};
+	passed.window = window;
+	passed.event = event;
+	passed.on_resize = on_resize;
+	passed.user_data = user_data;
+	memset(event, 0, sizeof(*event));
+	SetWindowLongPtrW((HWND)window->handle, GWLP_USERDATA, (int64_t)&passed);
+
+	MSG msg = {0};
+	for (; PeekMessageW(&msg, (HWND)window->handle, 0, 0, PM_REMOVE) != 0;) {
+		TranslateMessage(&msg);
+		DispatchMessageW(&msg);
+		if (passed.got_kill_focus || passed.has_event) break;
+	}
+	
+	if (passed.got_kill_focus) {
+		window->queue_release_next_key = true;
+		window->queue_release_next_key_idx = 0;
+		passed.has_event = OS_WindowPollEvent(window, event, on_resize, user_data);
+	}
+
+	SetWindowLongPtrW((HWND)window->handle, GWLP_USERDATA, 0);
+
+	return passed.has_event;
+}
+
+#if 0
 OS_API bool OS_WindowPoll(OS_Arena* arena, OS_Inputs* inputs, OS_Window* window, OS_WindowOnResize on_resize, void* user_data) {
-	WindowProcUserData passed = {0};
+	OS_WindowProcUserData passed = {0};
 	passed.window = window;
 	passed.inputs = inputs;
 	passed.on_resize = on_resize;
@@ -1969,9 +2121,9 @@ OS_API bool OS_WindowPoll(OS_Arena* arena, OS_Inputs* inputs, OS_Window* window,
 	inputs->mouse_raw_dy = 0;
 	inputs->mouse_wheel_delta = 0;
 
-	OS_InputStateFlags remove_flags = OS_InputStateFlag_WasReleased | OS_InputStateFlag_WasPressed | OS_InputStateFlag_WasPressedOrRepeat;
-	for (size_t i = 0; i < OS_Input_COUNT; i++) {
-		OS_InputStateFlags* flags = &inputs->input_states[i];
+	OS_KeyStateFlags remove_flags = OS_KeyStateFlag_WasReleased | OS_KeyStateFlag_WasPressed | OS_KeyStateFlag_WasPressedOrRepeat;
+	for (size_t i = 0; i < OS_Key_COUNT; i++) {
+		OS_KeyStateFlags* flags = &inputs->input_states[i];
 		*flags &= ~remove_flags;
 	}
 
@@ -1996,14 +2148,14 @@ OS_API bool OS_WindowPoll(OS_Arena* arena, OS_Inputs* inputs, OS_Window* window,
 	// Microsoft advices to use `SetCapture` / `ReleaseCapture`, but that seems like it'd be error prone when there are multiple
 	// Set/ReleaseCaptures live at the same time when holding multiple mouse buttons.
 	{
-		if (OS_InputIsDown(inputs, OS_Input_MouseLeft) && !(GetKeyState(VK_LBUTTON) & 0x8000)) {
-			inputs->input_states[OS_Input_MouseLeft] = OS_InputStateFlag_WasReleased;
+		if (OS_InputIsDown(inputs, OS_Key_MouseLeft) && !(GetKeyState(VK_LBUTTON) & 0x8000)) {
+			inputs->input_states[OS_Key_MouseLeft] = OS_KeyStateFlag_WasReleased;
 		}
-		if (OS_InputIsDown(inputs, OS_Input_MouseMiddle) && !(GetKeyState(VK_MBUTTON) & 0x8000)) {
-			inputs->input_states[OS_Input_MouseMiddle] = OS_InputStateFlag_WasReleased;
+		if (OS_InputIsDown(inputs, OS_Key_MouseMiddle) && !(GetKeyState(VK_MBUTTON) & 0x8000)) {
+			inputs->input_states[OS_Key_MouseMiddle] = OS_KeyStateFlag_WasReleased;
 		}
-		if (OS_InputIsDown(inputs, OS_Input_MouseRight) && !(GetKeyState(VK_RBUTTON) & 0x8000)) {
-			inputs->input_states[OS_Input_MouseRight] = OS_InputStateFlag_WasReleased;
+		if (OS_InputIsDown(inputs, OS_Key_MouseRight) && !(GetKeyState(VK_RBUTTON) & 0x8000)) {
+			inputs->input_states[OS_Key_MouseRight] = OS_KeyStateFlag_WasReleased;
 		}
 	}
 
@@ -2061,6 +2213,7 @@ OS_API bool OS_WindowPoll(OS_Arena* arena, OS_Inputs* inputs, OS_Window* window,
 
 	return !passed.should_exit;
 }
+#endif
 
 // ----------------------------------------------------------------------------------------------------------------
 

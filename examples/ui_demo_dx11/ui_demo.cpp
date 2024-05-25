@@ -102,7 +102,6 @@ int main() {
 
 	UIDemoInit(&g_demo_state, &persist);
 
-	OS_Inputs window_inputs = {0};
 	OS_Window window = OS_WindowCreate((uint32_t)g_window_size.x, (uint32_t)g_window_size.y, OS_STR("UI demo (DX11)"));
 
 	D3D_FEATURE_LEVEL dx_feature_levels[] = { D3D_FEATURE_LEVEL_11_0 };
@@ -153,12 +152,15 @@ int main() {
 
 	for (;;) {
 		DS_ArenaReset(&temp);
-		if (!OS_WindowPoll(&temp, &window_inputs, &window, OnResizeWindow, NULL)) break;
-		
-		g_ui_inputs = UI_Inputs{};
+
+		UI_OS_ResetFrameInputs(&window, &g_ui_inputs);
 		g_ui_inputs.base_font = &base_font;
 		g_ui_inputs.icons_font = &icons_font;
-		UI_OS_TranslateInputs(&g_ui_inputs, &window_inputs, &temp);
+
+		OS_Event event;
+		for (; OS_WindowPollEvent(&window, &event, OnResizeWindow, NULL);) {
+			UI_OS_RegisterInputEvent(&g_ui_inputs, &event);
+		}
 		
 		UpdateAndRender();
 	}
