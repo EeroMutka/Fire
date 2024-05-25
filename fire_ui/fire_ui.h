@@ -337,6 +337,7 @@ typedef struct UI_Outputs {
 
 typedef struct UI_EditTextModify {
 	bool has_edit;
+	UI_Box* box_with_text;
 	UI_Mark replace_from; // TODO: add byteoffsets to these for maximum information to the user
 	UI_Mark replace_to;
 	UI_String replace_with;
@@ -1010,6 +1011,9 @@ UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* reque
 			*line_offset += insertion.length;
 		}*/
 	}
+
+	// Update text for the box, otherwise we get 1-frame delay
+	request->box_with_text->text = STR_Clone(UI_FrameArena(), UI_TextToStr(*text));
 }
 
 UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection) {
@@ -1200,6 +1204,7 @@ UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* te
 	UI_PushBox(outer);
 
 	UI_Box* inner = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, UI_TextToStr(*text));
+	modify->box_with_text = inner;
 
 	bool editing = UI_STATE.text_editing_box == key;
 	bool pressed_this = UI_Pressed(key);
