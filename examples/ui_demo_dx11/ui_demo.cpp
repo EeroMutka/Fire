@@ -96,9 +96,8 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
 int main() {
 	OS_Init();
 
-	DS_Arena persist, temp;
+	DS_Arena persist;
 	DS_ArenaInit(&persist, 4096, DS_HEAP);
-	DS_ArenaInit(&temp, 4096, DS_HEAP);
 
 	UIDemoInit(&g_demo_state, &persist);
 
@@ -149,16 +148,16 @@ int main() {
 	UI_Font base_font, icons_font;
 	UI_FontInit(&base_font, roboto_mono_ttf.data, -4.f);
 	UI_FontInit(&icons_font, icons_ttf.data, -2.f);
-
-	for (;;) {
-		DS_ArenaReset(&temp);
-
+	
+	bool run = true;
+	while (run) {
 		UI_OS_ResetFrameInputs(&window, &g_ui_inputs);
 		g_ui_inputs.base_font = &base_font;
 		g_ui_inputs.icons_font = &icons_font;
 
 		OS_Event event;
 		for (; OS_WindowPollEvent(&window, &event, OnResizeWindow, NULL);) {
+			if (event.kind == OS_EventKind_Quit) run = false;
 			UI_OS_RegisterInputEvent(&g_ui_inputs, &event);
 		}
 		
@@ -177,7 +176,6 @@ int main() {
 	device_context->Release();
 
 	DS_ArenaDeinit(&persist);
-	DS_ArenaDeinit(&temp);
 
 	OS_Deinit();
 }

@@ -273,10 +273,12 @@ typedef enum OS_MouseCursor {
 typedef void(*OS_WindowOnResize)(uint32_t width, uint32_t height, void* user_data);
 
 typedef enum OS_EventKind {
+	OS_EventKind_Quit,
 	OS_EventKind_Press,
 	OS_EventKind_Release,
 	OS_EventKind_TextCharacter,
 	OS_EventKind_MouseWheel,
+	OS_EventKind_RawMouseInput,
 } OS_EventKind;
 
 typedef struct OS_Event {
@@ -284,7 +286,8 @@ typedef struct OS_Event {
 	OS_Key key; // for Press and Release events
 	bool is_repeat; // for Press events
 	uint32_t text_character; // Unicode character
-	float mouse_wheel; // +1.0 means the wheel was rotated forward by one detent (scroll step)
+	float mouse_wheel; // for MouseWheel event; +1.0 means the wheel was rotated forward by one detent (scroll step)
+	float raw_mouse_input[2]; // for RawMouseInput event
 } OS_Event;
 
 //typedef uint8_t OS_KeyStateFlags;
@@ -529,7 +532,7 @@ OS_API bool OS_WindowPollEvent(OS_Window* window, OS_Event* event, OS_WindowOnRe
 OS_API void OS_WindowGetMousePosition(OS_Window* window, float* x, float* y);
 
 OS_API void OS_SetMouseCursor(OS_MouseCursor cursor);
-OS_API void OS_LockAndHideMouseCursor();
+OS_API void OS_SetMouseCursorLockAndHide(bool lock_and_hide);
 
 #ifdef /* ---------------- */ OS_IMPLEMENTATION /* ---------------- */
 
@@ -731,7 +734,6 @@ static OS_MouseCursor OS_current_cursor;
 static HCURSOR OS_current_cursor_handle;
 static bool OS_mouse_cursor_is_hidden;
 static POINT OS_mouse_cursor_hidden_pos;
-static bool OS_mouse_cursor_should_hide;
 
 // ------------------------------------
 
@@ -1725,8 +1727,15 @@ static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t 
 		OS_Window* window = passed->window;
 
 		switch (uMsg) {
-		default: break;
+		default: {
+			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
+		} break;
 		//case WM_SETFOCUS:
+		case WM_CLOSE: // fallthrough
+		case WM_QUIT: {
+			passed->has_event = true;
+			event->kind = OS_EventKind_Quit;
+		} break;
 		case WM_KILLFOCUS: {
 			passed->got_kill_focus = true;
 		} break;
@@ -1797,103 +1806,35 @@ static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t 
 			int16_t wheel = (int16_t)(wParam >> 16);
 			event->mouse_wheel = (float)wheel / (float)WHEEL_DELTA;
 		} break;
-
-		}
-		result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
-	}
-	else {
-		result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
-	}
-	return result;
-#if 0
-
-	int64_t result = 0;
-	if (passed && (hWnd == (HWND)passed->window->handle)) {
-		OS_Inputs* inputs = passed->inputs;
-		switch (uMsg) {
-		default: {
-			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
-		} break;
 		case WM_INPUT: {
 			RAWINPUT raw_input = {0};
 			uint32_t dwSize = sizeof(RAWINPUT);
 			GetRawInputData((HRAWINPUT)lParam, RID_INPUT, &raw_input, &dwSize, sizeof(RAWINPUTHEADER));
 
-			// Avoid using arena allocations here to get more deterministic counters for debugging.
-			//uint32_t dwSize;
-			//GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
-			//
-			//Scope T = ScopePush(NULL);
-			//RAWINPUT *raw_input = MemAlloc(dwSize, temp);
-			//if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, raw_input, &dwSize, sizeof(RAWINPUTHEADER)) != dwSize) {
-			//	OS_CHECK(0);
-			//}
-
 			if (raw_input.header.dwType == RIM_TYPEMOUSE &&
 				!(raw_input.data.mouse.usFlags & MOUSE_MOVE_RELATIVE) &&
-				!(raw_input.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) // For instance, drawing tables can give absolute mouse inputs which we want to ignore
-				) {
-				inputs->mouse_raw_dx = raw_input.data.mouse.lLastX;
-				inputs->mouse_raw_dy = raw_input.data.mouse.lLastY;
+				!(raw_input.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE /* Drawing tables may give absolute mouse inputs which we want to ignore */ ))
+			{
+				passed->has_event = true;
+				event->kind = OS_EventKind_RawMouseInput;
+				event->raw_mouse_input[0] = (float)raw_input.data.mouse.lLastX;
+				event->raw_mouse_input[1] = (float)raw_input.data.mouse.lLastY;
 			}
-			
-			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
+			//result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
 		} break;
-
 		case WM_SETCURSOR: {
 			if (LOWORD(lParam) == HTCLIENT) {
 				SetCursor(OS_current_cursor_handle);
-			}
-			else {
+			} else {
 				result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
 			}
-		} break;
-
-		
-		case WM_CLOSE: // fallthrough
-		case WM_QUIT: {
-			passed->should_exit = true;
-			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
-		} break;
-
-		case WM_SYSKEYDOWN: // fallthrough
-		case WM_KEYDOWN: {
-			bool is_repeat = (lParam & (1 << 30)) != 0;
-
-			OS_KeyStateFlags flags = OS_KeyStateFlag_IsDown | OS_KeyStateFlag_WasPressedOrRepeat;
-			if (!is_repeat) flags |= OS_KeyStateFlag_WasPressed;
-
-			//OS_KeyStateFlags flags = is_repeat ?
-			//	OS_KeyStateFlag_IsPressed | OS_KeyStateFlag_DidBeginPressOrRepeat :
-			//	OS_KeyStateFlag_IsPressed | OS_KeyStateFlag_DidBeginPress;
-
-			OS_AddKeyEvent(inputs, wParam, flags);
-			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
-		} break;
-		case WM_SYSKEYUP: // fallthrough
-		case WM_KEYUP: {
-			// Right now, if you press and release a key within a single frame, our input system will miss that.
-			// TODO: either make it an event list, or fix this (but still disallow lose information about multiple keypresses per frame).
-			OS_AddKeyEvent(inputs, wParam, OS_KeyStateFlag_WasReleased);
-			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
-		} break;
-
-			// NOTE: releasing mouse buttons is handled manually :ManualMouseReleaseEvents
-		case WM_LBUTTONDOWN: { inputs->input_states[OS_Key_MouseLeft] = OS_KeyStateFlag_WasPressed | OS_KeyStateFlag_IsDown; } break;
-		case WM_RBUTTONDOWN: { inputs->input_states[OS_Key_MouseRight] = OS_KeyStateFlag_WasPressed | OS_KeyStateFlag_IsDown; } break;
-		case WM_MBUTTONDOWN: { inputs->input_states[OS_Key_MouseMiddle] = OS_KeyStateFlag_WasPressed | OS_KeyStateFlag_IsDown; } break;
-
-		case WM_COPYDATA: {
-			__debugbreak();
 		} break;
 		}
 	}
 	else {
 		result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
 	}
-
 	return result;
-#endif
 }
 
 #define OS_WINDOW_CLASS_NAME L"OS_WindowModuleClassName"
@@ -1904,12 +1845,8 @@ static void OS_RegisterWindowClass() {
 
 	HINSTANCE hInst = GetModuleHandleW(NULL);
 
-	//#COLOR_BACKGROUND: 1
-	//bg_brush: HBRUSH(COLOR_BACKGROUND)
-
 	// leave the background brush to NULL
 	// https://stackoverflow.com/questions/6593014/how-to-draw-opengl-content-while-resizing-win32-window
-	//wnd_class.hbrBackground
 
 	WNDCLASSEXW wnd_class = {0};
 	wnd_class.cbSize = sizeof(WNDCLASSEXW);
@@ -2052,7 +1989,24 @@ OS_API void OS_SetMouseCursor(OS_MouseCursor cursor) {
 	}
 }
 
-OS_API void OS_LockAndHideMouseCursor() { OS_mouse_cursor_should_hide = true; }
+OS_API void OS_SetMouseCursorLockAndHide(bool lock_and_hide) {
+	if (lock_and_hide) {
+		if (!OS_mouse_cursor_is_hidden) {
+			GetCursorPos(&OS_mouse_cursor_hidden_pos);
+		}
+		SetCursorPos(OS_mouse_cursor_hidden_pos.x, OS_mouse_cursor_hidden_pos.y);
+		if (!OS_mouse_cursor_is_hidden) {
+			ShowCursor(0);
+			OS_mouse_cursor_is_hidden = true;
+		}
+	}
+	else {
+		if (OS_mouse_cursor_is_hidden) {
+			ShowCursor(1);
+			OS_mouse_cursor_is_hidden = false;
+		}
+	}
+}
 
 OS_API void OS_WindowGetMousePosition(OS_Window* window, float* x, float* y) {
 	POINT cursor_pos;
@@ -2105,115 +2059,6 @@ OS_API bool OS_WindowPollEvent(OS_Window* window, OS_Event* event, OS_WindowOnRe
 
 	return passed.has_event;
 }
-
-#if 0
-OS_API bool OS_WindowPoll(OS_Arena* arena, OS_Inputs* inputs, OS_Window* window, OS_WindowOnResize on_resize, void* user_data) {
-	OS_WindowProcUserData passed = {0};
-	passed.window = window;
-	passed.inputs = inputs;
-	passed.on_resize = on_resize;
-	passed.user_data = user_data;
-	passed.text_input_utf32.arena = arena;
-	passed.should_exit = false;
-
-	// inputs->characters_count = 0;
-	inputs->mouse_raw_dx = 0;
-	inputs->mouse_raw_dy = 0;
-	inputs->mouse_wheel_delta = 0;
-
-	OS_KeyStateFlags remove_flags = OS_KeyStateFlag_WasReleased | OS_KeyStateFlag_WasPressed | OS_KeyStateFlag_WasPressedOrRepeat;
-	for (size_t i = 0; i < OS_Key_COUNT; i++) {
-		OS_KeyStateFlags* flags = &inputs->input_states[i];
-		*flags &= ~remove_flags;
-	}
-
-	// https://stackoverflow.com/questions/117792/best-method-for-storing-this-pointer-for-use-in-wndproc
-	SetWindowLongPtrW((HWND)window->handle, GWLP_USERDATA, (int64_t)&passed);
-
-	for (;;) {
-		MSG msg = {0};
-		BOOL result = PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE);
-		if (result != 0) {
-			TranslateMessage(&msg);
-			DispatchMessageW(&msg);
-		}
-		else break;
-		// redraw window
-	}
-
-	SetWindowLongPtrW((HWND)window->handle, GWLP_USERDATA, 0); // if we get more window messages after this point, then OS_WindowProc should ignore them.
-
-	// :ManualMouseReleaseEvents
-	// Manually check for mouse release, because we won't receive a release event if you release the mouse outside of the window.
-	// Microsoft advices to use `SetCapture` / `ReleaseCapture`, but that seems like it'd be error prone when there are multiple
-	// Set/ReleaseCaptures live at the same time when holding multiple mouse buttons.
-	{
-		if (OS_InputIsDown(inputs, OS_Key_MouseLeft) && !(GetKeyState(VK_LBUTTON) & 0x8000)) {
-			inputs->input_states[OS_Key_MouseLeft] = OS_KeyStateFlag_WasReleased;
-		}
-		if (OS_InputIsDown(inputs, OS_Key_MouseMiddle) && !(GetKeyState(VK_MBUTTON) & 0x8000)) {
-			inputs->input_states[OS_Key_MouseMiddle] = OS_KeyStateFlag_WasReleased;
-		}
-		if (OS_InputIsDown(inputs, OS_Key_MouseRight) && !(GetKeyState(VK_RBUTTON) & 0x8000)) {
-			inputs->input_states[OS_Key_MouseRight] = OS_KeyStateFlag_WasReleased;
-		}
-	}
-
-	inputs->text_input_utf32 = passed.text_input_utf32.data;
-	inputs->text_input_utf32_length = passed.text_input_utf32.length;
-
-	/*
-	For the most consistent way of setting the mouse cursor, we're doing it here. Setting it directly in `OS_SetMouseCursor` would work as well,
-	but that could introduce flickering in some cases.
-	*/
-	/*if (OS_current_cursor != OS_MouseCursor_Arrow) {
-		wchar_t* cursor_name = NULL;
-		switch (OS_current_cursor) {
-		case OS_MouseCursor_Arrow: cursor_name = (wchar_t*)IDC_ARROW; break;
-		case OS_MouseCursor_Hand: cursor_name = (wchar_t*)IDC_HAND; break;
-		case OS_MouseCursor_I_Beam: cursor_name = (wchar_t*)IDC_IBEAM; break;
-		case OS_MouseCursor_Crosshair: cursor_name = (wchar_t*)IDC_CROSS; break;
-		case OS_MouseCursor_ResizeH: cursor_name = (wchar_t*)IDC_SIZEWE; break;
-		case OS_MouseCursor_ResizeV: cursor_name = (wchar_t*)IDC_SIZENS; break;
-		case OS_MouseCursor_ResizeNESW: cursor_name = (wchar_t*)IDC_SIZENESW; break;
-		case OS_MouseCursor_ResizeNWSE: cursor_name = (wchar_t*)IDC_SIZENWSE; break;
-		case OS_MouseCursor_ResizeAll: cursor_name = (wchar_t*)IDC_SIZEALL; break;
-		case OS_MouseCursor_COUNT: break;
-		}
-		SetCursor(LoadCursorW(NULL, cursor_name));
-		OS_current_cursor = OS_MouseCursor_Arrow;
-	}*/
-
-	// Lock & hide mouse
-	{
-		if (OS_mouse_cursor_is_hidden) {
-			SetCursorPos(OS_mouse_cursor_hidden_pos.x, OS_mouse_cursor_hidden_pos.y);
-		}
-
-		if (OS_mouse_cursor_should_hide != OS_mouse_cursor_is_hidden) {
-			if (OS_mouse_cursor_should_hide) {
-				ShowCursor(0);
-				GetCursorPos(&OS_mouse_cursor_hidden_pos);
-			}
-			else {
-				ShowCursor(1);
-			}
-		}
-		OS_mouse_cursor_is_hidden = OS_mouse_cursor_should_hide;
-		OS_mouse_cursor_should_hide = false;
-	}
-
-	{
-		POINT cursor_pos;
-		GetCursorPos(&cursor_pos);
-		ScreenToClient((HWND)window->handle, &cursor_pos);
-		inputs->mouse_x = cursor_pos.x;
-		inputs->mouse_y = cursor_pos.y;
-	}
-
-	return !passed.should_exit;
-}
-#endif
 
 // ----------------------------------------------------------------------------------------------------------------
 

@@ -56,10 +56,11 @@ static UI_Color UI_HSVToColor(float h, float s, float v, float alpha) {
 typedef struct UI_HueSaturationCircleData {
 	float hue, saturation;
 } UI_HueSaturationCircleData;
-static const UI_Key UI_HueSaturationCircleDataKey = UI_KEY();
+
+static UI_Key UI_GetHueSaturationCircleDataKey() { return UI_KEY(); }
 
 static void UI_DrawHueSaturationCircle(UI_Box* box) {
-	UI_HueSaturationCircleData* data = UI_BoxGetCustomVal(UI_HueSaturationCircleData, box, UI_HueSaturationCircleDataKey);
+	UI_HueSaturationCircleData* data = UI_BoxGetCustomVal(UI_HueSaturationCircleData, box, UI_GetHueSaturationCircleDataKey());
 
 	float radius = 0.5f*box->computed_size.x;
 	UI_Vec2 middle = {box->computed_position.x + radius, box->computed_position.y + radius};
@@ -128,15 +129,15 @@ UI_API UI_Box* UI_HueSaturationCircle(UI_Key key, float diameter, float* hue, fl
 	}
 
 	UI_HueSaturationCircleData data = {*hue, *saturation};
-	UI_BoxAddCustomVal(box, UI_HueSaturationCircleDataKey, data);
+	UI_BoxAddCustomVal(box, UI_GetHueSaturationCircleDataKey(), data);
 	return box;
 }
 
 typedef struct { float h, s, v; } UI_HueSaturationValueEditData;
-static const UI_Key UI_HueSaturationValueEditDataKey = UI_KEY();
+static UI_Key UI_GetHueSaturationValueEditDataKey() { return UI_KEY(); }
 
 static void UI_ColorPickerSaturationSliderDraw(UI_Box* box) {
-	UI_HueSaturationValueEditData* data = UI_BoxGetCustomVal(UI_HueSaturationValueEditData, box, UI_HueSaturationValueEditDataKey);
+	UI_HueSaturationValueEditData* data = UI_BoxGetCustomVal(UI_HueSaturationValueEditData, box, UI_GetHueSaturationValueEditDataKey());
 	UI_Rect rect = box->computed_rect_clipped;
 
 	uint32_t first_vertex;
@@ -161,7 +162,7 @@ static void UI_ColorPickerSaturationSliderDraw(UI_Box* box) {
 }
 
 static void UI_ColorPickerValueSliderDraw(UI_Box* box) {
-	UI_HueSaturationValueEditData* data = UI_BoxGetCustomVal(UI_HueSaturationValueEditData, box, UI_HueSaturationValueEditDataKey);
+	UI_HueSaturationValueEditData* data = UI_BoxGetCustomVal(UI_HueSaturationValueEditData, box, UI_GetHueSaturationValueEditDataKey());
 	UI_Rect rect = box->computed_rect_clipped;
 
 	uint32_t first_vertex;
@@ -251,7 +252,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 			UI_Box* left_column = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0);
 			UI_PushBox(left_column);
 
-			static const STR strings[] = {STR_("R"), STR_("G"), STR_("B"), STR_("A")};
+			static const STR strings[] = {STR__("R"), STR__("G"), STR__("B"), STR__("A")};
 			float rgba[4] = {0, 0, 0, *alpha};
 			UI_HSVToRGB(*hue, *saturation, *value, &rgba[0], &rgba[1], &rgba[2]);
 
@@ -282,7 +283,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 			UI_Box* right_column = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0);
 			UI_PushBox(right_column);
 
-			static const STR strings[] = {STR_("H"), STR_("S"), STR_("V")};
+			static const STR strings[] = {STR__("H"), STR__("S"), STR__("V")};
 			float* hsv[] = {hue, saturation, value};
 			for (int i = 0; i < 3; i++) {
 				UI_Key row_key = UI_HashInt(key, i);
@@ -339,8 +340,8 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 	color_box_2->style->opaque_bg_color = color;
 
 	UI_HueSaturationValueEditData data = {*hue, *saturation, *value};
-	UI_BoxAddCustomVal(sat_slider_box, UI_HueSaturationValueEditDataKey, data);
-	UI_BoxAddCustomVal(val_slider_box, UI_HueSaturationValueEditDataKey, data);
+	UI_BoxAddCustomVal(sat_slider_box, UI_GetHueSaturationValueEditDataKey(), data);
+	UI_BoxAddCustomVal(val_slider_box, UI_GetHueSaturationValueEditDataKey(), data);
 
 	return main_box;
 }

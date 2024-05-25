@@ -161,9 +161,10 @@ struct UI_BoxCustomDataHeader {
 	int debug_size;
 };
 
+typedef struct UI_Box UI_Box;
+
 typedef void(*UI_BoxDrawCallback)(UI_Box* box);
 
-typedef struct UI_Box UI_Box;
 struct UI_Box {
 	UI_Key key;
 	UI_Box* prev_frame; // NULL if a box with the same key didn't exist (wasn't added to the tree) during the previous frame
@@ -314,7 +315,7 @@ typedef struct UI_Inputs {
 	UI_Vec2 mouse_raw_delta;
 	float mouse_wheel_delta; // +1.0 means the wheel was rotated forward by one scroll step
 
-	uint32_t* text_input_utf32;
+	uint32_t text_input_utf32[16];
 	int text_input_utf32_length;
 
 	UI_String(*get_clipboard_string_fn)(void* user_data); // The returned string must stay valid for the rest of the frame
@@ -1080,6 +1081,7 @@ static UI_Box* UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, boo
 			UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_PressingStaysWithoutHover, value_str);
 
 		if (UI_Pressed(box->key)) {
+			UI_STATE.outputs.lock_and_hide_cursor = true;
 			memcpy(&UI_STATE.edit_number_value_before_press, value, 8);
 		}
 
@@ -3255,7 +3257,7 @@ UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI
 	return s;
 }
 
-static const UI_Key UI_ArrangerSetKey = UI_KEY();
+static UI_Key UI_GetArrangerSetKey() { return UI_KEY(); }
 
 UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h) {
 	DS_ProfEnter();
@@ -3263,8 +3265,8 @@ UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h) {
 	UI_PushBox(box);
 	
 	UI_ArrangerSet arranger_set = {0};
-	UI_BoxAddCustomData(box, UI_ArrangerSetKey, &arranger_set, sizeof(UI_ArrangerSet));
-	
+	UI_BoxAddCustomData(box, UI_GetArrangerSetKey(), &arranger_set, sizeof(UI_ArrangerSet));
+
 	DS_ProfExit();
 	return box;
 }
@@ -3272,8 +3274,8 @@ UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h) {
 UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request) {
 	DS_ProfEnter();
 	UI_PopBox(box);
-	
-	UI_ArrangerSet* arranger_set = (UI_ArrangerSet*)UI_BoxGetCustomData(box, UI_ArrangerSetKey, sizeof(UI_ArrangerSet));
+
+	UI_ArrangerSet* arranger_set = (UI_ArrangerSet*)UI_BoxGetCustomData(box, UI_GetArrangerSetKey(), sizeof(UI_ArrangerSet));
 	UI_CHECK(arranger_set);
 
 	float box_origin_prev_frame = box->prev_frame ? box->prev_frame->computed_position.y : 0.f;
@@ -3365,7 +3367,7 @@ UI_API void UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 		UI_Box* elem = box;
 		for (; elem; elem = elem->parent) {
 			if (elem->parent) {
-				UI_ArrangerSet* arranger_set = (UI_ArrangerSet*)UI_BoxGetCustomData(elem->parent, UI_ArrangerSetKey, sizeof(UI_ArrangerSet));
+				UI_ArrangerSet* arranger_set = (UI_ArrangerSet*)UI_BoxGetCustomData(elem->parent, UI_GetArrangerSetKey(), sizeof(UI_ArrangerSet));
 				if (arranger_set) {
 					arranger_set->dragging_elem = elem;
 					break;

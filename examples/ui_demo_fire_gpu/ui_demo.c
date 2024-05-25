@@ -78,13 +78,11 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
 int main() {
 	OS_Init();
 
-	DS_Arena persist, temp;
+	DS_Arena persist;
 	DS_ArenaInit(&persist, 4096, DS_HEAP);
-	DS_ArenaInit(&temp, 4096, DS_HEAP);
-
+	
 	UIDemoInit(&g_demo_state, &persist);
 
-	OS_Inputs window_inputs = {0};
 	OS_Window window = OS_WindowCreate((uint32_t)g_window_size.x, (uint32_t)g_window_size.y, OS_STR("UI demo (Fire GPU)"));
 
 	GPU_Init(window.handle);
@@ -113,16 +111,18 @@ int main() {
 
 	//// Main loop /////////////////////////////////////
 	
-	for (;;) {
-		DS_ArenaReset(&temp);
-
-		if (!OS_WindowPoll(&temp, &window_inputs, &window, OnResizeWindow, NULL)) break;
-
-		g_ui_inputs = (UI_Inputs){0};
+	bool run = true;
+	while (run) {
+		UI_OS_ResetFrameInputs(&window, &g_ui_inputs);
 		g_ui_inputs.base_font = &base_font;
 		g_ui_inputs.icons_font = &icons_font;
-		UI_OS_TranslateInputs(&g_ui_inputs, &window_inputs, &temp);
-		
+
+		OS_Event event;
+		for (; OS_WindowPollEvent(&window, &event, OnResizeWindow, NULL);) {
+			if (event.kind == OS_EventKind_Quit) run = false;
+			UI_OS_RegisterInputEvent(&g_ui_inputs, &event);
+		}
+
 		UpdateAndRender();
 	}
 
@@ -144,7 +144,6 @@ int main() {
 	GPU_Deinit();
 
 	DS_ArenaDeinit(&persist);
-	DS_ArenaDeinit(&temp);
 
 	OS_Deinit();
 
