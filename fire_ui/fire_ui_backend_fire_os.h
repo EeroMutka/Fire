@@ -9,14 +9,16 @@ static void UI_OS_SetClipboardString(STR string, void* user_data) {
 	OS_ClipboardSetText(string);
 }
 
-static void UI_OS_ResetFrameInputs(OS_Window* window, UI_Inputs* ui_inputs) {
-	float mouse_x, mouse_y;
-	OS_WindowGetMousePosition(window, &mouse_x, &mouse_y);
-
+static void UI_OS_ResetFrameInputs(OS_Window* window, UI_Inputs* ui_inputs, UI_Font* base_font, UI_Font* icons_font) {
 	memset(ui_inputs, 0, sizeof(*ui_inputs));
-	ui_inputs->mouse_position = UI_VEC2{mouse_x, mouse_y};
+	ui_inputs->base_font = base_font;
+	ui_inputs->icons_font = icons_font;
 	ui_inputs->get_clipboard_string_fn = UI_OS_GetClipboardString;
 	ui_inputs->set_clipboard_string_fn = UI_OS_SetClipboardString;
+	
+	float mouse_x, mouse_y;
+	OS_WindowGetMousePosition(window, &mouse_x, &mouse_y);
+	ui_inputs->mouse_position = UI_VEC2{mouse_x, mouse_y};
 }
 
 // let's imagine our fire-os implementation is super basic, like SDL. fire-UI should accomodate.

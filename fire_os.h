@@ -273,7 +273,6 @@ typedef enum OS_MouseCursor {
 typedef void(*OS_WindowOnResize)(uint32_t width, uint32_t height, void* user_data);
 
 typedef enum OS_EventKind {
-	OS_EventKind_Quit,
 	OS_EventKind_Press,
 	OS_EventKind_Release,
 	OS_EventKind_TextCharacter,
@@ -289,6 +288,11 @@ typedef struct OS_Event {
 	float mouse_wheel; // for MouseWheel event; +1.0 means the wheel was rotated forward by one detent (scroll step)
 	float raw_mouse_input[2]; // for RawMouseInput event
 } OS_Event;
+
+typedef struct OS_EventArray {
+	OS_Event* events;
+	int count;
+} OS_EventArray;
 
 //typedef uint8_t OS_KeyStateFlags;
 //typedef enum OS_KeyStateFlag {
@@ -320,6 +324,7 @@ struct OS_Log {
 
 typedef struct OS_Window {
 	OS_WindowHandle handle;
+	bool should_close;
 
 	bool key_is_down[OS_Key_COUNT];
 	
@@ -529,7 +534,10 @@ OS_API bool OS_SetFullscreen(OS_Window* window, bool fullscreen);
 // OS_API bool OS_WindowUpdate(OS_Window* window);
 
 OS_API bool OS_WindowPollEvent(OS_Window* window, OS_Event* event, OS_WindowOnResize on_resize, void* user_data);
+OS_API bool OS_WindowShouldClose(OS_Window* window);
 OS_API void OS_WindowGetMousePosition(OS_Window* window, float* x, float* y);
+
+//OS_API OS_EventArray OS_WindowPollEvents(OS_Arena* arena, OS_Window* window, OS_WindowOnResize on_resize, void* user_data);
 
 OS_API void OS_SetMouseCursor(OS_MouseCursor cursor);
 OS_API void OS_SetMouseCursorLockAndHide(bool lock_and_hide);
@@ -1733,8 +1741,7 @@ static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t 
 		//case WM_SETFOCUS:
 		case WM_CLOSE: // fallthrough
 		case WM_QUIT: {
-			passed->has_event = true;
-			event->kind = OS_EventKind_Quit;
+			window->should_close = true;
 		} break;
 		case WM_KILLFOCUS: {
 			passed->got_kill_focus = true;
@@ -2016,8 +2023,20 @@ OS_API void OS_WindowGetMousePosition(OS_Window* window, float* x, float* y) {
 	*y = (float)cursor_pos.y;
 }
 
-OS_API bool OS_WindowPollEvent(OS_Window* window, OS_Event* event, OS_WindowOnResize on_resize, void* user_data) {
+//OS_API OS_EventArray OS_WindowPollEvents(OS_Arena* arena, OS_Window* window, OS_WindowOnResize on_resize, void* user_data) {
+//	OS_Vec(OS_Event) events = {arena};
+//	for (OS_Event event; OS_WindowPollEvent(window, &event, on_resize, user_data);) {
+//		OS_VecPush(&events, event);
+//	}
+//	OS_EventArray result = {events.data, events.length};
+//	return result;
+//}
 
+OS_API bool OS_WindowShouldClose(OS_Window* window) {
+	return window->should_close;
+}
+
+OS_API bool OS_WindowPollEvent(OS_Window* window, OS_Event* event, OS_WindowOnResize on_resize, void* user_data) {
 	if (window->queue_release_next_key) {
 		bool found_held_key = false;
 		for (int i = window->queue_release_next_key_idx; i < OS_Key_COUNT; i++) {

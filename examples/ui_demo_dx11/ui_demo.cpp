@@ -149,15 +149,10 @@ int main() {
 	UI_FontInit(&base_font, roboto_mono_ttf.data, -4.f);
 	UI_FontInit(&icons_font, icons_ttf.data, -2.f);
 	
-	bool run = true;
-	while (run) {
-		UI_OS_ResetFrameInputs(&window, &g_ui_inputs);
-		g_ui_inputs.base_font = &base_font;
-		g_ui_inputs.icons_font = &icons_font;
-
-		OS_Event event;
-		for (; OS_WindowPollEvent(&window, &event, OnResizeWindow, NULL);) {
-			if (event.kind == OS_EventKind_Quit) run = false;
+	while (!OS_WindowShouldClose(&window)) {
+		UI_OS_ResetFrameInputs(&window, &g_ui_inputs, &base_font, &icons_font);
+		
+		for (OS_Event event; OS_WindowPollEvent(&window, &event, OnResizeWindow, NULL);) {
 			UI_OS_RegisterInputEvent(&g_ui_inputs, &event);
 		}
 		

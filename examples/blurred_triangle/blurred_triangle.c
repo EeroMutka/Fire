@@ -97,7 +97,6 @@ int main() {
 	OS_Arena os_temp_arena;
 	OS_ArenaInit(&os_temp_arena, 4096);
 
-	OS_Inputs window_inputs = {0};
 	OS_Window window = OS_WindowCreate(g_window_size[0], g_window_size[1], OS_STR("Blurred Triangle"));
 	GPU_Init(window.handle);
 	
@@ -205,9 +204,8 @@ int main() {
 	GPU_MakeSwapchainGraphs(2, &g_graphs[0]);
 
 	// Main loop
-	for (;;) {
-		OS_ArenaReset(&os_temp_arena);
-		if (!OS_WindowPoll(&os_temp_arena, &window_inputs, &window, OnResizeWindow, NULL)) break;
+	while (!OS_WindowShouldClose(&window)) {
+		for (OS_Event event; OS_WindowPollEvent(&window, &event, OnResizeWindow, NULL);) {}
 
 		g_time += 1.f / 60.f;
 
