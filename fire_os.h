@@ -1764,6 +1764,8 @@ static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t 
 			
 			OS_Key key = OS_KeyFromVK(wParam, scancode);
 			passed->has_event = OS_AddKeyEvent(window, event, kind, is_repeat, key);
+			
+			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
 		} break;
 		
 		case WM_LBUTTONDOWN: // fallthrough
@@ -1776,6 +1778,8 @@ static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t 
 			passed->has_event = OS_AddKeyEvent(window, event, OS_EventKind_Press, false, key);
 			
 			SetCapture(hWnd);
+			
+			result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
 		} break;
 		case WM_LBUTTONUP: // fallthrough
 		case WM_RBUTTONUP: // fallthrough
@@ -1831,7 +1835,6 @@ static int64_t OS_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, int64_t 
 				event->raw_mouse_input[0] = (float)raw_input.data.mouse.lLastX;
 				event->raw_mouse_input[1] = (float)raw_input.data.mouse.lLastY;
 			}
-			//result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
 		} break;
 		case WM_SETCURSOR: {
 			if (LOWORD(lParam) == HTCLIENT) {
@@ -2097,6 +2100,10 @@ OS_API bool OS_WindowPollEvent(OS_Window* window, OS_Event* event, OS_WindowOnRe
 	for (; PeekMessageW(&msg, (HWND)window->handle, 0, 0, PM_REMOVE) != 0;) {
 		TranslateMessage(&msg);
 		DispatchMessageW(&msg);
+		//if (msg.message == WM_QUIT) {
+		//	window->should_close = true;
+		//	break;
+		//}
 		if (passed.got_kill_focus || passed.has_event) break;
 	}
 	
