@@ -102,7 +102,7 @@ UI_API UI_Box* UI_HueSaturationCircle(UI_Key key, float diameter, float* hue, fl
 	UI_CHECK(*saturation >= 0.f && *saturation <= 1.f);
 
 	UI_Box* box = UI_AddBox(key, UI_SizePx(diameter), UI_SizePx(diameter), UI_BoxFlag_DrawBorder);
-	box->draw_callback = UI_DrawHueSaturationCircle;
+	box->draw_override = UI_DrawHueSaturationCircle;
 
 	if (box->prev_frame) {
 		float radius = 0.5f*box->prev_frame->computed_size.x;
@@ -213,12 +213,12 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 	UI_AddBox(UI_KEY1(key), UI_SizePx(5.f), UI_SizeFit(), 0); // pad
 
 	UI_Box* sat_slider_box = UI_AddBox(UI_KEY1(key), UI_SizePx(20.f), UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
-	sat_slider_box->draw_callback = UI_ColorPickerSaturationSliderDraw;
+	sat_slider_box->draw_override = UI_ColorPickerSaturationSliderDraw;
 
 	UI_AddBox(UI_KEY1(key), UI_SizePx(5.f), UI_SizeFit(), 0); // pad
 
 	UI_Box* val_slider_box = UI_AddBox(UI_KEY1(key), UI_SizePx(20.f), UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
-	val_slider_box->draw_callback = UI_ColorPickerValueSliderDraw;
+	val_slider_box->draw_override = UI_ColorPickerValueSliderDraw;
 
 	UI_AddBox(UI_KEY1(key), UI_SizePx(5.f), UI_SizeFit(), 0); // pad
 
@@ -234,10 +234,10 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 		UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0); // pad
 
 		color_box_1 = UI_AddBox(UI_KEY1(key), UI_SizePx(80.f), UI_SizePx(80.f), UI_BoxFlag_DrawOpaqueBackground);
-		color_box_1->draw_callback = UI_DrawColorPickerBox;
+		color_box_1->draw_override = UI_DrawColorPickerBox;
 
 		color_box_2 = UI_AddBox(UI_KEY1(key), UI_SizePx(80.f), UI_SizePx(80.f), UI_BoxFlag_DrawOpaqueBackground);
-		color_box_2->draw_callback = UI_DrawColorPickerBoxTransparent;
+		color_box_2->draw_override = UI_DrawColorPickerBoxTransparent;
 
 		UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0); // pad
 

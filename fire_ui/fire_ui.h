@@ -163,8 +163,6 @@ struct UI_BoxCustomDataHeader {
 
 typedef struct UI_Box UI_Box;
 
-typedef void(*UI_BoxDrawCallback)(UI_Box* box);
-
 struct UI_Box {
 	UI_Key key;
 	UI_Box* prev_frame; // NULL if a box with the same key didn't exist (wasn't added to the tree) during the previous frame
@@ -183,7 +181,8 @@ struct UI_Box {
 
 	UI_Style* style;
 	
-	UI_BoxDrawCallback draw_callback;
+	void (*draw_override)(UI_Box* box);
+	void (*compute_unexpanded_size_override)(UI_Box* box, UI_Axis axis);
 
 	// Persistent / animated state
 	float lazy_is_hovered;
@@ -522,17 +521,19 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box);
 #define UI_SizePx(value)   UI_SIZE{value, 0.f, 0.f, 0.f}
 #define UI_SizeFlex(value) UI_SIZE{0.f, 1.f, value, value}
 
-UI_API void UI_BoxComputeUnexpandedSizes(UI_Box* node);
-UI_API void UI_BoxComputeExpandedSizes(UI_Box* node);
+UI_API void UI_BoxComputeUnexpandedSizes(UI_Box* box);
+UI_API void UI_BoxComputeExpandedSizes(UI_Box* box);
 UI_API void UI_BoxComputeRects(UI_Box* box, UI_Vec2 box_position);
 
-UI_API void UI_BoxComputeUnexpandedSizesStep(UI_Box* box, UI_Axis axis);
-UI_API void UI_BoxComputeExpandedSizesStep(UI_Box* box, UI_Axis axis, float size);
+UI_API void UI_BoxComputeUnexpandedSize(UI_Box* box, UI_Axis axis);
+UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis);
+UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size);
 UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI_ScissorRect scissor);
 
 UI_API UI_Box* UI_MakeRootBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags);
 UI_API void UI_PushBox(UI_Box* box);
 UI_API void UI_PopBox(UI_Box* box);
+UI_API void UI_PopBoxN(UI_Box* box, int n);
 
 UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags);
 UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string);
@@ -565,7 +566,7 @@ UI_API void UI_PopScrollArea(UI_Box* box);
 
 UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h);
 UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request);
-UI_API void UI_AddArranger(UI_Key key, UI_Size w, UI_Size h);
+UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h);
 
 // --------------------------------------
 
@@ -1430,10 +1431,14 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 	
 	UI_Box* temp_boxes[2] = {0};
 
-	UI_Box* parent = UI_AddBox(UI_KEY1(key), w, h, UI_BoxFlag_LayoutInX | flags);
+	UI_Box* parent = UI_AddBox(key, w, h, UI_BoxFlag_LayoutInX | flags);
 	UI_PushBox(parent);
 
 	UI_Vec2 offset = { 0.f, 0.f };
+
+	// TODO: turn this into "PushScrollArea2D" and have a separate function for PushScrollArea. The main difference is that with
+	// a 1D scroll area, it should be possible to do, say, flex child boxes in X while scrolling in Y. Or maybe that should be
+	// possible with 2D scroll area too, idk.
 
 	// We should automatically add either X or Y scrollbars
 	for (int y = 1; y >= 0; y--) { // y is the direction of the scroll bar
@@ -1441,9 +1446,9 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 		UI_Key y_key = UI_HashInt(UI_KEY1(key), y);
 
 		UI_Size size[2];
-		size[x] = UI_SIZE{ 0.f, 0.f, 1.f, 1.f };
-		size[y] = UI_SIZE{ 0.f, 0.f, 1.f, 1.f };
-		UI_Box* temp_box = UI_AddBox(temp_box_keys[y], size[0], size[1], 0);
+		size[x] = UI_SIZE{ 0.f, 1.f, 1.f, 1.f };
+		size[y] = UI_SIZE{ 0.f, 1.f, 1.f, 1.f };
+		UI_Box* temp_box = UI_AddBox(temp_box_keys[y], size[0], size[1], UI_BoxFlag_NoScissor);
 		temp_boxes[y] = temp_box;
 
 		// Use the content size from the previous frame
@@ -1463,11 +1468,8 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 
 			UI_PushBox(rail_line_box);
 
-			// float offset_adjust = anchors[y] == 1 ? visible_area_length_px - content_length_px : 0.f;
-
-			// We need prev frame's offset_adjust
-			// hmm... lets try to implement running key cache?
-			// data from key
+			// TODO: we should pass a key parameter to attach the storage of the scroll wheel offset to.
+			// That way e.g. if we have a collapsible and a scroll bar inside, the scroll bar offset wouldn't be lost on close/reopen.
 
 			offset._[y] = content_prev_frame ? content_prev_frame->offset._[y] : 0.f;
 
@@ -1530,7 +1532,8 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 		UI_PushBox(temp_box);
 	}
 
-	UI_Box* content = UI_AddBox(content_box_key, UI_SizeFit(), UI_SizeFit(), 0);
+	UI_Size content_size = UI_SIZE{0.f, 1.f, 1.f, 0.f}; // Size up, but don't size down
+	UI_Box* content = UI_AddBox(content_box_key, content_size, content_size, 0);
 	content->offset = offset;
 	UI_PushBox(content);
 
@@ -1538,14 +1541,11 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 	if (anchor_y == 1) temp_boxes[0]->flags |= UI_BoxFlag_LayoutFromEndY;
 
 	DS_ProfExit();
-	return content;
+	return parent;
 }
 
 UI_API void UI_PopScrollArea(UI_Box* box) {
-	UI_PopBox(box);
-	UI_PopBox(box->parent);
-	UI_PopBox(box->parent->parent);
-	UI_PopBox(box->parent->parent->parent); // parent_box
+	UI_PopBoxN(box, 4);
 }
 
 // The "backdrop" of a box includes background, opaque background, border and hover/click highlighting
@@ -1595,8 +1595,8 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 }
 
 UI_API void UI_DrawBox(UI_Box* box) {
-	if (box->draw_callback) {
-		box->draw_callback(box);
+	if (box->draw_override) {
+		box->draw_override(box);
 	} else {
 		UI_DrawBoxDefault(box);
 	}
@@ -1999,6 +1999,13 @@ UI_API void UI_PopBox(UI_Box* box) {
 	DS_ProfExit();
 }
 
+UI_API void UI_PopBoxN(UI_Box* box, int n) {
+	UI_CHECK(UI_STATE.box_stack.length >= n);
+	UI_STATE.box_stack.length -= n - 1;
+	UI_Box* last_popped = DS_ArrPop(&UI_STATE.box_stack);
+	UI_CHECK(last_popped == box);
+}
+
 UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 	DS_ProfEnter();
 
@@ -2149,45 +2156,15 @@ UI_API void UI_Init(DS_Arena* persistent_arena, const UI_Backend* backend) {
 	DS_ProfExit();
 }
 
-UI_API void UI_BoxComputeUnexpandedSizesStep(UI_Box* box, UI_Axis axis) {
-	DS_ProfEnter();
-	//box->flags |= UI_BoxFlag_HasComputedUnexpandedSizes;
+//UI_API void UI_BoxComputeUnexpandedSize(UI_Box* box, UI_Axis axis) {
+//	DS_ProfEnter();
+//
+//	// if we have a special unexpanded-size override, then do it here!
+//
+//	DS_ProfExit();
+//}
 
-	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
-		UI_BoxComputeUnexpandedSizesStep(child, axis);
-	}
-
-	float fitting_size = 0.f;
-
-	if (box->flags & UI_BoxFlag_DrawText) {
-		UI_CHECK(box->first_child[0] == NULL); // DrawText may only be used on leaf boxes
-
-		float text_size = axis == UI_Axis_X ? UI_TextWidth(box->text, box->style->font) : box->style->font.size;
-		fitting_size = (float)(int)(text_size + 0.5f) + 2.f * box->style->text_padding._[axis];
-	}
-
-	if (box->first_child[0]) {
-		UI_Axis layout_axis = box->flags & UI_BoxFlag_LayoutInX ? UI_Axis_X : UI_Axis_Y;
-
-		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
-			if (layout_axis == axis) {
-				fitting_size += child->computed_unexpanded_size._[axis];
-			}
-			else {
-				fitting_size = UI_Max(fitting_size, child->computed_unexpanded_size._[axis]);
-			}
-		}
-
-		if (box->flags & UI_BoxFlag_ChildPadding) fitting_size += 2 * box->style->child_padding._[axis];
-	}
-
-	float unexpanded_size = UI_Max(box->size[axis].size_px, box->size[axis].size_ratio_fit * fitting_size);
-	box->computed_unexpanded_size._[axis] = unexpanded_size;
-
-	DS_ProfExit();
-}
-
-UI_API void UI_BoxComputeExpandedSizesStep(UI_Box* box, UI_Axis axis, float size) {
+UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 	DS_ProfEnter();
 	box->computed_size._[axis] = size;
 
@@ -2224,7 +2201,7 @@ UI_API void UI_BoxComputeExpandedSizesStep(UI_Box* box, UI_Axis axis, float size
 				child_size -= flex_px;
 			}
 
-			UI_BoxComputeExpandedSizesStep(child, axis, child_size);
+			UI_BoxComputeExpandedSize(child, axis, child_size);
 		}
 	}
 	else {
@@ -2242,7 +2219,7 @@ UI_API void UI_BoxComputeExpandedSizesStep(UI_Box* box, UI_Axis axis, float size
 				child_size -= flex_px;
 			}
 
-			UI_BoxComputeExpandedSizesStep(child, axis, child_size);
+			UI_BoxComputeExpandedSize(child, axis, child_size);
 		}
 	}
 
@@ -2291,14 +2268,55 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 }
 
 UI_API void UI_BoxComputeUnexpandedSizes(UI_Box* box) {
-	UI_BoxComputeUnexpandedSizesStep(box, UI_Axis_X);
-	UI_BoxComputeUnexpandedSizesStep(box, UI_Axis_Y);
+	UI_BoxComputeUnexpandedSize(box, UI_Axis_X);
+	UI_BoxComputeUnexpandedSize(box, UI_Axis_Y);
+}
+
+UI_API void UI_BoxComputeUnexpandedSize(UI_Box* box, UI_Axis axis) {
+	if (box->compute_unexpanded_size_override) {
+		box->compute_unexpanded_size_override(box, axis);
+	} else {
+		UI_BoxComputeUnexpandedSizeDefault(box, axis);
+	}
+}
+
+UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis) {
+	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+		UI_BoxComputeUnexpandedSize(child, axis);
+	}
+
+	float fitting_size = 0.f;
+
+	if (box->flags & UI_BoxFlag_DrawText) {
+		UI_CHECK(box->first_child[0] == NULL); // DrawText may only be used on leaf boxes
+
+		float text_size = axis == 0 ? UI_TextWidth(box->text, box->style->font) : box->style->font.size;
+		fitting_size = (float)(int)(text_size + 0.5f) + 2.f * box->style->text_padding._[axis];
+	}
+
+	if (box->first_child[0]) {
+		UI_Axis layout_axis = box->flags & UI_BoxFlag_LayoutInX ? UI_Axis_X : UI_Axis_Y;
+
+		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+			if (layout_axis == axis) {
+				fitting_size += child->computed_unexpanded_size._[axis];
+			}
+			else {
+				fitting_size = UI_Max(fitting_size, child->computed_unexpanded_size._[axis]);
+			}
+		}
+
+		if (box->flags & UI_BoxFlag_ChildPadding) fitting_size += 2 * box->style->child_padding._[axis];
+	}
+
+	float unexpanded_size = UI_Max(box->size[axis].size_px, box->size[axis].size_ratio_fit * fitting_size);
+	box->computed_unexpanded_size._[axis] = unexpanded_size;
 }
 
 UI_API void UI_BoxComputeExpandedSizes(UI_Box* box) {
 	UI_BoxComputeUnexpandedSizes(box);
-	UI_BoxComputeExpandedSizesStep(box, UI_Axis_X, box->computed_unexpanded_size.x);
-	UI_BoxComputeExpandedSizesStep(box, UI_Axis_Y, box->computed_unexpanded_size.y);
+	UI_BoxComputeExpandedSize(box, UI_Axis_X, box->computed_unexpanded_size.x);
+	UI_BoxComputeExpandedSize(box, UI_Axis_Y, box->computed_unexpanded_size.y);
 }
 
 UI_API void UI_BoxComputeRects(UI_Box* box, UI_Vec2 box_position) {
@@ -3352,7 +3370,7 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 	DS_ProfExit();
 }
 
-UI_API void UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
+UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 	DS_ProfEnter();
 	UI_Box* box = UI_AddBoxWithText(key, w, h, UI_BoxFlag_Clickable, STR_(":"));
 
@@ -3379,6 +3397,7 @@ UI_API void UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 		UI_CHECK(elem);
 	}
 	DS_ProfExit();
+	return box;
 }
 
 #endif // UI_IMPLEMENTATION
