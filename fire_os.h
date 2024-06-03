@@ -433,6 +433,12 @@ OS_API bool OS_PathIsAbsolute(OS_String path);
 // `working_dir` must be an absolute path.
 OS_API bool OS_PathToCanonical(OS_Arena* arena, OS_String path, OS_String* out_canonical);
 
+// Example: directory = `foo/bar`, tail = `baz` ==> `foo/bar/baz`
+OS_API OS_String OS_PathJoin(OS_Arena* arena, OS_String directory, OS_String tail);
+
+OS_API OS_String OS_PathExtension(OS_String path);
+OS_API bool OS_StrIsEqual(OS_String a, OS_String b);
+
 OS_API bool OS_GetAllFilesInDirectory(OS_Arena* arena, OS_String directory, OS_FileInfoArray* out_files);
 // OS_API bool OS_VisitDirectory(OS_WorkingDir working_dir, OS_String path, OS_VisitDirectoryVisitor visitor, void *visitor_userptr);
 
@@ -1203,6 +1209,23 @@ OS_API bool OS_DirectoryExists(OS_String directory_path) {
 OS_API bool OS_PathIsAbsolute(OS_String path) {
 	return path.size > 2 && path.data[1] == ':';
 }
+
+OS_API OS_String OS_PathJoin(OS_Arena* arena, OS_String directory, OS_String tail) {
+	int size = directory.size + 1 + tail.size;
+	OS_String result = {OS_ArenaPush(temp, size), size};
+	memcpy(result.data, directory.data, directory.size);
+	result.data[directory.size] = '/';
+	memcpy(result.data + directory.size + 1, tail.data, tail.size);
+	return result;
+}
+
+// TODO
+// OS_API OS_String OS_PathExtension(OS_String path) {
+// }
+
+// TODO
+// OS_API bool OS_StrIsEqual(OS_String a, OS_String b) {
+// }
 
 OS_API bool OS_PathToCanonical(OS_Arena* arena, OS_String path, OS_String* out_canonical) {
 	// https://pdh11.blogspot.com/2009/05/pathcanonicalize-versus-what-it-says-on.html

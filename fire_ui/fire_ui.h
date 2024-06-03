@@ -425,7 +425,7 @@ typedef struct UI_State {
 	// -- Text editing state --
 	UI_Key text_editing_box;
 	UI_Key text_editing_box_new;
-	bool edit_text_should_refresh; // implicit parameter to the next call to UI_AddValueEditText
+	bool edit_text_should_refresh; // implicit parameter to the next call to UI_AddValText
 	UI_Selection edit_text_selection;
 } UI_State;
 
@@ -543,13 +543,13 @@ UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlag
 UI_API void UI_AddCheckbox(UI_Key key, bool* value);
 
 // You may pass NULL to `out_modify`, in which case the modification will be done automatically
-UI_API UI_Box* UI_AddValueEditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
-UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
+UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
+UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
 UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* modify);
 
-UI_API UI_Box* UI_AddValueEditInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value);
-UI_API UI_Box* UI_AddValueEditFloat(UI_Key key, UI_Size w, UI_Size h, float* value);
-UI_API UI_Box* UI_AddValueEditDouble(UI_Key key, UI_Size w, UI_Size h, double* value);
+UI_API UI_Box* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value);
+UI_API UI_Box* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value);
+UI_API UI_Box* UI_AddValDouble(UI_Key key, UI_Size w, UI_Size h, double* value);
 
 // * may return NULL
 UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, UI_String text);
@@ -1065,7 +1065,7 @@ static UI_Box* UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, boo
 
 	bool text_editing_this = UI_STATE.text_editing_box == key && UI_STATE.selected_box_new == UI_INVALID_KEY; // The `selected_box_new` check is here as keyboard navigation could have already selected a different box
 	if (text_editing_this || text_edit_was_activated) {
-		box = UI_AddValueEditText(key, w, h, &UI_STATE.edit_number_text, NULL);
+		box = UI_AddValText(key, w, h, &UI_STATE.edit_number_text, NULL);
 
 		if (is_float) {
 			double v;
@@ -1108,28 +1108,28 @@ static UI_Box* UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, boo
 	return box;
 }
 
-UI_API UI_Box* UI_AddValueEditInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value) {
+UI_API UI_Box* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value) {
 	return UI_EditNumber_(key, w, h, value, false);
 }
 
-UI_API UI_Box* UI_AddValueEditFloat(UI_Key key, UI_Size w, UI_Size h, float* value) {
+UI_API UI_Box* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value) {
 	double value_double = *value;
 	UI_Box* box = UI_EditNumber_(key, w, h, &value_double, true);
 	*value = (float)value_double;
 	return box;
 }
 
-UI_API UI_Box* UI_AddValueEditDouble(UI_Key key, UI_Size w, UI_Size h, double* value) {
+UI_API UI_Box* UI_AddValDouble(UI_Key key, UI_Size w, UI_Size h, double* value) {
 	return UI_EditNumber_(key, w, h, value, true);
 }
 
-UI_API UI_Box* UI_AddValueEditFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* filepath, UI_EditTextModify* out_modify) {
+UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* filepath, UI_EditTextModify* out_modify) {
 	DS_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, UI_BoxFlag_LayoutInX);
 	UI_PushBox(box);
 
 	UI_Key edit_text_key = UI_KEY1(key);
-	UI_AddValueEditText(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath, out_modify);
+	UI_AddValText(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath, out_modify);
 
 	UI_Style* button_style = UI_PushStyle();
 	button_style->font.font = UI_STATE.icons_font;
@@ -1203,7 +1203,7 @@ UI_API void UI_TextSet(UI_Text* text, UI_String value) {
 	DS_ArrPushN(&text->text, value.data, value.size);
 }
 
-UI_API UI_Box* UI_AddValueEditText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify) {
+UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify) {
 	DS_ProfEnter();
 	UI_Style* style = UI_PeekStyle();
 	UI_FontUsage font = style->font;
@@ -1441,9 +1441,15 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 		UI_Key y_key = UI_HashInt(UI_KEY1(key), y);
 
 		UI_Size size[2];
+<<<<<<< Updated upstream
 		size[x] = UI_SIZE{ 0.f, 0.f, 1.f, 1.f };
 		size[y] = UI_SIZE{ 0.f, 0.f, 1.f, 1.f };
 		UI_Box* temp_box = UI_AddBox(temp_box_keys[y], size[0], size[1], 0);
+=======
+		size[x] = UI_SIZE{ 0.f, 1.f, 1.f, 1.f };
+		size[y] = UI_SIZE{ 0.f, 1.f, 1.f, 1.f };
+		UI_Box* temp_box = UI_AddBox(temp_box_keys[y], size[0], size[1], 0/*UI_BoxFlag_NoScissor*/);
+>>>>>>> Stashed changes
 		temp_boxes[y] = temp_box;
 
 		// Use the content size from the previous frame
