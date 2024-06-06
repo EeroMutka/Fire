@@ -1,5 +1,5 @@
 
-typedef void (*UI_ArrayEditElemFn)(UI_Key key, void* array, int index);
+typedef void (*UI_ArrayEditElemFn)(UI_Key key, void* elem, void* user_data);
 
 typedef struct UI_ValueEditArrayModify {
 	bool append_to_end;
@@ -7,17 +7,21 @@ typedef struct UI_ValueEditArrayModify {
 	int remove_elem; // -1 if none
 } UI_ValueEditArrayModify;
 
-static void UI_ValueEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis axis) {
+static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis axis) {
 	UI_BoxComputeUnexpandedSizeDefault(box, axis);
 	if (axis == UI_Axis_Y) {
 		box->computed_unexpanded_size.y = UI_Min(box->computed_unexpanded_size.y, 200.f);
 	}
 }
 
-static void UI_AddValueEditArray(UI_Key key, STR name, void* array, int array_count, UI_ArrayEditElemFn edit_elem, UI_ValueEditArrayModify* out_modify) {
+static UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify)
+{
+	UI_Box* root_box = UI_AddBox(key, UI_SizeFlex(1.f), UI_SizeFit(), 0);
+	UI_PushBox(root_box);
+
 	UI_Key child_box_key = UI_KEY1(key);
 	UI_BoxFlags flags = UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
-	UI_Box* header = UI_AddBox(key, UI_SizeFlex(1.f), UI_SizeFit(), flags);
+	UI_Box* header = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), flags);
 	UI_PushBox(header);
 
 	bool is_open = UI_PrevFrameBoxFromKey(child_box_key) != NULL;
@@ -47,7 +51,7 @@ static void UI_AddValueEditArray(UI_Key key, STR name, void* array, int array_co
 
 	if (is_open) {
 		UI_Box* scroll_area = UI_PushScrollArea(child_box_key, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_DrawBorder, 0, 0);
-		scroll_area->compute_unexpanded_size_override = UI_ValueEditArrayScrollAreaComputeUnexpandedSize;
+		scroll_area->compute_unexpanded_size_override = UI_ValEditArrayScrollAreaComputeUnexpandedSize;
 
 		UI_Box* source_files_arrangers = UI_PushArrangerSet(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit());
 
@@ -60,12 +64,15 @@ static void UI_AddValueEditArray(UI_Key key, STR name, void* array, int array_co
 			UI_Box* arranger = UI_AddArranger(UI_KEY1(elem_key), UI_SizeFit(), UI_SizeFit());
 			arranger->text = STR_FormV(UI_FrameArena(), "%d.", i);
 
-			edit_elem(UI_KEY1(elem_key), array, i);
-		
+			UI_Box* user_box = UI_AddBox(UI_KEY1(elem_key), UI_SizeFlex(1.f), UI_SizeFit(), 0);
+			UI_PushBox(user_box);
+			edit_elem(UI_KEY1(elem_key), (char*)array + i*elem_size, user_data);
+			UI_PopBox(user_box);
+
 			UI_Box* remove_button = UI_AddButton(UI_KEY1(elem_key), UI_SizeFit(), UI_SizeFit(), 0, STR_("\x4a"));
 			remove_button->style = clear_button->style;
 			if (UI_Clicked(remove_button->key)) should_remove_elem = i;
-			
+
 			UI_PopBox(elem_box);
 		}
 
@@ -80,9 +87,19 @@ static void UI_AddValueEditArray(UI_Key key, STR name, void* array, int array_co
 		out_modify->clear = UI_Clicked(clear_button->key);
 		out_modify->remove_elem = should_remove_elem;
 	}
+
+	UI_PopBox(root_box);
+	return root_box;
 }
 
-static void UI_AddValueEditDSArray(UI_Key key, STR name, DS_DynArrayRaw* array, UI_ArrayEditElemFn edit_elem) {
+#define UI_AddValDSArray(KEY, NAME, ARRAY, EDIT_ELEM) \
+	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (UI_ArrayEditElemFn)EDIT_ELEM, NULL)
+#define UI_AddValDSArrayEx(KEY, NAME, ARRAY, EDIT_ELEM, USER_DATA) \
+	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (UI_ArrayEditElemFn)EDIT_ELEM, USER_DATA)
+
+static void UI_AddValDSArray_(UI_Key key, STR name, DS_DynArrayRaw* array, int elem_size,
+	UI_ArrayEditElemFn edit_elem, void* user_data)
+{
 	UI_ValueEditArrayModify modify;
-	UI_AddValueEditArray(key, name, array->data, array->length, edit_elem, &modify);
+	UI_AddValArray(key, name, array->data, array->length, elem_size, edit_elem, user_data, &modify);
 }

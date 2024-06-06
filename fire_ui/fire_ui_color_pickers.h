@@ -264,7 +264,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 				UI_AddBoxWithText(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
 
 				float value_before = rgba[i];
-				UI_AddValueEditFloat(UI_KEY1(row_key), UI_SIZE{0.f, 0.f, 1.f, 1.f}, UI_SizeFit(), &rgba[i]);
+				UI_AddValFloat(UI_KEY1(row_key), UI_SIZE{0.f, 0.f, 1.f, 1.f}, UI_SizeFit(), &rgba[i]);
 				if (rgba[i] != value_before) edited_rgba = true;
 
 				rgba[i] = UI_Max(UI_Min(rgba[i], 1.f), 0.f);
@@ -291,7 +291,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 				UI_PushBox(row);
 				UI_AddBoxWithText(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
 
-				UI_AddValueEditFloat(UI_KEY1(row_key), UI_SIZE{0.f, 0.f, 1.f, 1.f}, UI_SizeFit(), hsv[i]);
+				UI_AddValFloat(UI_KEY1(row_key), UI_SIZE{0.f, 0.f, 1.f, 1.f}, UI_SizeFit(), hsv[i]);
 
 				*hsv[i] = UI_Max(UI_Min(*hsv[i], 1.f), 0.f);
 				UI_PopBox(row);

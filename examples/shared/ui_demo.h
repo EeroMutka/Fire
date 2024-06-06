@@ -118,7 +118,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 		UI_PushBox(row);
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Enter text: "));
-		UI_AddValueEditText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text, NULL);
+		UI_AddValText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text, NULL);
 		UI_PopBox(row);
 	}
 
@@ -128,7 +128,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 		UI_PushBox(row);
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Enter second text: "));
-		UI_AddValueEditText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text_2, NULL);
+		UI_AddValText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text_2, NULL);
 		UI_PopBox(row);
 	}
 
@@ -139,7 +139,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_PushBox(row);
 		static float my_float = 320.5f;
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Edit float: "));
-		UI_AddValueEditFloat(UI_KEY(), UI_SizeFit(), UI_SizeFit(), &my_float);
+		UI_AddValFloat(UI_KEY(), UI_SizeFit(), UI_SizeFit(), &my_float);
 		UI_PopBox(row);
 	}
 
@@ -150,7 +150,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_PushBox(row);
 		static int64_t my_int = 8281;
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Edit int: "));
-		UI_AddValueEditInt(UI_KEY(), UI_SizeFit(), UI_SizeFit(), &my_int);
+		UI_AddValInt(UI_KEY(), UI_SizeFit(), UI_SizeFit(), &my_int);
 		UI_PopBox(row);
 	}
 
@@ -201,7 +201,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 				//UI_EditTextRequest edit_request;
 				//bool editing_this = was_editing_this;
-				UI_AddValueEditText(key, UI_SizeFit(), UI_SizeFit(), &tree->text, NULL);
+				UI_AddValText(key, UI_SizeFit(), UI_SizeFit(), &tree->text, NULL);
 				//UI_ApplyEditTextRequest(&tree->text, &edit_request);
 
 				//if (editing_this) editing_text = key;
