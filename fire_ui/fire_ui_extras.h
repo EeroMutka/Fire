@@ -1,11 +1,45 @@
+// This file contains some experimental extra utilities
 
-typedef void (*UI_ArrayEditElemFn)(UI_Key key, void* elem, void* user_data);
+typedef void (*UI_ArrayEditElemFn)(UI_Key key, void* elem, int index, void* user_data);
 
 typedef struct UI_ValueEditArrayModify {
 	bool append_to_end;
 	bool clear;
 	int remove_elem; // -1 if none
 } UI_ValueEditArrayModify;
+
+UI_API UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify);
+
+#define UI_AddValDSArray(KEY, NAME, ARRAY, EDIT_ELEM) \
+	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (UI_ArrayEditElemFn)EDIT_ELEM, NULL)
+#define UI_AddValDSArrayEx(KEY, NAME, ARRAY, EDIT_ELEM, USER_DATA) \
+	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (UI_ArrayEditElemFn)EDIT_ELEM, USER_DATA)
+
+// Formatting rules / expected types:
+// 
+// %hhd : int8_t
+// %hd  : int16_t
+// %d   : int32_t
+// %lld : int64_t
+// %hhu : uint8_t
+// %hu  : uint16_t
+// %u   : uint32_t
+// (TODO) %llu : uint64_t
+// %b   : bool
+// %f   : double
+// %t   : UI_Text, passed by pointer
+// %%   is an escape that turns to %
+// 
+// By default, the values are read-only.    (TODO: implement !) You may add the ! specifier for editable values. In that case,
+// the passed value must be a pointer to the value.
+// Example:
+//    
+//    int foo = 50;
+//    UI_AddFmt(UI_KEY(), "Editable value: %!d", &foo); // "foo" may be edited by the user
+//    
+UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...);
+
+#ifdef /********************/ UI_IMPLEMENTATION /********************/
 
 static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis axis) {
 	UI_BoxComputeUnexpandedSizeDefault(box, axis);
@@ -14,7 +48,7 @@ static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis 
 	}
 }
 
-static UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify)
+UI_API UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify)
 {
 	UI_Box* root_box = UI_AddBox(key, UI_SizeFlex(1.f), UI_SizeFit(), 0);
 	UI_PushBox(root_box);
@@ -66,7 +100,7 @@ static UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count
 
 			UI_Box* user_box = UI_AddBox(UI_KEY1(elem_key), UI_SizeFlex(1.f), UI_SizeFit(), 0);
 			UI_PushBox(user_box);
-			edit_elem(UI_KEY1(elem_key), (char*)array + i*elem_size, user_data);
+			edit_elem(UI_KEY1(elem_key), (char*)array + i*elem_size, i, user_data);
 			UI_PopBox(user_box);
 
 			UI_Box* remove_button = UI_AddButton(UI_KEY1(elem_key), UI_SizeFit(), UI_SizeFit(), 0, STR_("\x4a"));
@@ -92,14 +126,109 @@ static UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count
 	return root_box;
 }
 
-#define UI_AddValDSArray(KEY, NAME, ARRAY, EDIT_ELEM) \
-	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (UI_ArrayEditElemFn)EDIT_ELEM, NULL)
-#define UI_AddValDSArrayEx(KEY, NAME, ARRAY, EDIT_ELEM, USER_DATA) \
-	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (UI_ArrayEditElemFn)EDIT_ELEM, USER_DATA)
-
 static void UI_AddValDSArray_(UI_Key key, STR name, DS_DynArrayRaw* array, int elem_size,
 	UI_ArrayEditElemFn edit_elem, void* user_data)
 {
 	UI_ValueEditArrayModify modify;
 	UI_AddValArray(key, name, array->data, array->length, elem_size, edit_elem, user_data, &modify);
 }
+
+static void UI_InfoFmtFinishCurrent_(UI_Key key, STR_Builder* current_string, int* section_index) {
+	if (current_string->str.size > 0) {
+		UI_AddBoxWithText(UI_HashInt(key, *section_index), UI_SizeFit(), UI_SizeFit(), 0, current_string->str);
+	}
+	current_string->str.size = 0;
+	*section_index += 1;
+}
+
+UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
+	va_list args; va_start(args, fmt);
+
+	UI_Box* row = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+	UI_PushBox(row);
+
+	STR_Builder current_string = {UI_FrameArena()};
+
+	int section_index = 0;
+	for (const char* c = fmt; *c; c++) {
+		if (*c == '%') {
+			c++;
+
+			// Parse size sub-specifiers
+			int h = 0, l = 0;
+			for (; *c == 'h'; ) { c++; h++; }
+			for (; *c == 'l'; ) { c++; l++; }
+
+			bool is_signed = false;
+			int radix = 10;
+
+			// Parse specifier
+			switch (*c) {
+			default: STR_CHECK(0);
+				//case 's': {
+				//	STR_Print(s, va_arg(args, char*));
+				//} break;
+				//case 'v': {
+				//	STR_PrintV(s, va_arg(args, STR));
+				//} break;
+			case '%': {
+				STR_Print(&current_string, "%");
+			} break;
+			case 'b': {
+				UI_InfoFmtFinishCurrent_(key, &current_string, &section_index);
+
+				bool val = (bool)va_arg(args, int);
+				UI_Key val_key = UI_HashInt(key, section_index);
+				UI_AddCheckbox(val_key, &val);
+				section_index++;
+			} break;
+			case 'f': {
+				UI_InfoFmtFinishCurrent_(key, &current_string, &section_index);
+
+				double val = va_arg(args, double);
+				UI_Key val_key = UI_HashInt(key, section_index);
+				UI_AddValDouble(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), &val);
+				section_index++;
+			} break;
+				//case 'x': { radix = 16;       goto add_int; }
+			case 'd': { is_signed = true; goto add_int; }
+			case 'i': { is_signed = true; goto add_int; }
+			case 'u': {
+			add_int:;
+				UI_InfoFmtFinishCurrent_(key, &current_string, &section_index);
+
+				int64_t value;
+				if (is_signed) {
+					if (l == 1) { value = (int64_t)va_arg(args, long); }
+					else if (l == 2) { value = (int64_t)va_arg(args, long long); }
+					else if (h == 1) { value = (int64_t)va_arg(args, short); }
+					else if (h == 2) { value = (int64_t)va_arg(args, char); }
+					else { value = (int64_t)va_arg(args, int); }
+				}
+				else {
+					if (l == 1) { value = (int64_t)va_arg(args, unsigned long); }
+					else if (l == 2) { UI_TODO(); /*value = (int64_t)va_arg(args, unsigned long long);*/ }
+					else if (h == 1) { value = (int64_t)va_arg(args, unsigned short); }
+					else if (h == 2) { value = (int64_t)va_arg(args, unsigned char); }
+					else { value = (int64_t)va_arg(args, unsigned int); }
+				}
+
+				UI_Key val_key = UI_HashInt(key, section_index);
+				UI_AddValInt(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), &value);
+				section_index++;
+			} break;
+			}
+		}
+		else {
+			STR character_str = { c, 1 };
+			STR_PrintV(&current_string, character_str);
+		}
+	}
+
+	UI_InfoFmtFinishCurrent_(UI_KEY1(key), &current_string, &section_index);
+	UI_PopBox(row);
+
+	va_end(args);
+}
+
+#endif // UI_IMPLEMENTATION

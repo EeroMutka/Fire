@@ -520,6 +520,8 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box);
 #define UI_SizeFit()       UI_SIZE{0.f, 1.f, 0.f, 0.f}
 #define UI_SizePx(value)   UI_SIZE{value, 0.f, 0.f, 0.f}
 #define UI_SizeFlex(value) UI_SIZE{0.f, 1.f, value, value}
+#define UI_SizeFlexOnlyUp(value) UI_SIZE{0.f, 1.f, value, 0.f}
+#define UI_SizeFlexOnlyDown(value) UI_SIZE{0.f, 1.f, 0.f, value}
 
 UI_API void UI_BoxComputeUnexpandedSizes(UI_Box* box);
 UI_API void UI_BoxComputeExpandedSizes(UI_Box* box);
@@ -2840,6 +2842,38 @@ UI_API void UI_DrawRectLinesRounded(UI_Rect rect, float thickness, float roundne
 	UI_DrawRectLinesEx(rect, &corners, thickness, scissor);
 }
 
+static UI_Vec2 UI_PointOnRoundedCorner(int corner_index, int vertex_index, int end_vertex_index) {
+	// Precomputed cos/sin tables
+	//for (int i = 0; i < 2; i++) {
+	//	float theta = 3.1415926f * 0.5f * (float)i / (float)2;
+	//	printf("{%ff, %ff}, ", cosf(theta), sinf(theta));
+	//}
+	static const UI_Vec2 p2[2] = {{1.f, 0.f}, {0.707107f, 0.707107f}};
+	static const UI_Vec2 p3[3] = {{1.f, 0.f}, {0.866025f, 0.5f}, {0.5f, 0.866025f}};
+	static const UI_Vec2 p4[4] = {{1.f, 0.f}, {0.92388f, 0.382683f}, {0.707107f, 0.707107f}, {0.382683f, 0.92388f}};
+	static const UI_Vec2 p5[5] = {{1.f, 0.f}, {0.951057f, 0.309017f}, {0.809017f, 0.587785f}, {0.587785f, 0.809017f}, {0.309017f, 0.951056f}};
+	static const UI_Vec2 p6[6] = {{1.f, 0.f}, {0.965926f, 0.258819f}, {0.866025f, 0.5f}, {0.707107f, 0.707107f}, {0.5f, 0.866025f}, {0.258819f, 0.965926f}};
+	static const UI_Vec2 p7[7] = {{1.f, 0.f}, {0.974928f, 0.222521f}, {0.900969f, 0.433884f}, {0.781832f, 0.62349f}, {0.62349f, 0.781831f}, {0.433884f, 0.900969f}, {0.222521f, 0.974928f}};
+	static const UI_Vec2* p[8] = {p2, p2, p2, p3, p4, p5, p6, p7};
+
+	UI_Vec2 c;
+	if (end_vertex_index <= 7) {
+		c = p[end_vertex_index][vertex_index];
+	} else {
+		float theta = 3.1415926f * 0.5f * (float)vertex_index / (float)end_vertex_index;
+		c = UI_VEC2{ cosf(theta), sinf(theta) };
+	}
+
+	UI_Vec2 c_rotated;
+	switch (corner_index) {
+	case 0: c_rotated = UI_VEC2{+c.x, +c.y}; break;
+	case 1: c_rotated = UI_VEC2{-c.y, +c.x}; break;
+	case 2: c_rotated = UI_VEC2{-c.x, -c.y}; break;
+	case 3: c_rotated = UI_VEC2{+c.y, -c.x}; break;
+	}
+	return c_rotated;
+}
+
 UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, float thickness, UI_ScissorRect scissor) {
 	DS_ProfEnter();
 
@@ -2878,7 +2912,7 @@ UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, 
 		UI_AddTriangleIndicesAndClip(base + 0, base + 3, base + 1, UI_TEXTURE_ID_NIL, scissor);
 	}
 
-	const int corner_vertex_count = 3;
+	const int end_corner_vertex = 2;
 
 	for (uint32_t corner = 0; corner < 4; corner++) {
 		float outer_radius_x = -corners->roundness[corner];
@@ -2886,18 +2920,19 @@ UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, 
 		float mid_radius_x = -(corners->roundness[corner] - thickness);
 		float mid_radius_y = -(corners->roundness[corner] - thickness);
 
-		float start_theta = 3.1415926f * 0.5f * (float)(corner);
+		//float start_theta = 3.1415926f * 0.5f * (float)(corner);
 
 		uint32_t prev_verts_first = edge_verts + 2 + 4 * ((corner + 3) % 4);
 
 		// Generate corner triangles
-		for (int i = 1; i <= corner_vertex_count; i++) {
-			float theta = start_theta + ((float)i / (float)(corner_vertex_count + 1)) * (3.1415926f * 0.5f);
-			float dir_x = cosf(theta);
-			float dir_y = sinf(theta);
+		for (int i = 1; i < end_corner_vertex; i++) {
+			UI_Vec2 dir = UI_PointOnRoundedCorner(corner, i, end_corner_vertex);
+			// float theta = start_theta + ((float)i / (float)(end_corner_vertex)) * (3.1415926f * 0.5f);
+			// float dir_x = cosf(theta);
+			// float dir_y = sinf(theta);
 
-			UI_Vec2 outer_pos = UI_AddV2(inset_corners[corner], UI_VEC2{ dir_x * outer_radius_x, dir_y * outer_radius_y });
-			UI_Vec2 mid_pos = UI_AddV2(inset_corners[corner], UI_VEC2{ dir_x * mid_radius_x, dir_y * mid_radius_y });
+			UI_Vec2 outer_pos = UI_AddV2(inset_corners[corner], UI_VEC2{ dir.x * outer_radius_x, dir.y * outer_radius_y });
+			UI_Vec2 mid_pos = UI_AddV2(inset_corners[corner], UI_VEC2{ dir.x * mid_radius_x, dir.y * mid_radius_y });
 
 			uint32_t new_verts_first;
 			UI_DrawVertex* new_verts = UI_AddVertices(2, &new_verts_first);
@@ -2981,7 +3016,7 @@ UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, UI_Sc
 	if (inset_corners[0].x > inset_corners[2].x) return; // discard invalid rects
 	if (inset_corners[0].y > inset_corners[2].y) return; // discard invalid rects
 
-	const int corner_vertex_count = 2;
+	const int corner_end_vertex = 2;
 
 	uint32_t inset_corner_verts;
 	UI_DrawVertex* v = UI_AddVertices(12, &inset_corner_verts);
@@ -3006,29 +3041,28 @@ UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, UI_Sc
 	UI_AddQuadIndicesAndClip(border_verts + 5, border_verts + 6, inset_corner_verts + 3, inset_corner_verts + 2, UI_TEXTURE_ID_NIL, scissor); // bottom edge
 	UI_AddQuadIndicesAndClip(border_verts + 7, border_verts + 0, inset_corner_verts + 0, inset_corner_verts + 3, UI_TEXTURE_ID_NIL, scissor); // left edge
 
-	for (uint32_t corner = 0; corner < 4; corner++) {
-		float radius_x = -corners->roundness[corner];
-		float radius_y = -corners->roundness[corner];
+	for (int corner_i = 0; corner_i < 4; corner_i++) {
+		float r = -corners->roundness[corner_i];
+		//float radius_x = -corners->roundness[corner];
+		//float radius_y = -corners->roundness[corner];
 
-		float start_theta = 3.1415926f * 0.5f * (float)corner;
+		//float start_theta = 3.1415926f * 0.5f * (float)corner;
 
-		uint32_t prev_vert_idx = border_verts + corner * 2;
+		uint32_t prev_vert_idx = border_verts + corner_i * 2;
 
 		// Generate corner triangles
-		for (int i = 1; i <= corner_vertex_count; i++) {
-			float theta = start_theta + ((float)i / (float)(corner_vertex_count + 1)) * (3.1415926f * 0.5f);
-			float x = cosf(theta) * radius_x;
-			float y = sinf(theta) * radius_y;
-
+		for (int i = 1; i < corner_end_vertex; i++) {
+			UI_Vec2 c = UI_PointOnRoundedCorner(corner_i, i, corner_end_vertex);
+			
 			uint32_t new_vert_idx;
 			UI_DrawVertex* new_vert = UI_AddVertices(1, &new_vert_idx);
-			new_vert[0] = UI_DRAW_VERTEX{ {inset_corners[corner].x + x, inset_corners[corner].y + y}, UI_WHITE_PIXEL_UV, corners->outer_color[corner] };
+			new_vert[0] = UI_DRAW_VERTEX{ {inset_corners[corner_i].x + r*c.x, inset_corners[corner_i].y + r*c.y}, UI_WHITE_PIXEL_UV, corners->outer_color[corner_i] };
 
-			UI_AddTriangleIndicesAndClip(inset_corner_verts + corner, prev_vert_idx, new_vert_idx, UI_TEXTURE_ID_NIL, scissor);
+			UI_AddTriangleIndicesAndClip(inset_corner_verts + corner_i, prev_vert_idx, new_vert_idx, UI_TEXTURE_ID_NIL, scissor);
 			prev_vert_idx = new_vert_idx;
 		}
 
-		UI_AddTriangleIndicesAndClip(inset_corner_verts + corner, prev_vert_idx, border_verts + corner * 2 + 1, UI_TEXTURE_ID_NIL, scissor);
+		UI_AddTriangleIndicesAndClip(inset_corner_verts + corner_i, prev_vert_idx, border_verts + corner_i * 2 + 1, UI_TEXTURE_ID_NIL, scissor);
 	}
 
 	UI_AddQuadIndicesAndClip(inset_corner_verts, inset_corner_verts + 1, inset_corner_verts + 2, inset_corner_verts + 3, UI_TEXTURE_ID_NIL, scissor);
