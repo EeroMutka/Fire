@@ -418,7 +418,7 @@ typedef struct UI_State {
 	int holding_splitter_index;
 
 	// -- Edit number state --
-	uint64_t edit_number_value_before_press;
+	double edit_number_value_before_press;
 	UI_Text edit_number_text;
 
 	// -- Text editing state --
@@ -550,9 +550,12 @@ UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* text
 UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
 UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* modify);
 
-UI_API UI_Box* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value);
+UI_API UI_Box* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int* value);
+UI_API UI_Box* UI_AddValInt64(UI_Key key, UI_Size w, UI_Size h, int64_t* value);
+UI_API UI_Box* UI_AddValUInt64(UI_Key key, UI_Size w, UI_Size h, uint64_t* value);
 UI_API UI_Box* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value);
-UI_API UI_Box* UI_AddValDouble(UI_Key key, UI_Size w, UI_Size h, double* value);
+UI_API UI_Box* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value);
+UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float);
 
 // * may return NULL
 UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, UI_String text);
@@ -1041,16 +1044,20 @@ UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection) {
 	DS_ProfExit();
 }
 
-static UI_Box* UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, bool is_float) {
+UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float)
+{
 	DS_ProfEnter();
 
 	UI_Box* box = NULL;
 	bool dragging = UI_IsClickingDown(key) && UI_InputIsDown(UI_Input_MouseLeft);
 	bool has_moved_mouse_after_press = UI_Abs(UI_STATE.mouse_travel_distance_after_press.x) >= 2.f;
 
-	UI_String value_str = is_float ?
-		STR_FloatToStr(UI_FrameArena(), *(double*)value, dragging && has_moved_mouse_after_press ? 1 : 1) :
-		STR_IntToStrEx(UI_FrameArena(), *(uint64_t*)value, true, 10);
+	UI_String value_str;
+	if (is_float) {
+		value_str = STR_FloatToStr(UI_FrameArena(), *(double*)value_64_bit, 1 /*dragging && has_moved_mouse_after_press ? 1 : 1*/);
+	} else {
+		value_str = STR_IntToStrEx(UI_FrameArena(), *(uint64_t*)value_64_bit, is_signed, 10);
+	}
 
 	bool activate_by_enter = UI_Pressed(key) && UI_InputWasPressed(UI_Input_Enter);
 	bool activate_by_click = UI_Clicked(key) && !has_moved_mouse_after_press && UI_InputWasReleased(UI_Input_MouseLeft);
@@ -1071,12 +1078,11 @@ static UI_Box* UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, boo
 		box = UI_AddValText(key, w, h, &UI_STATE.edit_number_text, NULL);
 
 		if (is_float) {
-			double v;
-			if (STR_ParseFloat(UI_TextToStr(UI_STATE.edit_number_text), &v)) *(double*)value = v;
-		}
-		else {
-			int64_t v;
-			if (STR_ParseI64(UI_TextToStr(UI_STATE.edit_number_text), &v)) *(int64_t*)value = v;
+			STR_ParseFloat(UI_TextToStr(UI_STATE.edit_number_text), (double*)value_64_bit);
+		} else if (is_signed) {
+			STR_ParseI64(UI_TextToStr(UI_STATE.edit_number_text), (int64_t*)value_64_bit);
+		} else {
+			STR_ParseU64Ex(UI_TextToStr(UI_STATE.edit_number_text), 10, (uint64_t*)value_64_bit);
 		}
 	}
 	else {
@@ -1085,7 +1091,14 @@ static UI_Box* UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, boo
 
 		if (UI_Pressed(box->key)) {
 			UI_STATE.outputs.lock_and_hide_cursor = true;
-			memcpy(&UI_STATE.edit_number_value_before_press, value, 8);
+			
+			if (is_float) {
+				UI_STATE.edit_number_value_before_press = *(double*)value_64_bit;
+			} else if (is_signed) {
+				UI_STATE.edit_number_value_before_press = (double)*(int64_t*)value_64_bit;
+			} else {
+				UI_STATE.edit_number_value_before_press = (double)*(uint64_t*)value_64_bit;
+			}
 		}
 
 		if (UI_IsHovered(box->key)) {
@@ -1095,14 +1108,14 @@ static UI_Box* UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, boo
 		if (dragging) {
 			UI_STATE.outputs.lock_and_hide_cursor = true;
 
-			double initial_value = is_float ? *(double*)&UI_STATE.edit_number_value_before_press : *(int64_t*)&UI_STATE.edit_number_value_before_press;
-			double new_value = initial_value + UI_STATE.mouse_travel_distance_after_press.x * 0.05f;
+			double new_value = UI_STATE.edit_number_value_before_press + UI_STATE.mouse_travel_distance_after_press.x * 0.05f;
 
 			if (is_float) {
-				*(double*)value = new_value;
-			}
-			else {
-				*(int64_t*)value = (int64_t)new_value;
+				*(double*)value_64_bit = new_value;
+			} else if (is_signed) {
+				*(int64_t*)value_64_bit = (int64_t)new_value;
+			} else {
+				*(uint64_t*)value_64_bit = (uint64_t)new_value;
 			}
 		}
 	}
@@ -1111,19 +1124,30 @@ static UI_Box* UI_EditNumber_(UI_Key key, UI_Size w, UI_Size h, void* value, boo
 	return box;
 }
 
-UI_API UI_Box* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int64_t* value) {
-	return UI_EditNumber_(key, w, h, value, false);
-}
-
-UI_API UI_Box* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value) {
-	double value_double = *value;
-	UI_Box* box = UI_EditNumber_(key, w, h, &value_double, true);
-	*value = (float)value_double;
+UI_API UI_Box* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int* value) {
+	int64_t value_i64 = (int64_t)*value;
+	UI_Box* box = UI_AddValNumeric(key, w, h, value, true, false);
+	*value = (int)value_i64;
 	return box;
 }
 
-UI_API UI_Box* UI_AddValDouble(UI_Key key, UI_Size w, UI_Size h, double* value) {
-	return UI_EditNumber_(key, w, h, value, true);
+UI_API UI_Box* UI_AddValInt64(UI_Key key, UI_Size w, UI_Size h, int64_t* value) {
+	return UI_AddValNumeric(key, w, h, value, true, false);
+}
+
+UI_API UI_Box* UI_AddValUInt64(UI_Key key, UI_Size w, UI_Size h, uint64_t* value) {
+	return UI_AddValNumeric(key, w, h, value, false, false);
+}
+
+UI_API UI_Box* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value) {
+	double value_f64 = (double)*value;
+	UI_Box* box = UI_AddValNumeric(key, w, h, &value_f64, false, true);
+	*value = (float)value_f64;
+	return box;
+}
+
+UI_API UI_Box* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value) {
+	return UI_AddValNumeric(key, w, h, value, false, true);
 }
 
 UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* filepath, UI_EditTextModify* out_modify) {

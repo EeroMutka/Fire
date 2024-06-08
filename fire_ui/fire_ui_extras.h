@@ -153,6 +153,9 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 	for (const char* c = fmt; *c; c++) {
 		if (*c == '%') {
 			c++;
+			
+			bool editable = false;
+			if (*c == '!') { c++; editable = true; }
 
 			// Parse size sub-specifiers
 			int h = 0, l = 0;
@@ -177,17 +180,28 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 			case 'b': {
 				UI_InfoFmtFinishCurrent_(key, &current_string, &section_index);
 
-				bool val = (bool)va_arg(args, int);
 				UI_Key val_key = UI_HashInt(key, section_index);
-				UI_AddCheckbox(val_key, &val);
+				if (editable) {
+					bool* val = va_arg(args, bool*);
+					UI_AddCheckbox(val_key, val);
+				} else {
+					bool val = va_arg(args, bool);
+					UI_AddCheckbox(val_key, &val);
+				}
+
 				section_index++;
 			} break;
 			case 'f': {
 				UI_InfoFmtFinishCurrent_(key, &current_string, &section_index);
 
-				double val = va_arg(args, double);
 				UI_Key val_key = UI_HashInt(key, section_index);
-				UI_AddValDouble(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), &val);
+				if (editable) {
+					double* val = va_arg(args, double*);
+					UI_AddValFloat64(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), val);
+				} else {
+					double val = va_arg(args, double);
+					UI_AddValFloat64(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), &val);
+				}
 				section_index++;
 			} break;
 				//case 'x': { radix = 16;       goto add_int; }
@@ -196,25 +210,43 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 			case 'u': {
 			add_int:;
 				UI_InfoFmtFinishCurrent_(key, &current_string, &section_index);
+				
+				UI_Key val_key = UI_HashInt(key, section_index);
+				if (editable) {
+					void* ptr = va_arg(args, void*);
+					uint64_t val = 0;
+					int size;
+					if (h == 2) {
+						size = 1;
+						val = is_signed ? (uint64_t)(int64_t)*(int8_t*)ptr : (uint64_t)*(uint8_t*)ptr;
+					} else if (h == 1) {
+						size = 2;
+						val = is_signed ? (uint64_t)(int64_t)*(int16_t*)ptr : (uint64_t)*(uint16_t*)ptr;
+					} else if (l == 2) {
+						size = 8;
+						val = *(uint64_t*)ptr;
+					} else {
+						size = 4;
+						val = is_signed ? (uint64_t)(int64_t)*(int32_t*)ptr : (uint64_t)*(uint32_t*)ptr;
+					}
 
-				int64_t value;
-				if (is_signed) {
-					if (l == 1) { value = (int64_t)va_arg(args, long); }
-					else if (l == 2) { value = (int64_t)va_arg(args, long long); }
-					else if (h == 1) { value = (int64_t)va_arg(args, short); }
-					else if (h == 2) { value = (int64_t)va_arg(args, char); }
-					else { value = (int64_t)va_arg(args, int); }
+					UI_AddValNumeric(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), &val, is_signed, false);
+					memcpy(ptr, &val, size);
 				}
 				else {
-					if (l == 1) { value = (int64_t)va_arg(args, unsigned long); }
-					else if (l == 2) { UI_TODO(); /*value = (int64_t)va_arg(args, unsigned long long);*/ }
-					else if (h == 1) { value = (int64_t)va_arg(args, unsigned short); }
-					else if (h == 2) { value = (int64_t)va_arg(args, unsigned char); }
-					else { value = (int64_t)va_arg(args, unsigned int); }
-				}
+					uint64_t val;
+					if (h == 2) {
+						val = is_signed ? (uint64_t)(int64_t)va_arg(args, int8_t) : (uint64_t)va_arg(args, uint8_t);
+					} else if (h == 1) {
+						val = is_signed ? (uint64_t)(int64_t)va_arg(args, int16_t) : (uint64_t)va_arg(args, uint16_t);
+					} else if (l == 2) {
+						val = va_arg(args, uint64_t);
+					} else {
+						val = is_signed ? (uint64_t)(int64_t)va_arg(args, int32_t) : (uint64_t)va_arg(args, uint32_t);
+					}
 
-				UI_Key val_key = UI_HashInt(key, section_index);
-				UI_AddValInt(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), &value);
+					UI_AddValNumeric(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), &val, is_signed, false);
+				}
 				section_index++;
 			} break;
 			}
