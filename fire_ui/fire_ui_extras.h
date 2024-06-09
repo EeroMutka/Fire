@@ -10,10 +10,10 @@ typedef struct UI_ValueEditArrayModify {
 
 UI_API UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify);
 
-#define UI_AddValDSArray(KEY, NAME, ARRAY, EDIT_ELEM) \
-	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (UI_ArrayEditElemFn)EDIT_ELEM, NULL)
-#define UI_AddValDSArrayEx(KEY, NAME, ARRAY, EDIT_ELEM, USER_DATA) \
-	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (UI_ArrayEditElemFn)EDIT_ELEM, USER_DATA)
+#define UI_AddValDSArray(KEY, NAME, ARRAY, DEFAULT_VALUE, EDIT_ELEM) \
+	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (DEFAULT_VALUE), (UI_ArrayEditElemFn)EDIT_ELEM, NULL)
+#define UI_AddValDSArrayEx(KEY, NAME, ARRAY, DEFAULT_VALUE, EDIT_ELEM, USER_DATA) \
+	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (DEFAULT_VALUE), (UI_ArrayEditElemFn)EDIT_ELEM, USER_DATA)
 
 // Formatting rules / expected types:
 // 
@@ -26,7 +26,8 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count
 // %u   : uint32_t
 // (TODO) %llu : uint64_t
 // %b   : bool
-// %f   : double
+// %f   : float
+// %lf  : double
 // %t   : UI_Text, passed by pointer
 // %%   is an escape that turns to %
 // 
@@ -126,11 +127,25 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count
 	return root_box;
 }
 
+// default_value may be NULL, in which case the element is zero-initialized
 static void UI_AddValDSArray_(UI_Key key, STR name, DS_DynArrayRaw* array, int elem_size,
-	UI_ArrayEditElemFn edit_elem, void* user_data)
+	const void* default_value, UI_ArrayEditElemFn edit_elem, void* user_data)
 {
 	UI_ValueEditArrayModify modify;
 	UI_AddValArray(key, name, array->data, array->length, elem_size, edit_elem, user_data, &modify);
+	
+	if (modify.append_to_end) {
+		DS_ArrResizeRaw(array, array->length + 1, NULL, elem_size);
+		if (default_value) {
+			memcpy((char*)array->data + (array->length-1) * elem_size, default_value, elem_size);
+		} else {
+			memset((char*)array->data + (array->length-1) * elem_size, 0, elem_size);
+		}
+	}
+	if (modify.clear) array->length = 0;
+	if (modify.remove_elem != -1) {
+		DS_ArrRemoveRaw(array, modify.remove_elem, elem_size);
+	}
 }
 
 static void UI_InfoFmtFinishCurrent_(UI_Key key, STR_Builder* current_string, int* section_index) {
@@ -196,8 +211,13 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 
 				UI_Key val_key = UI_HashInt(key, section_index);
 				if (editable) {
-					double* val = va_arg(args, double*);
-					UI_AddValFloat64(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), val);
+					if (l == 1) {
+						double* val = va_arg(args, double*);
+						UI_AddValFloat64(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), val);
+					} else {
+						float* val = va_arg(args, float*);
+						UI_AddValFloat(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), val);
+					}
 				} else {
 					double val = va_arg(args, double);
 					UI_AddValFloat64(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), &val);

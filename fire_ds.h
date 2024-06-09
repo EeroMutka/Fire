@@ -483,8 +483,7 @@ typedef DS_DynArray(void) DS_DynArrayRaw;
 #define DS_ArrPeek(ARR)                (DS_ArrBoundsCheck(ARR, (ARR).length - 1), (ARR).data[(ARR).length - 1])
 #define DS_ArrPeekPtr(ARR)             (DS_ArrBoundsCheck(ARR, (ARR).length - 1), &(ARR).data[(ARR).length - 1])
 
-// NOTE: this doesn't reserve any extra capacity at the end... maybe I should change that.
-#define DS_ArrClone(T, ARR)            DS_LangAgnosticLiteral(T){DS_CloneSize(ARR.data, ARR.length * DS_ArrElemSize(ARR)), ARR.length, ARR.length}
+#define DS_ArrClone(ARENA, ARR)        DS_ArrCloneRaw(ARENA, (DS_DynArrayRaw*)(ARR), DS_ArrElemSize(*ARR))
 
 #define DS_ArrReserve(ARR, CAPACITY)   DS_ArrReserveRaw((DS_DynArrayRaw*)(ARR), CAPACITY, DS_ArrElemSize(*ARR))
 
@@ -537,6 +536,7 @@ DS_API void DS_ArrRemoveRaw(DS_DynArrayRaw* array, int i, int elem_size);
 DS_API void DS_ArrRemoveNRaw(DS_DynArrayRaw* array, int i, int n, int elem_size);
 DS_API void DS_ArrPopRaw(DS_DynArrayRaw* array, DS_OUT void* out_elem, int elem_size);
 DS_API void DS_ArrReserveRaw(DS_DynArrayRaw* array, int capacity, int elem_size);
+DS_API void DS_ArrCloneRaw(DS_Arena* arena, DS_DynArrayRaw* array, int elem_size);
 DS_API void DS_ArrResizeRaw(DS_DynArrayRaw* array, int length, const void* value, int elem_size); // set value to NULL to not initialize the memory
 
 // -- Slot Allocator --------------------------------------------------------------------
@@ -790,6 +790,10 @@ static inline void* DS_BucketListPushRaw(BucketListRaw* list, void* elem, int el
 	memcpy(result, elem, elem_size);
 	DS_ProfExit();
 	return result;
+}
+
+DS_API void DS_ArrCloneRaw(DS_Arena* arena, DS_DynArrayRaw* array, int elem_size) {
+	array->data = DS_CloneSize(arena, array->data, array->length * elem_size);
 }
 
 DS_API void DS_ArrReserveRaw(DS_DynArrayRaw* array, int capacity, int elem_size) {
