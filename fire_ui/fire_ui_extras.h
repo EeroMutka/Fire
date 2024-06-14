@@ -64,7 +64,7 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count
 		is_open = !is_open;
 	}
 
-	UI_Box* label = UI_AddBoxWithText(UI_KEY1(key), UI_SizePx(20.f), UI_SizeFit(), 0, is_open ? STR_("\x44") : STR_("\x46"));
+	UI_Box* label = UI_AddBoxWithText(UI_KEY1(key), 20.f, UI_SizeFit(), 0, is_open ? STR_("\x44") : STR_("\x46"));
 	label->style = UI_MakeStyle();
 	label->style->font.font = UI_STATE.icons_font;
 
@@ -228,14 +228,14 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 				if (editable) {
 					if (l == 1) {
 						double* val = va_arg(args, double*);
-						UI_AddValFloat64(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), val);
+						UI_AddValFloat64(val_key, UI_SizeFlex(1.f), UI_SizeFit(), val);
 					} else {
 						float* val = va_arg(args, float*);
-						UI_AddValFloat(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), val);
+						UI_AddValFloat(val_key, UI_SizeFlex(1.f), UI_SizeFit(), val);
 					}
 				} else {
 					double val = va_arg(args, double);
-					UI_AddValFloat64(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), &val);
+					UI_AddValFloat64(val_key, UI_SizeFlex(1.f), UI_SizeFit(), &val);
 				}
 				section_index++;
 			} break;
@@ -265,7 +265,7 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 						val = is_signed ? (uint64_t)(int64_t)*(int32_t*)ptr : (uint64_t)*(uint32_t*)ptr;
 					}
 
-					UI_AddValNumeric(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), &val, is_signed, false);
+					UI_AddValNumeric(val_key, UI_SizeFlex(1.f), UI_SizeFit(), &val, is_signed, false);
 					memcpy(ptr, &val, size);
 				}
 				else {
@@ -280,7 +280,7 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 						val = is_signed ? (uint64_t)(int64_t)va_arg(args, int32_t) : (uint64_t)va_arg(args, uint32_t);
 					}
 
-					UI_AddValNumeric(val_key, UI_SizeFlexOnlyUp(1.f), UI_SizeFit(), &val, is_signed, false);
+					UI_AddValNumeric(val_key, UI_SizeFlex(1.f), UI_SizeFit(), &val, is_signed, false);
 				}
 				section_index++;
 			} break;

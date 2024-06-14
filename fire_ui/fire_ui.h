@@ -47,14 +47,7 @@ typedef union {
 } UI_Vec2;
 #define UI_VEC2  UI_LangAgnosticLiteral(UI_Vec2)
 
-typedef struct UI_Size {
-	// The maximum of size_px and the calculated size using size_ratio_fit is taken as the unexpanded_size.
-	float size_px;
-	float size_ratio_fit;
-	float flex_up;   // when there's extra space, then take UP TO this ratio of it, taking as much as possible
-	float flex_down; // when there's too little space, then give UP TO this ratio of the box size, giving as little as possible
-} UI_Size;
-#define UI_SIZE  UI_LangAgnosticLiteral(UI_Size)
+typedef float UI_Size;
 
 typedef uint64_t UI_Key; // 0 is invalid value
 #define UI_INVALID_KEY (UI_Key)0
@@ -80,6 +73,8 @@ typedef enum UI_BoxFlagBits {
 	UI_BoxFlag_NoAutoOffset = 1 << 11, // When set, this box won't use the layout system to determine its position, it'll be fully controlled by the `offset` field instead.
 	UI_BoxFlag_NoScissor = 1 << 12,
 	UI_BoxFlag_NoHover = 1 << 13, // Propagated from parent during AddBox
+	UI_BoxFlag_NoFlexDownX = 1 << 14,
+	UI_BoxFlag_NoFlexDownY = 1 << 15,
 	//UI_BoxFlag_HasCalledMakeBox = 1 << 13, // Internal flag
 	//UI_BoxFlag_HasComputedUnexpandedSizes = 1 << 14, // Internal flag
 	//UI_BoxFlag_HasComputedExpandedSizes = 1 << 15, // Internal flag
@@ -147,8 +142,8 @@ typedef struct UI_Style {
 	UI_Color opaque_bg_color;
 	UI_Color transparent_bg_color;
 	UI_Color text_color;
-	UI_Vec2 text_padding;
-	UI_Vec2 child_padding;
+	UI_Vec2 text_padding;  // in size units
+	UI_Vec2 child_padding; // in size units
 } UI_Style;
 
 // If I have two functions, those function must be able to independently associate extra data to a box.
@@ -516,12 +511,11 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box);
 
 // -- Tree builder API with implicit context -------
 
-// Sizing modes
-#define UI_SizeFit()       UI_SIZE{0.f, 1.f, 0.f, 0.f}
-#define UI_SizePx(value)   UI_SIZE{value, 0.f, 0.f, 0.f}
-#define UI_SizeFlex(value) UI_SIZE{0.f, 1.f, value, value}
-#define UI_SizeFlexOnlyUp(value) UI_SIZE{0.f, 1.f, value, 0.f}
-#define UI_SizeFlexOnlyDown(value) UI_SIZE{0.f, 1.f, 0.f, value}
+// -100 to -99 is unexpanded size fit, take as much parent space as the ratio
+// -200 to -199 is unexpanded size 0, take as much parent space as the ratio
+
+#define UI_SizeFit()        (-100.f)
+#define UI_SizeFlex(WEIGHT) ((WEIGHT) - 100.f)
 
 UI_API void UI_BoxComputeUnexpandedSizes(UI_Box* box);
 UI_API void UI_BoxComputeExpandedSizes(UI_Box* box);
@@ -1375,7 +1369,7 @@ UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
 
 	UI_Style* outer_style = UI_PushStyle();
 	outer_style->child_padding = UI_VEC2{ 5.f, 5.f };
-	UI_Box* box = UI_AddBox(UI_KEY1(key), UI_SizePx(h), UI_SizePx(h), UI_BoxFlag_ChildPadding);
+	UI_Box* box = UI_AddBox(UI_KEY1(key), h, h, UI_BoxFlag_ChildPadding);
 	UI_PopStyle(outer_style);
 	UI_PushBox(box);
 
@@ -1419,7 +1413,7 @@ UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size inden
 
 	UI_Style* label_style = UI_PushStyle();
 	label_style->font.font = UI_STATE.icons_font;
-	UI_AddBoxWithText(UI_KEY1(key), UI_SizePx(20.f), h, 0, is_open ? STR_("\x44") : STR_("\x46"));
+	UI_AddBoxWithText(UI_KEY1(key), 20.f, h, 0, is_open ? STR_("\x44") : STR_("\x46"));
 	UI_PopStyle(label_style);
 
 	UI_AddBoxWithText(UI_KEY1(key), w, h, 0, text);
@@ -1472,8 +1466,10 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 		UI_Key y_key = UI_HashInt(UI_KEY1(key), y);
 
 		UI_Size size[2];
-		size[x] = UI_SIZE{ 0.f, 1.f, 1.f, 1.f };
-		size[y] = UI_SIZE{ 0.f, 1.f, 1.f, 1.f };
+		size[x] = UI_SizeFlex(1.f);
+		size[y] = UI_SizeFlex(1.f);
+		//size[x] = UI_SIZE{ 0.f, 1.f, 1.f, 1.f };
+		//size[y] = UI_SIZE{ 0.f, 1.f, 1.f, 1.f };
 		UI_Box* temp_box = UI_AddBox(temp_box_keys[y], size[0], size[1], 0/*UI_BoxFlag_NoScissor*/);
 		temp_boxes[y] = temp_box;
 
@@ -1483,7 +1479,7 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 		float rail_line_length_px = temp_box->prev_frame ? temp_box->prev_frame->computed_size._[y] : 0.f;
 
 		if (content_length_px > visible_area_length_px) {
-			size[x] = UI_SizePx(18.f);
+			size[x] = 18.f;
 			size[y] = UI_SizeFlex(1.f);
 
 			UI_BoxFlags layout_dir_flag = y == UI_Axis_X ? UI_BoxFlag_LayoutInX : 0;
@@ -1502,16 +1498,16 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 			float scrollbar_distance_ratio = (anchors[y] == 1 ? 1.f : -1.f) * (offset._[y] / content_length_px);
 			float scrollbar_length_ratio = visible_area_length_px / content_length_px; // between 0 and 1
 
-			size[x] = UI_SizePx(18.f);
-			size[y] = UI_SizePx(scrollbar_distance_ratio * rail_line_length_px);
+			size[x] = 18.f;
+			size[y] = scrollbar_distance_ratio * rail_line_length_px;
 			UI_Box* pad_before_bar = UI_AddBox(UI_KEY1(y_key), size[0], size[1], UI_BoxFlag_PressingStaysWithoutHover);
 
-			size[x] = UI_SizePx(18.f);
-			size[y] = UI_SizePx(rail_line_length_px * scrollbar_length_ratio);
+			size[x] = 18.f;
+			size[y] = rail_line_length_px * scrollbar_length_ratio;
 			UI_Box* scrollbar = UI_AddBox(UI_KEY1(y_key), size[0], size[1],
 				UI_BoxFlag_PressingStaysWithoutHover | UI_BoxFlag_Clickable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground);
 
-			size[x] = UI_SizePx(18.f);
+			size[x] = 18.f;
 			size[y] = UI_SizeFlex(1.f);
 			UI_Box* pad_after_bar = UI_AddBox(UI_KEY1(y_key), size[0], size[1], UI_BoxFlag_PressingStaysWithoutHover);
 
@@ -1558,8 +1554,7 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 		UI_PushBox(temp_box);
 	}
 
-	UI_Size content_size = UI_SIZE{0.f, 1.f, 1.f, 0.f}; // Size up, but don't size down
-	UI_Box* content = UI_AddBox(content_box_key, content_size, content_size, 0);
+	UI_Box* content = UI_AddBox(content_box_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), UI_BoxFlag_NoFlexDownX|UI_BoxFlag_NoFlexDownY);
 	content->offset = offset;
 	UI_PushBox(content);
 
@@ -1933,7 +1928,9 @@ end:;
 
 UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, bool is_a_root) {
 	DS_ProfEnter();
-	
+	UI_CHECK(w >= 0.f || (w >= -100.f && w <= -99.f));
+	UI_CHECK(h >= 0.f || (h >= -100.f && h <= -99.f));
+
 	UI_Box* box = DS_New(UI_Box, UI_FrameArena());
 	bool newly_added = DS_MapInsert(&UI_STATE.box_from_key, key, box);
 	DS_CHECK(newly_added); // If this fails, then a box with the same key has already been added during this frame!
@@ -1999,7 +1996,7 @@ UI_API UI_Box* UI_MakeRootBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flag
 UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
 	UI_Box* parent = DS_ArrPeek(UI_STATE.box_stack);
 	UI_CHECK(parent != NULL); // AddBox creates a new box under the currently pushed box. If this fails, no box is currently pushed
-
+	
 	UI_Box* box = UI_MakeBox_(key, w, h, flags, false);
 	box->parent = parent;
 	if (parent->flags & UI_BoxFlag_NoHover) box->flags |= UI_BoxFlag_NoHover;
@@ -2198,6 +2195,8 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 	if (box->flags & UI_BoxFlag_ChildPadding) child_area_size -= 2.f * box->style->child_padding._[axis];
 
 	UI_Axis layout_axis = box->flags & UI_BoxFlag_LayoutInX ? UI_Axis_X : UI_Axis_Y;
+	UI_BoxFlags no_flex_down_flag = axis == UI_Axis_X ? UI_BoxFlag_NoFlexDownX : UI_BoxFlag_NoFlexDownY;
+
 	if (axis == layout_axis) {
 		float total_leftover = child_area_size;
 		float total_flex = 0.f;
@@ -2206,24 +2205,31 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 			total_leftover -= child->computed_unexpanded_size._[axis];
 		}
 
+		
 		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
-			float flex = total_leftover > 0 ? child->size[axis].flex_up : child->size[axis].flex_down;
-			total_flex += flex;
+			if (total_leftover > 0) {
+				total_flex += child->size[axis] < 0.f ? child->size[axis] + 100.f : 0.f; // flex up
+			} else {
+				total_flex += child->size[axis] < 0.f && !(child->flags & no_flex_down_flag) ? child->size[axis] + 100.f : 0.f; // flex down
+			}
+			//float flex = total_leftover > 0 ?
+			//	child->size[axis].flex_up :
+			//	child->size[axis].flex_down;
 		}
 
 		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
 			float child_size = child->computed_unexpanded_size._[axis];
 
 			if (total_leftover > 0) {
-				float flex = child->size[axis].flex_up;
-				float leftover_distributed = flex == 0.f ? 0.f : total_leftover * flex / total_flex;
-				float flex_px = UI_Min(leftover_distributed, total_leftover * flex);
+				float flex_up = child->size[axis] < 0.f ? child->size[axis] + 100.f : 0.f;
+				float leftover_distributed = flex_up == 0.f ? 0.f : total_leftover * flex_up / total_flex;
+				float flex_px = UI_Min(leftover_distributed, total_leftover * flex_up);
 				child_size += flex_px;
 			}
 			else {
-				float flex = child->size[axis].flex_down;
-				float leftover_distributed = flex == 0.f ? 0.f : total_leftover * flex / total_flex;
-				float flex_px = UI_Min(-leftover_distributed, child_size * flex);
+				float flex_down = child->size[axis] < 0.f && !(child->flags & no_flex_down_flag) ? child->size[axis] + 100.f : 0.f;
+				float leftover_distributed = flex_down == 0.f ? 0.f : total_leftover * flex_down / total_flex;
+				float flex_px = UI_Min(-leftover_distributed, child_size * flex_down);
 				child_size -= flex_px;
 			}
 
@@ -2236,12 +2242,12 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 
 			float leftover = child_area_size - child_size;
 			if (leftover > 0) {
-				float flex = child->size[axis].flex_up;
-				child_size += leftover * flex;
+				float flex_up = child->size[axis] < 0.f ? child->size[axis] + 100.f : 0.f;
+				child_size += leftover * flex_up;
 			}
 			else {
-				float flex = child->size[axis].flex_down;
-				float flex_px = UI_Min(-leftover, child_size * flex);
+				float flex_down = child->size[axis] < 0.f && !(child->flags & no_flex_down_flag) ? child->size[axis] + 100.f : 0.f;
+				float flex_px = UI_Min(-leftover, child_size * flex_down);
 				child_size -= flex_px;
 			}
 
@@ -2335,7 +2341,7 @@ UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis) {
 		if (box->flags & UI_BoxFlag_ChildPadding) fitting_size += 2 * box->style->child_padding._[axis];
 	}
 
-	float unexpanded_size = UI_Max(box->size[axis].size_px, box->size[axis].size_ratio_fit * fitting_size);
+	float unexpanded_size = box->size[axis] < 0.f ? fitting_size : box->size[axis];
 	box->computed_unexpanded_size._[axis] = unexpanded_size;
 }
 
