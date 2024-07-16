@@ -57,7 +57,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 	//// Top bar ///////////////////////////////////////////////
 
-	UI_Box* top_bar_root = UI_MakeRootBox(UI_KEY(), UI_SizePx(window_size.x), UI_SizeFit(), 0);
+	UI_Box* top_bar_root = UI_MakeRootBox(UI_KEY(), window_size.x, UI_SizeFit(), 0);
 	if (UI_IsMouseInsideOf(top_bar_root->key)) deepest_hovered_root = top_bar_root->key;
 	UI_PushBox(top_bar_root);
 
@@ -84,7 +84,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	//// Main area /////////////////////////////////////////////
 
 	UI_Vec2 main_area_size = { window_size.x, window_size.y - top_bar_root->computed_size.y };
-	UI_Box* main_area = UI_MakeRootBox(UI_KEY(), UI_SizePx(main_area_size.x), UI_SizePx(main_area_size.y), UI_BoxFlag_DrawBorder | UI_BoxFlag_ChildPadding);
+	UI_Box* main_area = UI_MakeRootBox(UI_KEY(), main_area_size.x, main_area_size.y, UI_BoxFlag_DrawBorder | UI_BoxFlag_ChildPadding);
 	if (UI_IsMouseInsideOf(main_area->key)) deepest_hovered_root = main_area->key;
 	if (deepest_hovered_root_prev != main_area->key) main_area->flags |= UI_BoxFlag_NoHover;
 
@@ -95,14 +95,14 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		printf("Button says thanks you!\n");
 	}
 
-	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
+	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
 	UI_Box* another_button = UI_AddButton(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Another button"));
 	if (UI_Clicked(another_button->key)) {
 		printf("Another button was clicked. He's not as thankful.\n");
 	}
 
-	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
+	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX | UI_BoxFlag_DrawBorder | UI_BoxFlag_ChildPadding);
@@ -112,7 +112,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_PopBox(row);
 	}
 
-	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
+	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
@@ -122,7 +122,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_PopBox(row);
 	}
 
-	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
+	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
@@ -132,7 +132,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_PopBox(row);
 	}
 
-	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
+	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
@@ -143,18 +143,18 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_PopBox(row);
 	}
 
-	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
+	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
 		UI_PushBox(row);
-		static int64_t my_int = 8281;
+		static int my_int = 8281;
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Edit int: "));
 		UI_AddValInt(UI_KEY(), UI_SizeFit(), UI_SizeFit(), &my_int);
 		UI_PopBox(row);
 	}
 
-	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
+	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
@@ -167,7 +167,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_PopBox(row);
 	}
 
-	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
+	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
 	{ // Arrangers 
 		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("And here we have some useful tree facts."));
@@ -223,9 +223,9 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		}
 	}
 
-	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
+	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
-	UI_Box* scroll_area = UI_PushScrollArea(UI_KEY(), UI_SizeFlex(1.f), UI_SizePx(200.f), UI_BoxFlag_DrawBorder, 0, 0);
+	UI_Box* scroll_area = UI_PushScrollArea(UI_KEY(), UI_SizeFlex(1.f), 200.f, UI_BoxFlag_DrawBorder, 0, 0);
 	UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("This marks the beginning of a scrollable area."));
 
 	STR lorem_ipsum_lines[] = {
@@ -249,11 +249,11 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 	UI_PopScrollArea(scroll_area);
 
-	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizePx(5.f), 0); // padding
+	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
 	UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Some more text."));
 
-	UI_AddBox(UI_KEY(), UI_SizePx(0.f), UI_SizeFlex(1.f), 0); // padding
+	UI_AddBox(UI_KEY(), 0.f, UI_SizeFlex(1.f), 0); // padding
 
 	UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, STR_("Above this text is some flexy padding. Try resizing the window!"));
 

@@ -486,8 +486,8 @@ OS_API bool OS_DirectoryWatchHasChanges(OS_DirectoryWatch* watch);
 // -- Threads -----------------------------------------------------------------
 
 // NOTE: The `thread` pointer may not be moved or copied while in use.
-// * if `debug_name` is NULL, no debug name will be specified
-OS_API void OS_ThreadStart(OS_Thread* thread, OS_ThreadFn fn, void* user_data, OS_String* debug_name);
+// * if `debug_name` is an empty string, no debug name will be specified
+OS_API void OS_ThreadStart(OS_Thread* thread, OS_ThreadFn fn, void* user_data, OS_String debug_name);
 OS_API void OS_ThreadJoin(OS_Thread* thread);
 
 OS_API void OS_MutexInit(OS_Mutex* mutex);
@@ -495,19 +495,20 @@ OS_API void OS_MutexDestroy(OS_Mutex* mutex);
 OS_API void OS_MutexLock(OS_Mutex* mutex);
 OS_API void OS_MutexUnlock(OS_Mutex* mutex);
 
-// NOTE: A condition variable cannot be moved or copied while in use.
+// NOTE: The condition var pointer cannot be moved or copied while in use.
 OS_API void OS_ConditionVarInit(OS_ConditionVar* condition_var);
 OS_API void OS_ConditionVarDestroy(OS_ConditionVar* condition_var);
-OS_API void OS_ConditionVarSignal(OS_ConditionVar* condition_var);
-OS_API void OS_ConditionVarBroadcast(OS_ConditionVar* condition_var);
-OS_API void OS_ConditionVarWait(OS_ConditionVar* condition_var, OS_Mutex* lock);
-// OS_API void OS_ConditionVarWaitEx(OS_ConditionVar *condition_var, OS_Mutex *lock, Int wait_milliseconds);
 
-//OS_API Semaphore *OS_SemaphoreCreate(); // Starts as 0
-//OS_API void OS_SemaphoreDestroy(Semaphore *semaphore);
-//OS_API void OS_SemaphoreWait(Semaphore *semaphore);
-//OS_API void OS_SemaphoreWaitEx(Semaphore *semaphore, Int milliseconds);
-//OS_API void OS_SemaphoreSignal(Semaphore *semaphore);
+// Unblock execution on one thread that's waiting on a condition variable (if there is one)
+OS_API void OS_ConditionVarSignal(OS_ConditionVar* condition_var);
+
+// Unblock execution on all threads that are waiting on a condition variable
+OS_API void OS_ConditionVarBroadcast(OS_ConditionVar* condition_var);
+
+// Add this thread to a condition variable's waiting list, unlock a mutex and block execution.
+// When a signal is given for this thread to continue execution, the mutex is locked and the function returns.
+// * The mutex must be locked/entered exactly once prior to calling this function!
+OS_API void OS_ConditionVarWait(OS_ConditionVar* condition_var, OS_Mutex* mutex);
 
 // -- Time --------------------------------------------------------------------
 
@@ -730,15 +731,12 @@ static char* OS_StrToCStr(OS_Arena* arena, OS_String s) {
 
 // - Windows implementation -------------------------------------------------------------------------
 
-// from <process.h>:
-uintptr_t _beginthreadex(void* security, unsigned stack_size, unsigned (*start_address)(void*), void* arglist, unsigned initflag, unsigned* thrdaddr);
-void _endthreadex(unsigned retval);
-
 #define UNICODE
 #define CINTERFACE // for com macros
 #include <Windows.h>
 #include <shobjidl_core.h> // required for OS_FolderPicker
 #include <DbgHelp.h>
+#include <process.h>
 
 // ----------- Global state -----------
 
@@ -1750,6 +1748,7 @@ static bool OS_AddKeyEvent(OS_Window* window, OS_Event* event, OS_EventKind kind
 
 		event->kind = kind;
 		event->key = key;
+		event->is_repeat = is_repeat;
 		window->key_is_down[key] = press;
 	}
 
@@ -2122,6 +2121,8 @@ OS_API bool OS_WindowPollEvent(OS_Window* window, OS_Event* event, OS_WindowOnRe
 	memset(event, 0, sizeof(*event));
 	SetWindowLongPtrW((HWND)window->handle, GWLP_USERDATA, (int64_t)&passed);
 
+	// Maybe-todo: investigate https://twitter.com/DefenceForceOrg/status/1719342491902583131
+	
 	MSG msg = {0};
 	for (; PeekMessageW(&msg, (HWND)window->handle, 0, 0, PM_REMOVE) != 0;) {
 		TranslateMessage(&msg);
@@ -2154,7 +2155,7 @@ static uint32_t OS_ThreadEntryFn(void* args) {
 	return 0;
 }
 
-OS_API void OS_ThreadStart(OS_Thread* thread, OS_ThreadFn fn, void* user_data, OS_String* debug_name) {
+OS_API void OS_ThreadStart(OS_Thread* thread, OS_ThreadFn fn, void* user_data, OS_String debug_name) {
 	OS_CHECK(thread->os_specific == NULL);
 
 	OS_Arena* temp = OS_TempArenaBegin();
@@ -2174,8 +2175,8 @@ OS_API void OS_ThreadStart(OS_Thread* thread, OS_ThreadFn fn, void* user_data, O
 	HANDLE handle = (HANDLE)_beginthreadex(NULL, 0, OS_ThreadEntryFn, thread, 0/* CREATE_SUSPENDED */, &thread_id);
 	thread->os_specific = handle;
 
-	if (debug_name) {
-		wchar_t* debug_name_utf16 = OS_StrToWide(temp, *debug_name, 1, NULL);
+	if (debug_name.size > 0) {
+		wchar_t* debug_name_utf16 = OS_StrToWide(temp, debug_name, 1, NULL);
 		SetThreadDescription(handle, debug_name_utf16);
 	}
 
@@ -2215,8 +2216,8 @@ OS_API void OS_ConditionVarDestroy(OS_ConditionVar* condition_var) {
 	// https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-initializeconditionvariable
 }
 
-OS_API void OS_ConditionVarWait(OS_ConditionVar* condition_var, OS_Mutex* lock) {
-	SleepConditionVariableCS((CONDITION_VARIABLE*)condition_var, (CRITICAL_SECTION*)lock, INFINITE);
+OS_API void OS_ConditionVarWait(OS_ConditionVar* condition_var, OS_Mutex* mutex) {
+	SleepConditionVariableCS((CONDITION_VARIABLE*)condition_var, (CRITICAL_SECTION*)mutex, INFINITE);
 }
 
 OS_API void OS_ConditionVarSignal(OS_ConditionVar* condition_var) {

@@ -36,8 +36,8 @@
 #define DS_OUT
 #endif
 
-#ifndef DS_MAX_MAP_SLOT_SIZE
-#define DS_MAX_MAP_SLOT_SIZE 4096
+#ifndef DS_MAX_ELEM_SIZE
+#define DS_MAX_ELEM_SIZE 2048
 #endif
 
 #define DS_DEFAULT_ALIGNMENT sizeof(void*)
@@ -153,6 +153,8 @@ template<typename T> static inline T* DS_Clone__(DS_Arena* a, const T& v) { T* x
 #endif
 
 // -------------------------------------------------------------------
+
+#define DS_ArrayCount(x) (sizeof(x) / sizeof(x[0]))
 
 // `p` must be a power of 2.
 // `x` is allowed to be negative as well.
@@ -275,9 +277,9 @@ Remove the first node of a singly linked list, e.g.
 DS_API uint32_t DS_MurmurHash3(const void* key, int len, uint32_t seed);
 DS_API uint64_t DS_MurmurHash64A(const void* key, int len, uint64_t seed);
 
-// @DS_SeeNoteAboutKeyTypePadding:
-//   If using a struct as the key type in a DS_Map, it must not contain any compiler-generated padding, as that could cause
-//   unpredictible behaviour when memcmp is used on them.
+// If using a struct as the key type in a DS_Map, it must not contain any compiler-generated padding, as that could cause
+// unpredictable behaviour when memcmp is used on them.
+#define DS_NoteAboutKeyTypePadding
 
 #define DS_Map(K, V) \
 	struct { DS_Allocator* allocator; struct{ uint32_t hash; K key; V value; }* data; int length; int capacity; }
@@ -285,34 +287,37 @@ typedef DS_Map(char, char) DS_MapRaw;
 
 #define DS_MapInit(MAP, ALLOCATOR)     DS_MapInitRaw((DS_MapRaw*)(MAP), (ALLOCATOR))
 
+// `DST` must be an uninitialized map
+#define DS_MapClone(DST, SRC)          DS_MapCloneRaw((DS_MapRaw*)(DST), (DS_MapRaw*)(SRC), DS_MapElemSize(SRC))
+
 // * Returns true if the key was found.
 // * KEY must be an l-value, otherwise this macro won't compile.
-#define DS_MapFind(MAP, KEY, OUT_VALUE) /* (DS_Map(K, V) *MAP, K KEY, (optional null) V *OUT_VALUE) */ \
+#define DS_MapFind(MAP, KEY, OUT_VALUE) /* (DS_Map(K, V)* MAP, K KEY, (optional null) V* OUT_VALUE) */ \
 	(DS_MapTypecheckK((MAP), &(KEY)) && DS_MapTypecheckV(MAP, OUT_VALUE), \
 	DS_MapFindRaw((DS_MapRaw*)(MAP), &(KEY), OUT_VALUE, DS_MapKSize(MAP), DS_MapVSize(MAP), DS_MapElemSize(MAP), DS_MapKOffset(MAP), DS_MapVOffset(MAP)))
 
 // * Returns the address of the value if the key was found, otherwise NULL.
 // * KEY must be an l-value, otherwise this macro won't compile.
-#define DS_MapFindPtr(MAP, KEY) /* (DS_Map(K, V) *MAP, K KEY) */ \
+#define DS_MapFindPtr(MAP, KEY) /* (DS_Map(K, V)* MAP, K KEY) */ \
 	(DS_MapTypecheckK((MAP), &(KEY)), \
 	DS_MapFindPtrRaw((DS_MapRaw*)(MAP), &(KEY), DS_MapKSize(MAP), DS_MapVSize(MAP), DS_MapElemSize(MAP), DS_MapKOffset(MAP), DS_MapVOffset(MAP)))
 
 // * Returns true if the key was newly added.
 // * Existing keys get overwritten with the new value.
 // * KEY and VALUE must be l-values, otherwise this macro won't compile.
-#define DS_MapInsert(MAP, KEY, VALUE) /* (DS_Map(K, V) *MAP, K KEY, V VALUE) */ \
+#define DS_MapInsert(MAP, KEY, VALUE) /* (DS_Map(K, V)* MAP, K KEY, V VALUE) */ \
 	(DS_MapTypecheckK(MAP, &(KEY)) && DS_MapTypecheckV(MAP, &(VALUE)), \
 	DS_MapInsertRaw((DS_MapRaw*)(MAP), &(KEY), &(VALUE), DS_MapKSize(MAP), DS_MapVSize(MAP), DS_MapElemSize(MAP), DS_MapKOffset(MAP), DS_MapVOffset(MAP)))
 
 // * Returns true if the key was found and removed.
 // * KEY must be an l-value, otherwise this macro won't compile.
-#define DS_MapRemove(MAP, KEY) /* (DS_Map(K, V) *MAP, K KEY) */ \
+#define DS_MapRemove(MAP, KEY) /* (DS_Map(K, V)* MAP, K KEY) */ \
 	(DS_MapTypecheckK(MAP, &(KEY)), \
 	DS_MapRemoveRaw((DS_MapRaw*)(MAP), &(KEY), DS_MapKSize(MAP), DS_MapVSize(MAP), DS_MapElemSize(MAP), DS_MapKOffset(MAP), DS_MapVOffset(MAP)))
 
 // * Return true if the key was newly added.
 // * KEY must be an l-value, otherwise this macro won't compile.
-#define DS_MapGetOrAddPtr(MAP, KEY, OUT_VALUE) /* (DS_Map(K, V) *MAP, K KEY, V **OUT_VALUE) */ \
+#define DS_MapGetOrAddPtr(MAP, KEY, OUT_VALUE) /* (DS_Map(K, V)* MAP, K KEY, V** OUT_VALUE) */ \
 	(DS_MapTypecheckK(MAP, &(KEY)) && DS_MapTypecheckV(MAP, *(OUT_VALUE)), \
 	DS_MapGetOrAddRaw((DS_MapRaw*)(MAP), &(KEY), (void**)OUT_VALUE, DS_MapKSize(MAP), DS_MapVSize(MAP), DS_MapElemSize(MAP), DS_MapKOffset(MAP), DS_MapVOffset(MAP)))
 
@@ -320,10 +325,10 @@ typedef DS_Map(char, char) DS_MapRaw;
 	DS_MapClearRaw((DS_MapRaw*)(MAP), DS_MapElemSize(MAP))
 
 // * Reset the map to a default state and free its memory if using the heap allocator.
-#define DS_MapDeinit(MAP) /* (DS_Map(K, V) *MAP) */ \
+#define DS_MapDeinit(MAP) /* (DS_Map(K, V)* MAP) */ \
 	DS_MapDeinitRaw((DS_MapRaw*)(MAP), DS_MapElemSize(MAP))
 
-#define DS_ForMapEach(K, V, MAP, IT) /* (type K, type V, DS_Map(K, V) *MAP, name IT) */ \
+#define DS_ForMapEach(K, V, MAP, IT) /* (type K, type V, DS_Map(K, V)* MAP, name IT) */ \
 	struct DS_Concat(_dummy_, __LINE__) { int i_next; K *key; V *value; }; \
 	if ((MAP)->length > 0) for (struct DS_Concat(_dummy_, __LINE__) IT = {0}; \
 		DS_MapIter((DS_MapRaw*)(MAP), &IT.i_next, (void**)&IT.key, (void**)&IT.value, DS_MapKOffset(MAP), DS_MapVOffset(MAP), DS_MapElemSize(MAP)); )
@@ -393,10 +398,13 @@ typedef DS_Set(char) DS_SetRaw;
 
 // * Return true if the key was newly added.
 static inline bool DS_MapGetOrAddRaw(DS_MapRaw* map, const void* key, DS_OUT void** out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
-static inline bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset, uint32_t hash);
+static bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset, uint32_t hash);
 
 // * Returns true if the key was found and removed.
 static inline bool DS_MapRemoveRaw(DS_MapRaw* map, const void* key, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
+
+// `dst` must be an uninitialized map
+static inline void DS_MapCloneRaw(DS_MapRaw* dst, DS_MapRaw* src, int elem_size);
 
 // * Returns true if the key was newly added
 static inline bool DS_MapInsertRaw(DS_MapRaw* map, const void* key, DS_OUT void* val, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
@@ -444,7 +452,7 @@ DS_API void DS_ArenaReset(DS_Arena* arena);
 static char* DS_AllocatorFn_BuiltIn(DS_AllocatorHeader* allocator, char* old_ptr, int old_size, int new_size, int new_alignment) {
 	char* result = NULL;
 	if (allocator->tag == DS_ALLOCATOR_TAG_ARENA) {
-		result = DS_ArenaPush((DS_Arena*)allocator, new_size);
+		result = DS_ArenaPushEx((DS_Arena*)allocator, new_size, new_alignment);
 		memcpy(result, old_ptr, old_size);
 	}
 	else {
@@ -503,6 +511,8 @@ typedef DS_DynArray(void) DS_DynArrayRaw;
 
 #define DS_ArrRemove(ARR, INDEX)       DS_ArrRemoveRaw((DS_DynArrayRaw*)(ARR), INDEX, DS_ArrElemSize(*ARR))
 
+#define DS_ArrReverseOrder(ARR)        DS_GeneralArrayReverseOrder((ARR)->data, (ARR)->length, DS_ArrElemSize(*ARR))
+
 #define DS_ArrRemoveN(ARR, INDEX, N)   DS_ArrRemoveNRaw((DS_DynArrayRaw*)(ARR), INDEX, N, DS_ArrElemSize(*ARR))
 
 #define DS_ArrPop(ARR)                 (ARR)->data[--(ARR)->length]
@@ -527,6 +537,7 @@ typedef DS_DynArray(void) DS_DynArrayRaw;
 	struct DS_Concat(_dummy_, __LINE__) {int i; T *ptr;}; /* Declaring new struct types in for-loop initializers is not standard C */ \
 	for (struct DS_Concat(_dummy_, __LINE__) IT = {0, (ARR)->data}; IT.i < (ARR)->length; IT.i++, IT.ptr++)
 
+DS_API void DS_GeneralArrayReverseOrder(void* data, int length, int elem_size);
 
 DS_API int DS_ArrPushRaw(DS_DynArrayRaw* array, const void* elem, int elem_size);
 DS_API int DS_ArrPushNRaw(DS_DynArrayRaw* array, const void* elems, int n, int elem_size);
@@ -553,6 +564,7 @@ DS_API void DS_ArrResizeRaw(DS_DynArrayRaw* array, int length, const void* value
 
 typedef DS_SlotAllocator(char, 1) SlotAllocatorRaw;
 
+// This loops through all slots, even destroyed ones.
 #define DS_ForSlotAllocatorEachSlot(T, ALLOCATOR, IT) \
 	struct DS_Concat(_dummy_, __LINE__) {void *bucket; uint32_t slot_index; T *elem;}; \
 	for (struct DS_Concat(_dummy_, __LINE__) IT = {(ALLOCATOR)->buckets[0]}; DS_SlotAllocatorIter((SlotAllocatorRaw*)(ALLOCATOR), &IT.bucket, &IT.slot_index, (void**)&IT.elem);)
@@ -561,47 +573,47 @@ typedef DS_SlotAllocator(char, 1) SlotAllocatorRaw;
 	DS_SlotAllocatorInitRaw((SlotAllocatorRaw*)(ALLOCATOR), DS_SlotBucketNextPtrOffset(ALLOCATOR), DS_SlotSize(ALLOCATOR), DS_SlotBucketSize(ALLOCATOR), DS_SlotN(ALLOCATOR), BACKING_ALLOCATOR)
 
 
-// * The slot's memory won't be initialized or overridden if it existed before.
+// The slot's memory won't be initialized or overridden if it existed before.
 #define DS_TakeSlot(ALLOCATOR) \
 	DS_TakeSlotRaw((SlotAllocatorRaw*)(ALLOCATOR))
 
 #define DS_FreeSlot(ALLOCATOR, SLOT) \
 	DS_FreeSlotRaw((SlotAllocatorRaw*)(ALLOCATOR), SLOT)
 
-// -- Bucket List --------------------------------------------------------------------
+// -- Bucket Array --------------------------------------------------------------------
 
-typedef struct DS_BucketListIndex {
+typedef struct DS_BucketArrayIndex {
 	void* bucket;
 	uint32_t slot_index;
-} DS_BucketListIndex;
+} DS_BucketArrayIndex;
 
-#define DS_BucketList(T) struct { \
+#define DS_BucketArray(T) struct { \
 	DS_Arena *arena; \
 	SlotAllocatorRaw *slot_allocator; \
 	struct {T dummy_T; void *dummy_ptr;} *buckets[2]; /* first and last bucket */ \
 	uint32_t last_bucket_end; \
 	uint32_t elems_per_bucket; }
 
-typedef DS_BucketList(char) BucketListRaw;
+typedef DS_BucketArray(char) BucketArrayRaw;
 
-//#define BucketListInitUsingSlotAllocator(LIST, SLOT_ALLOCATOR) BucketListInitUsingSlotAllocatorRaw((BucketListRaw*)(LIST), (SlotAllocatorRaw*)(SLOT_ALLOCATOR), DS_BucketElemSize(LIST))
+//#define BucketArrayInitUsingSlotAllocator(LIST, SLOT_ALLOCATOR) BucketArrayInitUsingSlotAllocatorRaw((BucketArrayRaw*)(LIST), (SlotAllocatorRaw*)(SLOT_ALLOCATOR), DS_BucketElemSize(LIST))
 
-#define DS_BucketListPush(LIST, ...) \
-	DS_BucketListPushRaw((BucketListRaw*)(LIST), (__VA_ARGS__), DS_BucketElemSize(LIST), DS_BucketNextPtrOffset(LIST))
+#define DS_BucketArrayPush(LIST, ...) \
+	DS_BucketArrayPushRaw((BucketArrayRaw*)(LIST), (__VA_ARGS__), DS_BucketElemSize(LIST), DS_BucketNextPtrOffset(LIST))
 
-#define DS_ForBucketListEach(T, LIST, IT) \
+#define DS_ForBucketArrayEach(T, LIST, IT) \
 	struct DS_Concat(_dummy_, __LINE__) {void *bucket; uint32_t slot_index; T *elem;}; \
-	for (struct DS_Concat(_dummy_, __LINE__) IT = {(LIST)->buckets[0]}; DS_BucketListIter((BucketListRaw*)LIST, &IT.bucket, &IT.slot_index, (void**)&IT.elem, DS_BucketElemSize(LIST), DS_BucketNextPtrOffset(LIST));)
+	for (struct DS_Concat(_dummy_, __LINE__) IT = {(LIST)->buckets[0]}; DS_BucketArrayIter((BucketArrayRaw*)LIST, &IT.bucket, &IT.slot_index, (void**)&IT.elem, DS_BucketElemSize(LIST), DS_BucketNextPtrOffset(LIST));)
 
-#define DS_BucketListGetPtr(LIST, INDEX) \
+#define DS_BucketArrayGetPtr(LIST, INDEX) \
 	(void*)((char*)(INDEX).bucket + DS_BucketElemSize(LIST)*(INDEX).slot_index)
 
-// * Returns DS_BucketListIndex
-#define DS_BucketListGetEnd(LIST)        DS_BucketListGetEndRaw((BucketListRaw*)(LIST))
+// * Returns DS_BucketArrayIndex
+#define DS_BucketArrayGetEnd(LIST)        DS_BucketArrayGetEndRaw((BucketArrayRaw*)(LIST))
 
-#define DS_BucketListSetEnd(LIST, END)   DS_BucketListSetEndRaw((BucketListRaw*)(LIST), (END))
+#define DS_BucketArraySetEnd(LIST, END)   DS_BucketArraySetEndRaw((BucketArrayRaw*)(LIST), (END))
 
-#define DS_BucketListDeinit(LIST)       DS_BucketListDeinitRaw((BucketListRaw*)(LIST), DS_BucketNextPtrOffset(LIST))
+#define DS_BucketArrayDeinit(LIST)        DS_BucketArrayDeinitRaw((BucketArrayRaw*)(LIST), DS_BucketNextPtrOffset(LIST))
 
 // -- IMPLEMENTATION ------------------------------------------------------------------
 
@@ -621,7 +633,7 @@ static inline bool DS_SlotAllocatorIter(SlotAllocatorRaw* allocator, void** buck
 	return true;
 }
 
-static inline bool DS_BucketListIter(BucketListRaw* list, void** bucket, uint32_t* slot_index, void** elem, int elem_size, int next_bucket_ptr_offset) {
+static inline bool DS_BucketArrayIter(BucketArrayRaw* list, void** bucket, uint32_t* slot_index, void** elem, int elem_size, int next_bucket_ptr_offset) {
 	if (*bucket == list->buckets[1] && *slot_index == list->last_bucket_end) {
 		return false; // we're finished
 	}
@@ -702,26 +714,26 @@ static inline void DS_FreeSlotRaw(SlotAllocatorRaw* allocator, void* slot) {
 	allocator->first_free_elem = (char*)slot;
 }
 
-static inline DS_BucketListIndex DS_BucketListGetEndRaw(BucketListRaw* list) {
-	DS_BucketListIndex index = { list->buckets[1], list->last_bucket_end };
+static inline DS_BucketArrayIndex DS_BucketArrayGetEndRaw(BucketArrayRaw* list) {
+	DS_BucketArrayIndex index = { list->buckets[1], list->last_bucket_end };
 	return index;
 }
 
-static inline void DS_BucketListSetEndRaw(BucketListRaw* list, DS_BucketListIndex end) {
+static inline void DS_BucketArraySetEndRaw(BucketArrayRaw* list, DS_BucketArrayIndex end) {
 	memcpy(&list->buckets[1], &end.bucket, sizeof(void*));
 	list->last_bucket_end = end.slot_index;
 }
 
-//static inline void BucketListInitUsingSlotAllocatorRaw(BucketListRaw *list, SlotAllocatorRaw *slot_allocator, uint32_t elem_size) {
+//static inline void BucketArrayInitUsingSlotAllocatorRaw(BucketArrayRaw *list, SlotAllocatorRaw *slot_allocator, uint32_t elem_size) {
 //	DS_CHECK(slot_allocator->slot_next_ptr_offset > elem_size); // The slot allocator slot size must be >= bucket list element size
 //
-//	BucketListRaw result = {0};
+//	BucketArrayRaw result = {0};
 //	result.slot_allocator = slot_allocator;
 //	result.elems_per_bucket = slot_allocator->slot_next_ptr_offset / elem_size; // round down
 //	*list = result;
 //}
 
-static inline void DS_BucketListDeinitRaw(BucketListRaw* list, int next_bucket_ptr_offset) {
+static inline void DS_BucketArrayDeinitRaw(BucketArrayRaw* list, int next_bucket_ptr_offset) {
 	DS_ProfEnter();
 	void* bucket = list->buckets[0];
 	for (; bucket;) {
@@ -738,17 +750,17 @@ static inline void DS_BucketListDeinitRaw(BucketListRaw* list, int next_bucket_p
 		bucket = next_bucket;
 	}
 
-	BucketListRaw empty = {0};
+	BucketArrayRaw empty = {0};
 	*list = empty;
 	DS_ProfExit();
 }
 
-static inline void* DS_BucketListPushRaw(BucketListRaw* list, void* elem, int elem_size, int next_bucket_ptr_offset) {
+static inline void* DS_BucketArrayPushRaw(BucketArrayRaw* list, void* elem, int elem_size, int next_bucket_ptr_offset) {
 	DS_ProfEnter();
 	void* bucket = list->buckets[1];
 
 	if (bucket == NULL || list->last_bucket_end == list->elems_per_bucket) {
-		// We need to allocate a new bucket. Or take an existing one from the end (only possible if DS_BucketListSetEnd has been used).
+		// We need to allocate a new bucket. Or take an existing one from the end (only possible if DS_BucketArraySetEnd has been used).
 		void* new_bucket = NULL;
 
 		// There may be an unused bucket at the end that we can use instead of allocating a new one.
@@ -896,6 +908,22 @@ DS_API int DS_ArrPushRaw(DS_DynArrayRaw* array, const void* elem, int elem_size)
 	memcpy((char*)array->data + array->length * elem_size, elem, elem_size);
 	DS_ProfExit();
 	return array->length++;
+}
+
+DS_API void DS_GeneralArrayReverseOrder(void* data, int length, int elem_size) {
+	int i = 0;
+	int j = (length - 1) * elem_size;
+
+	char temp[DS_MAX_ELEM_SIZE];
+	DS_CHECK(DS_MAX_ELEM_SIZE >= elem_size);
+
+	while (i < j) {
+		memcpy(temp, (char*)data + i, elem_size);
+		memcpy((char*)data + i, (char*)data + j, elem_size);
+		memcpy((char*)data + j, temp, elem_size);
+		i += elem_size;
+		j -= elem_size;
+	}
 }
 
 DS_API void DS_ArrPopRaw(DS_DynArrayRaw* array, DS_OUT void* out_elem, int elem_size) {
@@ -1073,7 +1101,7 @@ static inline bool DS_MapGetOrAddRaw(DS_MapRaw* map, const void* key, DS_OUT voi
 	return result;
 }
 
-static inline bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset, uint32_t hash) {
+static bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset, uint32_t hash) {
 	DS_ProfEnter();
 	DS_CHECK(map->allocator != NULL); // Have you called DS_MapInit?
 
@@ -1154,10 +1182,11 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw* map, const void* key, int K_size, 
 	uint32_t mask = (uint32_t)map->capacity - 1;
 	uint32_t index = hash & mask;
 
-	char temp[DS_MAX_MAP_SLOT_SIZE];
-	DS_CHECK(DS_MAX_MAP_SLOT_SIZE >= elem_size);
-
 	bool ok = true;
+
+	char temp[DS_MAX_ELEM_SIZE];
+	DS_CHECK(DS_MAX_ELEM_SIZE >= elem_size);
+
 	for (;;) {
 		char* elem_base = (char*)map->data + index * elem_size;
 		uint32_t elem_hash = *(uint32_t*)elem_base;
@@ -1199,6 +1228,12 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw* map, const void* key, int K_size, 
 
 	DS_ProfExit();
 	return ok;
+}
+
+static inline void DS_MapCloneRaw(DS_MapRaw* dst, DS_MapRaw* src, int elem_size) {
+	*dst = *src;
+	*(void**)&dst->data = DS_AllocatorFn(dst->allocator, NULL, 0, src->capacity * elem_size, DS_DEFAULT_ALIGNMENT);
+	memcpy(dst->data, src->data, src->capacity * elem_size);
 }
 
 static inline bool DS_MapInsertRaw(DS_MapRaw* map, const void* key, DS_OUT void* val,

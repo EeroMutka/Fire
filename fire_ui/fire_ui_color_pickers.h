@@ -101,7 +101,7 @@ UI_API UI_Box* UI_HueSaturationCircle(UI_Key key, float diameter, float* hue, fl
 	UI_CHECK(*hue >= 0.f && *hue <= 1.f);
 	UI_CHECK(*saturation >= 0.f && *saturation <= 1.f);
 
-	UI_Box* box = UI_AddBox(key, UI_SizePx(diameter), UI_SizePx(diameter), UI_BoxFlag_DrawBorder);
+	UI_Box* box = UI_AddBox(key, diameter, diameter, UI_BoxFlag_DrawBorder);
 	box->draw_override = UI_DrawHueSaturationCircle;
 
 	if (box->prev_frame) {
@@ -210,19 +210,19 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 	UI_PushBox(main_box);
 	UI_HueSaturationCircle(UI_KEY1(key), 200.f, hue, saturation);
 
-	UI_AddBox(UI_KEY1(key), UI_SizePx(5.f), UI_SizeFit(), 0); // pad
+	UI_AddBox(UI_KEY1(key), 5.f, UI_SizeFit(), 0); // pad
 
-	UI_Box* sat_slider_box = UI_AddBox(UI_KEY1(key), UI_SizePx(20.f), UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
+	UI_Box* sat_slider_box = UI_AddBox(UI_KEY1(key), 20.f, UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
 	sat_slider_box->draw_override = UI_ColorPickerSaturationSliderDraw;
 
-	UI_AddBox(UI_KEY1(key), UI_SizePx(5.f), UI_SizeFit(), 0); // pad
+	UI_AddBox(UI_KEY1(key), 5.f, UI_SizeFit(), 0); // pad
 
-	UI_Box* val_slider_box = UI_AddBox(UI_KEY1(key), UI_SizePx(20.f), UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
+	UI_Box* val_slider_box = UI_AddBox(UI_KEY1(key), 20.f, UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
 	val_slider_box->draw_override = UI_ColorPickerValueSliderDraw;
 
-	UI_AddBox(UI_KEY1(key), UI_SizePx(5.f), UI_SizeFit(), 0); // pad
+	UI_AddBox(UI_KEY1(key), 5.f, UI_SizeFit(), 0); // pad
 
-	UI_Box* right_box = UI_AddBox(UI_KEY1(key), UI_SizePx(160.f), UI_SizeFlex(1.f), 0);
+	UI_Box* right_box = UI_AddBox(UI_KEY1(key), 160.f, UI_SizeFlex(1.f), 0);
 	UI_PushBox(right_box);
 
 	UI_Box* color_box_1;
@@ -233,10 +233,10 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 
 		UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0); // pad
 
-		color_box_1 = UI_AddBox(UI_KEY1(key), UI_SizePx(80.f), UI_SizePx(80.f), UI_BoxFlag_DrawOpaqueBackground);
+		color_box_1 = UI_AddBox(UI_KEY1(key), 80.f, 80.f, UI_BoxFlag_DrawOpaqueBackground);
 		color_box_1->draw_override = UI_DrawColorPickerBox;
 
-		color_box_2 = UI_AddBox(UI_KEY1(key), UI_SizePx(80.f), UI_SizePx(80.f), UI_BoxFlag_DrawOpaqueBackground);
+		color_box_2 = UI_AddBox(UI_KEY1(key), 80.f, 80.f, UI_BoxFlag_DrawOpaqueBackground);
 		color_box_2->draw_override = UI_DrawColorPickerBoxTransparent;
 
 		UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0); // pad
@@ -264,7 +264,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 				UI_AddBoxWithText(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
 
 				float value_before = rgba[i];
-				UI_AddValFloat(UI_KEY1(row_key), UI_SIZE{0.f, 0.f, 1.f, 1.f}, UI_SizeFit(), &rgba[i]);
+				UI_AddValFloat(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), &rgba[i]);
 				if (rgba[i] != value_before) edited_rgba = true;
 
 				rgba[i] = UI_Max(UI_Min(rgba[i], 1.f), 0.f);
@@ -291,7 +291,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 				UI_PushBox(row);
 				UI_AddBoxWithText(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
 
-				UI_AddValFloat(UI_KEY1(row_key), UI_SIZE{0.f, 0.f, 1.f, 1.f}, UI_SizeFit(), hsv[i]);
+				UI_AddValFloat(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), hsv[i]);
 
 				*hsv[i] = UI_Max(UI_Min(*hsv[i], 1.f), 0.f);
 				UI_PopBox(row);

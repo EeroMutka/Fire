@@ -91,6 +91,9 @@ typedef struct UI_Color {
 } UI_Color;
 #define UI_COLOR  UI_LangAgnosticLiteral(UI_Color)
 
+#define UI_MakeColor(R, G, B, A)  UI_COLOR{(uint8_t)(R), (uint8_t)(G), (uint8_t)(B), (uint8_t)(A)}
+#define UI_MakeColorF(R, G, B, A) UI_COLOR{(uint8_t)((R) * 255.f), (uint8_t)((G) * 255.f), (uint8_t)((B) * 255.f), (uint8_t)((A) * 255.f)}
+
 typedef struct UI_Text {
 	DS_DynArray(char) text;
 	DS_DynArray(int) line_offsets;
@@ -648,9 +651,9 @@ UI_API void UI_AddTriangleIndicesAndClip(uint32_t a, uint32_t b, uint32_t c, UI_
 UI_API void UI_AddQuadIndicesAndClip(uint32_t a, uint32_t b, uint32_t c, uint32_t d, UI_TextureID texture, UI_ScissorRect scissor);
 
 UI_API void UI_DrawRect(UI_Rect rect, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawRectRounded2(UI_Rect rect, float roundness, UI_Color inner_color, UI_Color outer_color, UI_ScissorRect scissor);
-UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, UI_ScissorRect scissor);
+UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, int num_corner_segments, UI_ScissorRect scissor);
+UI_API void UI_DrawRectRounded2(UI_Rect rect, float roundness, UI_Color inner_color, UI_Color outer_color, int num_corner_segments, UI_ScissorRect scissor);
+UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, int num_corner_segments, UI_ScissorRect scissor);
 UI_API void UI_DrawRectLines(UI_Rect rect, float thickness, UI_Color color, UI_ScissorRect scissor);
 UI_API void UI_DrawRectLinesRounded(UI_Rect rect, float thickness, float roundness, UI_Color color, UI_ScissorRect scissor);
 UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, float thickness, UI_ScissorRect scissor);
@@ -668,9 +671,10 @@ UI_API void UI_DrawConvexPolygon(const UI_Vec2* points, int points_count, UI_Col
 UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color, UI_ScissorRect scissor);
 
 UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawPolyline(const UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawPolylineEx(const UI_Vec2* points, int points_count, float thickness, UI_Color color, bool loop, float split_miter_threshold, UI_ScissorRect scissor);
+UI_API void UI_DrawLineEx(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color a_color, UI_Color b_color, UI_ScissorRect scissor);
+UI_API void UI_DrawPolyline(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, UI_ScissorRect scissor);
+UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, UI_ScissorRect scissor);
+UI_API void UI_DrawPolylineEx(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, bool loop, float split_miter_threshold, UI_ScissorRect scissor);
 
 #ifdef /********************/ UI_IMPLEMENTATION /********************/
 
@@ -1578,11 +1582,11 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 	UI_ScissorRect scissor = box->flags & UI_BoxFlag_NoScissor ? NULL : &box->computed_rect_clipped;
 
 	if (box->flags & UI_BoxFlag_DrawTransparentBackground) {
-		UI_DrawRectRounded(box_rect, 4.f, box->style->transparent_bg_color, scissor);
+		UI_DrawRectRounded(box_rect, 4.f, box->style->transparent_bg_color, 2, scissor);
 	}
 
 	if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
-		UI_DrawRectRounded(box_rect, 4.f, box->style->opaque_bg_color, scissor);
+		UI_DrawRectRounded(box_rect, 4.f, box->style->opaque_bg_color, 2, scissor);
 		//UI_DrawRectEx(box_rect, box->style->opaque_bg_color, 12.f, 1.f, UI_INFINITE, scissor);
 	}
 
@@ -1600,7 +1604,7 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 				{top, top, bot, bot},
 				{top, top, bot, bot},
 				{r, r, r, r} };
-			UI_DrawRectEx(box_rect, &corners, scissor);
+			UI_DrawRectEx(box_rect, &corners, 2, scissor);
 		}
 		{
 			const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 100.f) };
@@ -1609,7 +1613,7 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 				{top, top, bot, bot},
 				{top, top, bot, bot},
 				{r, r, r, r} };
-			UI_DrawRectEx(box_rect, &corners, scissor);
+			UI_DrawRectEx(box_rect, &corners, 2, scissor);
 		}
 	}
 	DS_ProfExit();
@@ -1636,7 +1640,7 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 		UI_Rect rect = box->computed_rect_clipped;
 		rect.min = UI_SubV2(rect.min, UI_VEC2{ 0.5f * shadow_distance, 0.5f * shadow_distance });
 		rect.max = UI_AddV2(rect.max, UI_VEC2{ shadow_distance, shadow_distance });
-		UI_DrawRectRounded2(rect, 2.f * shadow_distance, UI_COLOR{ 0, 0, 0, 50 }, UI_COLOR{ 0, 0, 0, 0 }, NULL);
+		UI_DrawRectRounded2(rect, 2.f * shadow_distance, UI_COLOR{ 0, 0, 0, 50 }, UI_COLOR{ 0, 0, 0, 0 }, 2, NULL);
 		//UI_DrawRect(rect, UI_RED, NULL);
 
 	//UI_DrawRectEx(rect, UI_COLOR{0, 0, 0, 100}, shadow_distance, 2.f*shadow_distance, UI_INFINITE);
@@ -3024,20 +3028,20 @@ UI_API void UI_DrawRect(UI_Rect rect, UI_Color color, UI_ScissorRect scissor) {
 	UI_AddQuadIndicesAndClip(first_vert, first_vert + 1, first_vert + 2, first_vert + 3, UI_TEXTURE_ID_NIL, scissor);
 }
 
-UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, int num_corner_segments, UI_ScissorRect scissor) {
 	UI_DrawRectCorners corners = { {color, color, color, color}, {color, color, color, color}, {roundness, roundness, roundness, roundness} };
-	UI_DrawRectEx(rect, &corners, scissor);
+	UI_DrawRectEx(rect, &corners, num_corner_segments, scissor);
 }
 
-UI_API void UI_DrawRectRounded2(UI_Rect rect, float roundness, UI_Color inner_color, UI_Color outer_color, UI_ScissorRect scissor) {
+UI_API void UI_DrawRectRounded2(UI_Rect rect, float roundness, UI_Color inner_color, UI_Color outer_color, int num_corner_segments, UI_ScissorRect scissor) {
 	UI_DrawRectCorners corners = {
 		{inner_color, inner_color, inner_color, inner_color},
 		{outer_color, outer_color, outer_color, outer_color},
 		{roundness, roundness, roundness, roundness} };
-	UI_DrawRectEx(rect, &corners, scissor);
+	UI_DrawRectEx(rect, &corners, num_corner_segments, scissor);
 }
 
-UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, UI_ScissorRect scissor) {
+UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, int num_corner_segments, UI_ScissorRect scissor) {
 	UI_Vec2 inset_corners[4];
 	inset_corners[0] = UI_AddV2(rect.min, UI_VEC2{ corners->roundness[0], corners->roundness[0] });
 	inset_corners[1] = UI_AddV2(UI_VEC2{ rect.max.x, rect.min.y }, UI_VEC2{ -corners->roundness[1], corners->roundness[1] });
@@ -3045,9 +3049,7 @@ UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, UI_Sc
 	inset_corners[3] = UI_AddV2(UI_VEC2{ rect.min.x, rect.max.y }, UI_VEC2{ corners->roundness[3], -corners->roundness[3] });
 	if (inset_corners[0].x > inset_corners[2].x) return; // discard invalid rects
 	if (inset_corners[0].y > inset_corners[2].y) return; // discard invalid rects
-
-	const int corner_end_vertex = 2;
-
+	
 	uint32_t inset_corner_verts;
 	UI_DrawVertex* v = UI_AddVertices(12, &inset_corner_verts);
 	v[0] = UI_DRAW_VERTEX{ inset_corners[0], UI_WHITE_PIXEL_UV, corners->color[0] };
@@ -3081,8 +3083,8 @@ UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, UI_Sc
 		uint32_t prev_vert_idx = border_verts + corner_i * 2;
 
 		// Generate corner triangles
-		for (int i = 1; i < corner_end_vertex; i++) {
-			UI_Vec2 c = UI_PointOnRoundedCorner(corner_i, i, corner_end_vertex);
+		for (int i = 1; i < num_corner_segments; i++) {
+			UI_Vec2 c = UI_PointOnRoundedCorner(corner_i, i, num_corner_segments);
 			
 			uint32_t new_vert_idx;
 			UI_DrawVertex* new_vert = UI_AddVertices(1, &new_vert_idx);
@@ -3108,10 +3110,17 @@ UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color, UI_ScissorR
 
 UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color, UI_ScissorRect scissor) {
 	UI_Vec2 points[] = { a, b };
-	UI_DrawPolyline(points, 2, thickness, color, scissor);
+	UI_Color colors[] = { color, color };
+	UI_DrawPolyline(points, colors, 2, thickness, scissor);
 }
 
-UI_API void UI_DrawPolylineEx(const UI_Vec2* points, int points_count, float thickness, UI_Color color, bool loop,
+UI_API void UI_DrawLineEx(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color a_color, UI_Color b_color, UI_ScissorRect scissor) {
+	UI_Vec2 points[] = { a, b };
+	UI_Color colors[] = { a_color, b_color };
+	UI_DrawPolyline(points, colors, 2, thickness, scissor);
+}
+
+UI_API void UI_DrawPolylineEx(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, bool loop,
 	float split_miter_threshold, UI_ScissorRect scissor)
 {
 	if (points_count < 2) return;
@@ -3145,6 +3154,7 @@ UI_API void UI_DrawPolylineEx(const UI_Vec2* points, int points_count, float thi
 
 	for (int i = 0; i < points_count; i++) {
 		UI_Vec2 p = points[i];
+		UI_Color color = colors[i];
 
 		if (!loop) {
 			// Extend start and end points outwards by half thickness
@@ -3210,88 +3220,13 @@ UI_API void UI_DrawPolylineEx(const UI_Vec2* points, int points_count, float thi
 	DS_ProfExit();
 }
 
-UI_API void UI_DrawPolyline(const UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor) {
-	UI_DrawPolylineEx(points, points_count, thickness, color, false, 0.7f, scissor);
+UI_API void UI_DrawPolyline(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, UI_ScissorRect scissor) {
+	UI_DrawPolylineEx(points, colors, points_count, thickness, false, 0.7f, scissor);
 }
 
-UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, int points_count, float thickness, UI_Color color, UI_ScissorRect scissor) {
-	UI_DrawPolylineEx(points, points_count, thickness, color, true, 0.7f, scissor);
+UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, UI_ScissorRect scissor) {
+	UI_DrawPolylineEx(points, colors, points_count, thickness, true, 0.7f, scissor);
 }
-
-			#define isutf(c) (((c)&0xC0)!=0x80)
-			static const uint32_t offsetsFromUTF8[6] = {
-				0x00000000UL, 0x00003080UL, 0x000E2080UL,
-				0x03C82080UL, 0xFA082080UL, 0x82082080UL
-			};
-
-			static uint32_t u8_nextchar(char *s, int *i)
-			{
-				uint32_t ch = 0;
-				int sz = 0;
-
-				do {
-					ch <<= 6;
-					ch += (unsigned char)s[(*i)++];
-					sz++;
-				} while (s[*i] && !isutf(s[*i]));
-				ch -= offsetsFromUTF8[sz-1];
-
-				return ch;
-			}
-
-			static const char trailingBytesForUTF8[256] = {
-				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-				0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-				1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-				2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, 3,3,3,3,3,3,3,3,4,4,4,4,5,5,5,5
-			};
-
-			/* conversions without error checking
-			only works for valid UTF-8, i.e. no 5- or 6-byte sequences
-			srcsz = source size in bytes, or -1 if 0-terminated
-			sz = dest size in # of wide characters
-
-			returns # characters converted
-			dest will always be L'\0'-terminated, even if there isn't enough room
-			for all the characters.
-			if sz = srcsz+1 (i.e. 4*srcsz+4 bytes), there will always be enough space.
-			*/
-			static int u8_toucs(uint32_t *dest, int sz, char *src, int srcsz)
-			{
-				uint32_t ch;
-				char *src_end = src + srcsz;
-				int nb;
-				int i=0;
-
-				while (i < sz-1) {
-					nb = trailingBytesForUTF8[(unsigned char)*src];
-					if (srcsz == -1) {
-						if (*src == 0)
-							goto done_toucs;
-					}
-					else {
-						if (src + nb >= src_end)
-							goto done_toucs;
-					}
-					ch = 0;
-					switch (nb) {
-						/* these fall through deliberately */
-					case 3: ch += (unsigned char)*src++; ch <<= 6;
-					case 2: ch += (unsigned char)*src++; ch <<= 6;
-					case 1: ch += (unsigned char)*src++; ch <<= 6;
-					case 0: ch += (unsigned char)*src++;
-					}
-					ch -= offsetsFromUTF8[nb];
-					dest[i++] = ch;
-				}
-			done_toucs:
-				dest[i] = 0;
-				return i;
-			}
 
 UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {
 	DS_ProfEnter();
