@@ -11,6 +11,9 @@
 // - When a function returns a path, all separators will be /
 // I think that currently not all functions follow the above rules, TODO!
 //
+// I'm not super satisfied with the design of this library. It's currently designed in a way where it can never truly be "done".
+// It would probably be a better idea to have multiple smaller files, like "os_window", "os_file", "os_clipboard", "os_file_dialogs", "os_process", "os_threads"
+// 
 
 #ifndef OS_INCLUDED
 #define OS_INCLUDED
@@ -516,10 +519,6 @@ OS_API OS_Tick OS_Now();
 OS_API double OS_DurationInSeconds(OS_Tick start, OS_Tick end);
 
 // -- Window creation ---------------------------------------------------------
-
-//OS_API bool OS_InputWasPressed(const OS_Inputs* inputs, OS_Input input);
-//OS_API bool OS_InputWasPressedOrRepeat(const OS_Inputs* inputs, OS_Input input);
-//OS_API bool OS_InputWasReleased(const OS_Inputs* inputs, OS_Input input);
 
 // After calling `OS_WindowCreateHidden`, the window will remain hidden.
 // To show the window, you must explicitly call `OS_WindowShow`. This separation is there so that you

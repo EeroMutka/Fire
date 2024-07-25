@@ -141,9 +141,9 @@ static const DS_AllocatorHeader DS_HEAP_ = { DS_ALLOCATOR_TAG_HEAP };
 #define DS_SlotBucketNextPtrOffset(ALLOCATOR) (uint32_t)((uintptr_t)&(ALLOCATOR)->buckets[0]->next_bucket - (uintptr_t)(ALLOCATOR)->buckets[0])
 #define DS_SlotSize(ALLOCATOR) sizeof((ALLOCATOR)->buckets[0]->slots[0])
 
-#define DS_BucketElemSize(LIST) (sizeof((LIST)->buckets[0]->dummy_T))
-#define DS_BucketNextPtrPadding(LIST) ((uintptr_t)&(LIST)->buckets[0]->dummy_ptr - (uintptr_t)(LIST)->buckets[0] - DS_BucketElemSize(LIST))
-#define DS_BucketNextPtrOffset(LIST) ((LIST)->elems_per_bucket * DS_BucketElemSize(LIST) + DS_BucketNextPtrPadding(LIST))
+#define DS_BucketElemSize(ARRAY) (sizeof((ARRAY)->buckets[0]->dummy_T))
+#define DS_BucketNextPtrPadding(ARRAY) ((uintptr_t)&(ARRAY)->buckets[0]->dummy_ptr - (uintptr_t)(ARRAY)->buckets[0] - DS_BucketElemSize(ARRAY))
+#define DS_BucketNextPtrOffset(ARRAY) ((ARRAY)->elems_per_bucket * DS_BucketElemSize(ARRAY) + DS_BucketNextPtrPadding(ARRAY))
 
 #ifdef __cplusplus
 template<typename T> static inline T* DS_Clone__(DS_Arena* a, const T& v) { T* x = (T*)DS_ArenaPush(a, sizeof(T)); *x = v; return x; }
@@ -282,13 +282,12 @@ DS_API uint64_t DS_MurmurHash64A(const void* key, int len, uint64_t seed);
 #define DS_NoteAboutKeyTypePadding
 
 #define DS_Map(K, V) \
-	struct { DS_Allocator* allocator; struct{ uint32_t hash; K key; V value; }* data; int length; int capacity; }
+	struct { DS_Allocator* allocator; struct{ uint32_t hash; K key; V value; }* data; int count; int capacity; }
 typedef DS_Map(char, char) DS_MapRaw;
 
-#define DS_MapInit(MAP, ALLOCATOR)     DS_MapInitRaw((DS_MapRaw*)(MAP), (ALLOCATOR))
+#define DS_MapInit(MAP, ALLOCATOR)            DS_MapInitRaw((DS_MapRaw*)(MAP), (ALLOCATOR))
 
-// `DST` must be an uninitialized map
-#define DS_MapClone(DST, SRC)          DS_MapCloneRaw((DS_MapRaw*)(DST), (DS_MapRaw*)(SRC), DS_MapElemSize(SRC))
+#define DS_MapInitClone(MAP, SRC, ALLOCATOR)  DS_MapInitCloneRaw((DS_MapRaw*)(MAP), (DS_MapRaw*)(SRC), (ALLOCATOR), DS_MapElemSize(SRC))
 
 // * Returns true if the key was found.
 // * KEY must be an l-value, otherwise this macro won't compile.
@@ -330,7 +329,7 @@ typedef DS_Map(char, char) DS_MapRaw;
 
 #define DS_ForMapEach(K, V, MAP, IT) /* (type K, type V, DS_Map(K, V)* MAP, name IT) */ \
 	struct DS_Concat(_dummy_, __LINE__) { int i_next; K *key; V *value; }; \
-	if ((MAP)->length > 0) for (struct DS_Concat(_dummy_, __LINE__) IT = {0}; \
+	if ((MAP)->count > 0) for (struct DS_Concat(_dummy_, __LINE__) IT = {0}; \
 		DS_MapIter((DS_MapRaw*)(MAP), &IT.i_next, (void**)&IT.key, (void**)&IT.value, DS_MapKOffset(MAP), DS_MapVOffset(MAP), DS_MapElemSize(MAP)); )
 
 //
@@ -404,7 +403,7 @@ static bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** o
 static inline bool DS_MapRemoveRaw(DS_MapRaw* map, const void* key, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
 
 // `dst` must be an uninitialized map
-static inline void DS_MapCloneRaw(DS_MapRaw* dst, DS_MapRaw* src, int elem_size);
+static inline void DS_MapInitCloneRaw(DS_MapRaw* map, DS_MapRaw* src, DS_Allocator* allocator, int elem_size);
 
 // * Returns true if the key was newly added
 static inline bool DS_MapInsertRaw(DS_MapRaw* map, const void* key, DS_OUT void* val, int K_size, int V_size, int elem_size, int key_offset, int val_offset);
@@ -564,9 +563,11 @@ DS_API void DS_ArrResizeRaw(DS_DynArrayRaw* array, int length, const void* value
 
 typedef DS_SlotAllocator(char, 1) SlotAllocatorRaw;
 
-// This loops through all slots, even destroyed ones.
+// Iterate through all slots in a slot allocator, even the destroyed ones. To detect whether or not a slot is destroyed,
+// you must encode it yourself in the slot data. However, you shouldn't encode it within the first N bytes, where N is the
+// size of a pointer, because the slot allocator internally stores a pointer there on destroyed slots.
 #define DS_ForSlotAllocatorEachSlot(T, ALLOCATOR, IT) \
-	struct DS_Concat(_dummy_, __LINE__) {void *bucket; uint32_t slot_index; T *elem;}; \
+	struct DS_Concat(_dummy_, __LINE__) {void* bucket; uint32_t slot_index; T* elem;}; \
 	for (struct DS_Concat(_dummy_, __LINE__) IT = {(ALLOCATOR)->buckets[0]}; DS_SlotAllocatorIter((SlotAllocatorRaw*)(ALLOCATOR), &IT.bucket, &IT.slot_index, (void**)&IT.elem);)
 
 #define DS_SlotAllocatorInit(ALLOCATOR, BACKING_ALLOCATOR) \
@@ -588,32 +589,48 @@ typedef struct DS_BucketArrayIndex {
 } DS_BucketArrayIndex;
 
 #define DS_BucketArray(T) struct { \
-	DS_Arena *arena; \
-	SlotAllocatorRaw *slot_allocator; \
-	struct {T dummy_T; void *dummy_ptr;} *buckets[2]; /* first and last bucket */ \
+	DS_Allocator* allocator; \
+	SlotAllocatorRaw* slot_allocator; \
+	struct {T dummy_T; void* dummy_ptr;}* buckets[2]; /* first and last bucket */ \
+	uint32_t count; \
 	uint32_t last_bucket_end; \
 	uint32_t elems_per_bucket; }
 
-typedef DS_BucketArray(char) BucketArrayRaw;
+typedef DS_BucketArray(char) DS_BucketArrayRaw;
 
-//#define BucketArrayInitUsingSlotAllocator(LIST, SLOT_ALLOCATOR) BucketArrayInitUsingSlotAllocatorRaw((BucketArrayRaw*)(LIST), (SlotAllocatorRaw*)(SLOT_ALLOCATOR), DS_BucketElemSize(LIST))
+#define DS_BucketArrayInit(ARRAY, ALLOCATOR, ELEMS_PER_BUCKET) DS_BucketArrayInitRaw((DS_BucketArrayRaw*)(ARRAY), (ALLOCATOR), (ELEMS_PER_BUCKET));
+//#define BucketArrayInitUsingSlotAllocator(ARRAY, SLOT_ALLOCATOR) BucketArrayInitUsingSlotAllocatorRaw((DS_BucketArrayRaw*)(ARRAY), (SlotAllocatorRaw*)(SLOT_ALLOCATOR), DS_BucketElemSize(ARRAY))
+		//#define DS_BucketArrayInit(ARRAY, ALLOCATOR)
 
-#define DS_BucketArrayPush(LIST, ...) \
-	DS_BucketArrayPushRaw((BucketArrayRaw*)(LIST), (__VA_ARGS__), DS_BucketElemSize(LIST), DS_BucketNextPtrOffset(LIST))
+//#define DS_ArrPush(ARR, ...) do { \
+//	DS_ArrReserveRaw((DS_DynArrayRaw*)(ARR), (ARR)->length + 1, DS_ArrElemSize(*(ARR))); \
+//	(ARR)->data[(ARR)->length++] = __VA_ARGS__; } while (0)
 
-#define DS_ForBucketArrayEach(T, LIST, IT) \
+#define DS_BucketArrayPush(ARRAY, ...) do { \
+	DS_BucketArrayPushRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY)); \
+	(&(ARRAY)->buckets[1]->dummy_T)[(ARRAY)->last_bucket_end - 1] = (__VA_ARGS__); \
+	} while (0)
+
+#define DS_BucketArrayPushN(ARRAY, ELEMS_DATA, ELEMS_COUNT)  DS_BucketArrayPushNRaw((DS_BucketArrayRaw*)(ARRAY), (ELEMS_DATA), (uint32_t)(ELEMS_COUNT), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY))
+
+#define DS_ForBucketArrayEach(T, ARRAY, IT) \
 	struct DS_Concat(_dummy_, __LINE__) {void *bucket; uint32_t slot_index; T *elem;}; \
-	for (struct DS_Concat(_dummy_, __LINE__) IT = {(LIST)->buckets[0]}; DS_BucketArrayIter((BucketArrayRaw*)LIST, &IT.bucket, &IT.slot_index, (void**)&IT.elem, DS_BucketElemSize(LIST), DS_BucketNextPtrOffset(LIST));)
+	for (struct DS_Concat(_dummy_, __LINE__) IT = {(ARRAY)->buckets[0]}; DS_BucketArrayIter((DS_BucketArrayRaw*)ARRAY, &IT.bucket, &IT.slot_index, (void**)&IT.elem, DS_BucketElemSize(ARRAY), DS_BucketNextPtrOffset(ARRAY));)
 
-#define DS_BucketArrayGetPtr(LIST, INDEX) \
-	(void*)((char*)(INDEX).bucket + DS_BucketElemSize(LIST)*(INDEX).slot_index)
+#define DS_BucketArrayGetPtr(ARRAY, INDEX) \
+	(void*)((char*)(INDEX).bucket + DS_BucketElemSize(ARRAY)*(INDEX).slot_index)
 
-// * Returns DS_BucketArrayIndex
-#define DS_BucketArrayGetEnd(LIST)        DS_BucketArrayGetEndRaw((BucketArrayRaw*)(LIST))
+// Read N elems into the memory address at DST starting from the index INDEX and move the index forward by N
+#define DS_BucketArrayGetN(ARRAY, DST, N, INDEX)  DS_BucketArrayGetNRaw((DS_BucketArrayRaw*)(ARRAY), (DST), (uint32_t)(N), (INDEX), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY))
 
-#define DS_BucketArraySetEnd(LIST, END)   DS_BucketArraySetEndRaw((BucketArrayRaw*)(LIST), (END))
+#define DS_BucketArrayFirstIndex(ARRAY)      DS_BucketArrayFirstIndexRaw((DS_BucketArrayRaw*)(ARRAY))
 
-#define DS_BucketArrayDeinit(LIST)        DS_BucketArrayDeinitRaw((BucketArrayRaw*)(LIST), DS_BucketNextPtrOffset(LIST))
+// - Returns DS_BucketArrayIndex
+//#define DS_BucketArrayGetEnd(ARRAY)        DS_BucketArrayGetEndRaw((DS_BucketArrayRaw*)(ARRAY))
+
+//#define DS_BucketArraySetEnd(ARRAY, END)   DS_BucketArraySetEndRaw((DS_BucketArrayRaw*)(ARRAY), (END))
+
+#define DS_BucketArrayDeinit(ARRAY)        DS_BucketArrayDeinitRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketNextPtrOffset(ARRAY))
 
 // -- IMPLEMENTATION ------------------------------------------------------------------
 
@@ -633,7 +650,7 @@ static inline bool DS_SlotAllocatorIter(SlotAllocatorRaw* allocator, void** buck
 	return true;
 }
 
-static inline bool DS_BucketArrayIter(BucketArrayRaw* list, void** bucket, uint32_t* slot_index, void** elem, int elem_size, int next_bucket_ptr_offset) {
+static inline bool DS_BucketArrayIter(DS_BucketArrayRaw* list, void** bucket, uint32_t* slot_index, void** elem, int elem_size, int next_bucket_ptr_offset) {
 	if (*bucket == list->buckets[1] && *slot_index == list->last_bucket_end) {
 		return false; // we're finished
 	}
@@ -714,92 +731,169 @@ static inline void DS_FreeSlotRaw(SlotAllocatorRaw* allocator, void* slot) {
 	allocator->first_free_elem = (char*)slot;
 }
 
-static inline DS_BucketArrayIndex DS_BucketArrayGetEndRaw(BucketArrayRaw* list) {
-	DS_BucketArrayIndex index = { list->buckets[1], list->last_bucket_end };
+static inline DS_BucketArrayIndex DS_BucketArrayFirstIndexRaw(DS_BucketArrayRaw* array) {
+	assert(array->count > 0);
+	DS_BucketArrayIndex index = {array->buckets[0], 0};
 	return index;
 }
 
-static inline void DS_BucketArraySetEndRaw(BucketArrayRaw* list, DS_BucketArrayIndex end) {
-	memcpy(&list->buckets[1], &end.bucket, sizeof(void*));
-	list->last_bucket_end = end.slot_index;
-}
+//static inline DS_BucketArrayIndex DS_BucketArrayGetEndRaw(DS_BucketArrayRaw* array) {
+//	DS_BucketArrayIndex index = { array->buckets[1], array->last_bucket_end };
+//	return index;
+//}
 
-//static inline void BucketArrayInitUsingSlotAllocatorRaw(BucketArrayRaw *list, SlotAllocatorRaw *slot_allocator, uint32_t elem_size) {
+//static inline void DS_BucketArraySetEndRaw(DS_BucketArrayRaw* array, DS_BucketArrayIndex end) {
+//	if (end.bucket) {
+//		memcpy(&array->buckets[1], &end.bucket, sizeof(void*));
+//	} else {
+//		array->buckets[1] = array->buckets[0];
+//	}
+//	array->last_bucket_end = end.slot_index;
+//}
+
+static inline void DS_BucketArrayInitRaw(DS_BucketArrayRaw* array, DS_Allocator* allocator, int elems_per_bucket) {
+	DS_BucketArrayRaw result = {0};
+	result.allocator = allocator;
+	result.elems_per_bucket = elems_per_bucket;
+	*array = result;
+}
+//static inline void BucketArrayInitUsingSlotAllocatorRaw(DS_BucketArrayRaw *list, SlotAllocatorRaw *slot_allocator, uint32_t elem_size) {
 //	DS_CHECK(slot_allocator->slot_next_ptr_offset > elem_size); // The slot allocator slot size must be >= bucket list element size
 //
-//	BucketArrayRaw result = {0};
+//	DS_BucketArrayRaw result = {0};
 //	result.slot_allocator = slot_allocator;
 //	result.elems_per_bucket = slot_allocator->slot_next_ptr_offset / elem_size; // round down
 //	*list = result;
 //}
 
-static inline void DS_BucketArrayDeinitRaw(BucketArrayRaw* list, int next_bucket_ptr_offset) {
+static inline void DS_BucketArrayDeinitRaw(DS_BucketArrayRaw* array, int next_bucket_ptr_offset) {
 	DS_ProfEnter();
-	void* bucket = list->buckets[0];
+	void* bucket = array->buckets[0];
 	for (; bucket;) {
 		void* next_bucket = *(void**)((char*)bucket + next_bucket_ptr_offset);
 
-		if (list->slot_allocator) {
-			DS_FreeSlotRaw(list->slot_allocator, bucket);
+		if (array->slot_allocator) {
+			DS_FreeSlotRaw(array->slot_allocator, bucket);
 		}
 		else {
-			DS_DebugFillGarbage(bucket, next_bucket_ptr_offset);
-			if (list->arena == NULL) __debugbreak(); // TODO
+			DS_MemFree(array->allocator, bucket);
 		}
 
 		bucket = next_bucket;
 	}
 
-	BucketArrayRaw empty = {0};
-	*list = empty;
+	DS_BucketArrayRaw empty = {0};
+	*array = empty;
 	DS_ProfExit();
 }
 
-static inline void* DS_BucketArrayPushRaw(BucketArrayRaw* list, void* elem, int elem_size, int next_bucket_ptr_offset) {
-	DS_ProfEnter();
-	void* bucket = list->buckets[1];
+static void* DS_BucketArrayGetNextBucket(DS_BucketArrayRaw* array, void* bucket, uint32_t next_bucket_ptr_offset) {
+	// We need to allocate a new bucket. Or take an existing one from the end (only possible if DS_BucketArraySetEnd has been used).
+	void* new_bucket = NULL;
 
-	if (bucket == NULL || list->last_bucket_end == list->elems_per_bucket) {
-		// We need to allocate a new bucket. Or take an existing one from the end (only possible if DS_BucketArraySetEnd has been used).
-		void* new_bucket = NULL;
-
-		// There may be an unused bucket at the end that we can use instead of allocating a new one.
-		// First try to use that.
-		if (bucket) {
-			new_bucket = *(void**)((char*)bucket + next_bucket_ptr_offset);
-		}
-
-		if (new_bucket == NULL) {
-			if (list->slot_allocator) {
-				int bucket_size = next_bucket_ptr_offset + sizeof(void*);
-				DS_CHECK(list->slot_allocator->slot_size >= (uint32_t)bucket_size);
-				new_bucket = DS_TakeSlotRaw(list->slot_allocator);
-			}
-			else {
-				if (list->arena == NULL) __debugbreak(); // TODO
-				int bucket_size = next_bucket_ptr_offset + sizeof(void*);
-				new_bucket = DS_ArenaPush(list->arena, bucket_size);
-			}
-		}
-
-		if (bucket) {
-			// set the `next` pointer of the previous bucket to point to the new bucket
-			*(void**)((char*)bucket + next_bucket_ptr_offset) = new_bucket;
-		}
-		else {
-			// set the `first bucket` pointer to point to the new bucket
-			memcpy(&list->buckets[0], &new_bucket, sizeof(void*));
-			*(void**)((char*)new_bucket + next_bucket_ptr_offset) = NULL;
-		}
-
-		list->last_bucket_end = 0;
-		memcpy(&list->buckets[1], &new_bucket, sizeof(void*));
-		bucket = new_bucket;
+	// There may be an unused bucket at the end that we can use instead of allocating a new one.
+	// First try to use that.
+	if (bucket) {
+		new_bucket = *(void**)((char*)bucket + next_bucket_ptr_offset);
 	}
 
-	uint32_t slot_idx = list->last_bucket_end++;
+	if (new_bucket == NULL) {
+		int bucket_size = next_bucket_ptr_offset + sizeof(void*);
+		if (array->slot_allocator) {
+			DS_CHECK(array->slot_allocator->slot_size >= (uint32_t)bucket_size);
+			new_bucket = DS_TakeSlotRaw(array->slot_allocator);
+		}
+		else {
+			new_bucket = DS_MemAlloc(array->allocator, bucket_size);
+		}
+	}
+
+	if (bucket) {
+		// set the `next` pointer of the previous bucket to point to the new bucket
+		*(void**)((char*)bucket + next_bucket_ptr_offset) = new_bucket;
+	}
+	else {
+		// set the `first bucket` pointer to point to the new bucket
+		*(void**)&array->buckets[0] = new_bucket;
+		*(void**)((char*)new_bucket + next_bucket_ptr_offset) = NULL;
+	}
+
+	array->last_bucket_end = 0;
+	*(void**)&array->buckets[1] = new_bucket;
+	return new_bucket;
+}
+
+static void DS_BucketArrayGetNRaw(const DS_BucketArrayRaw* array, void* dst, uint32_t elems_count, DS_BucketArrayIndex* index, uint32_t elem_size, uint32_t next_bucket_ptr_offset) {
+	while (elems_count > 0) {
+		uint32_t elems_in_bucket = index->bucket == array->buckets[1] ? array->last_bucket_end : array->elems_per_bucket;
+		uint32_t slots_left_in_bucket = elems_in_bucket - index->slot_index;
+		
+		if (elems_count >= slots_left_in_bucket) { // go past this bucket
+			uint32_t bytes_to_add_now = slots_left_in_bucket * elem_size;
+
+			memcpy(dst, (char*)index->bucket + index->slot_index * elem_size, bytes_to_add_now);
+			dst = (char*)dst + bytes_to_add_now;
+			elems_count -= slots_left_in_bucket;
+
+			// move to the next bucket
+			index->bucket = *(void**)((char*)index->bucket + next_bucket_ptr_offset);
+			index->slot_index = 0;
+		} else {
+			uint32_t bytes_to_add_now = elems_count * elem_size;
+			memcpy(dst, (char*)index->bucket + index->slot_index * elem_size, bytes_to_add_now);
+			index->slot_index += elems_count;
+			break;
+		}
+	}
+}
+
+static void DS_BucketArrayPushNRaw(DS_BucketArrayRaw* array, const void* elems_data, uint32_t elems_count, uint32_t elem_size, uint32_t next_bucket_ptr_offset) {
+	DS_ProfEnter();
+	void* bucket = array->buckets[1];
+
+	array->count += elems_count;
+	while (elems_count > 0) {
+		if (bucket == NULL || array->last_bucket_end == array->elems_per_bucket) {
+			bucket = DS_BucketArrayGetNextBucket(array, bucket, next_bucket_ptr_offset);
+		}
+
+		uint32_t slots_left_in_bucket = array->elems_per_bucket - array->last_bucket_end;
+		if (elems_count >= slots_left_in_bucket) {
+			uint32_t bytes_to_add_now = slots_left_in_bucket * elem_size;
+
+			void* dst = (char*)bucket + elem_size * array->last_bucket_end;
+			memcpy(dst, elems_data, (size_t)bytes_to_add_now);
+
+			elems_data = (char*)elems_data + bytes_to_add_now;
+			elems_count -= slots_left_in_bucket;
+			array->last_bucket_end += slots_left_in_bucket;
+		}
+		else {
+			uint32_t bytes_to_add_now = elems_count * elem_size;
+
+			void* dst = (char*)bucket + elem_size * array->last_bucket_end;
+			memcpy(dst, elems_data, (size_t)bytes_to_add_now);
+			
+			array->last_bucket_end += elems_count;
+			break;
+		}
+	}
+
+	DS_ProfExit();
+}
+
+static inline void* DS_BucketArrayPushRaw(DS_BucketArrayRaw* array, uint32_t elem_size, uint32_t next_bucket_ptr_offset) {
+	DS_ProfEnter();
+	void* bucket = array->buckets[1];
+
+	if (bucket == NULL || array->last_bucket_end == array->elems_per_bucket) {
+		bucket = DS_BucketArrayGetNextBucket(array, bucket, next_bucket_ptr_offset);
+	}
+
+	uint32_t slot_idx = array->last_bucket_end++;
 	void* result = (char*)bucket + elem_size * slot_idx;
-	memcpy(result, elem, elem_size);
+
+	array->count++;
 	DS_ProfExit();
 	return result;
 }
@@ -944,7 +1038,7 @@ static inline void DS_MapInitRaw(DS_MapRaw* map, DS_Allocator* allocator) {
 
 static inline void DS_MapClearRaw(DS_MapRaw* map, int elem_size) {
 	memset(map->data, 0, map->capacity * elem_size);
-	map->length = 0;
+	map->count = 0;
 }
 
 static inline void DS_MapDeinitRaw(DS_MapRaw* map, int elem_size) {
@@ -1105,14 +1199,14 @@ static bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** o
 	DS_ProfEnter();
 	DS_CHECK(map->allocator != NULL); // Have you called DS_MapInit?
 
-	if (100 * (map->length + 1) > 70 * map->capacity) {
+	if (100 * (map->count + 1) > 70 * map->capacity) {
 		// Grow the map
 
 		char* old_data = (char*)map->data;
 		int old_capacity = map->capacity;
 
 		map->capacity = old_capacity == 0 ? 8 : old_capacity * 2;
-		map->length = 0;
+		map->count = 0;
 
 		void* new_data = DS_AllocatorFn(map->allocator, NULL, 0, map->capacity * elem_size, DS_DEFAULT_ALIGNMENT);
 
@@ -1154,7 +1248,7 @@ static bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** o
 			*elem_hash = hash;
 
 			if (out_val_ptr) *out_val_ptr = elem_val;
-			map->length++;
+			map->count++;
 			added_new = true;
 			break;
 		}
@@ -1200,7 +1294,7 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw* map, const void* key, int K_size, 
 		if (hash == elem_hash && memcmp(key, elem_base + key_offset, K_size) == 0) {
 			// Remove element
 			memset(elem_base, 0, elem_size);
-			map->length--;
+			map->count--;
 
 			// backwards-shift deletion.
 			// First remove all elements directly after this element from the map, then add them back to the map, starting from the first one to the right.
@@ -1213,7 +1307,7 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw* map, const void* key, int K_size, 
 
 				memcpy(temp, shifting_elem_base, elem_size);
 				memset(shifting_elem_base, 0, elem_size);
-				map->length--;
+				map->count--;
 
 				void* new_val_ptr;
 				DS_MapGetOrAddRawEx(map, temp + key_offset, &new_val_ptr, K_size, V_size, elem_size, key_offset, val_offset, shifting_elem_hash);
@@ -1230,10 +1324,11 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw* map, const void* key, int K_size, 
 	return ok;
 }
 
-static inline void DS_MapCloneRaw(DS_MapRaw* dst, DS_MapRaw* src, int elem_size) {
-	*dst = *src;
-	*(void**)&dst->data = DS_AllocatorFn(dst->allocator, NULL, 0, src->capacity * elem_size, DS_DEFAULT_ALIGNMENT);
-	memcpy(dst->data, src->data, src->capacity * elem_size);
+static inline void DS_MapInitCloneRaw(DS_MapRaw* map, DS_MapRaw* src, DS_Allocator* allocator, int elem_size) {
+	*map = *src;
+	map->allocator = allocator;
+	*(void**)&map->data = DS_AllocatorFn(allocator, NULL, 0, src->capacity * elem_size, DS_DEFAULT_ALIGNMENT);
+	memcpy(map->data, src->data, src->capacity * elem_size);
 }
 
 static inline bool DS_MapInsertRaw(DS_MapRaw* map, const void* key, DS_OUT void* val,
