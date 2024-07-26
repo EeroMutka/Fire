@@ -11,10 +11,10 @@ This is a collection of easy to use programming libraries that are compatible wi
   * Lets you easily compile C/C++ projects and generate Visual Studio project files from code
   * Windows-only (for now).
 * `fire_os_window.h`
-  * Library for creating windows and getting input
+  * Library for creating windows and getting keyboard & mouse input
   * Windows-only (for now)
 * `fire_os_sync.h`
-  * Library for dealing with threads, mutexes, condition variables, and so on.
+  * Library for dealing with threads, mutexes and condition variables
   * Windows-only (for now)
 * `fire_os_clipboard.h`
   * Clipboard utilities
@@ -27,7 +27,7 @@ This is a collection of easy to use programming libraries that are compatible wi
 
 ## Building the Examples
 
-Open `examples/build/examples.sln` in [Visual Studio 2017 (or higher)](https://visualstudio.microsoft.com/) to build and run the examples.
+Open `examples/build/examples.sln` in [Visual Studio 2017](https://visualstudio.microsoft.com/) (or higher) to build and run the examples.
 
 The VS project files can be edited and generated through a build script found at `examples/gen_project_files.c`. To regenerate the project files,
 1. Open `x64 Native Tools Command Prompt for VS <year>` from the Windows Start Menu. Within this terminal, `cd` into the `examples` folder.
