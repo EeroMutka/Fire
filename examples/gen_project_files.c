@@ -6,9 +6,6 @@ int main() {
 		.c_runtime_library_dll = true, // glslang.lib uses /MD
 	};
 	
-	BUILD_Project* projects[16];
-	int projects_count = 0;
-	
 	//////////////////////
 	
 	BUILD_Project ui_demo_dx11;
@@ -17,13 +14,13 @@ int main() {
 	
 	BUILD_AddSourceFile(&ui_demo_dx11, "../ui_demo_dx11/ui_demo.cpp");
 	
-	projects[projects_count++] = &ui_demo_dx11;
 	
 	//////////////////////
-	
+
+	BUILD_Project* projects[1] = {&ui_demo_dx11};
 	BUILD_CreateDirectory("build");
 	
-	if (!BUILD_CreateVisualStudioSolution("build", ".", "examples.sln", projects, projects_count, BUILD_GetConsole())) {
+	if (!BUILD_CreateVisualStudioSolution("build", ".", "examples.sln", projects, 1, BUILD_GetConsole())) {
 		return 1;
 	}
 	
