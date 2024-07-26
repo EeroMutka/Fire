@@ -1123,8 +1123,8 @@ UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64
 }
 
 UI_API UI_Box* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int* value) {
-	int64_t value_i64 = (int64_t)*value;
-	UI_Box* box = UI_AddValNumeric(key, w, h, value, true, false);
+	int64_t value_i64 = *value;
+	UI_Box* box = UI_AddValNumeric(key, w, h, &value_i64, true, false);
 	*value = (int)value_i64;
 	return box;
 }
