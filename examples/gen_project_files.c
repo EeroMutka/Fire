@@ -3,7 +3,7 @@
 int main() {
 	BUILD_ProjectOptions opts = {
 		.debug_info = true,
-		.c_runtime_library_dll = true, // glslang.lib uses /MD
+		.c_runtime_library_dll = true,
 	};
 	
 	//////////////////////
