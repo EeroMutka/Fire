@@ -159,8 +159,28 @@ typedef enum OS_WINDOW_Key {
 	OS_WINDOW_Key_COUNT,
 } OS_WINDOW_Key;
 
+typedef enum OS_WINDOW_MouseCursor {
+	OS_WINDOW_MouseCursor_Arrow,
+	OS_WINDOW_MouseCursor_Hand,
+	OS_WINDOW_MouseCursor_I_Beam,
+	OS_WINDOW_MouseCursor_Crosshair,
+	OS_WINDOW_MouseCursor_ResizeH,
+	OS_WINDOW_MouseCursor_ResizeV,
+	OS_WINDOW_MouseCursor_ResizeNESW,
+	OS_WINDOW_MouseCursor_ResizeNWSE,
+	OS_WINDOW_MouseCursor_ResizeAll,
+	OS_WINDOW_MouseCursor_COUNT
+} OS_WINDOW_MouseCursor;
+
 typedef struct OS_WINDOW {
 	void* handle; // OS_specific window handle. On windows (which is currently the only supported target), it's represented as HWND.
+	
+	OS_WINDOW_MouseCursor current_cursor;
+	void* current_cursor_handle; // HCURSOR on windows
+
+	bool mouse_is_hidden;
+	int32_t mouse_hidden_pos[2];
+
 	bool should_close;
 
 	bool key_is_down[OS_WINDOW_Key_COUNT];
@@ -190,19 +210,6 @@ typedef struct OS_WINDOW_Event {
 	float raw_mouse_input[2]; // for RawMouseInput event
 } OS_WINDOW_Event;
 
-typedef enum OS_WINDOW_MouseCursor {
-	OS_WINDOW_MouseCursor_Arrow,
-	OS_WINDOW_MouseCursor_Hand,
-	OS_WINDOW_MouseCursor_I_Beam,
-	OS_WINDOW_MouseCursor_Crosshair,
-	OS_WINDOW_MouseCursor_ResizeH,
-	OS_WINDOW_MouseCursor_ResizeV,
-	OS_WINDOW_MouseCursor_ResizeNESW,
-	OS_WINDOW_MouseCursor_ResizeNWSE,
-	OS_WINDOW_MouseCursor_ResizeAll,
-	OS_WINDOW_MouseCursor_COUNT
-} OS_WINDOW_MouseCursor;
-
 typedef void(*OS_WINDOW_OnResizeFn)(uint32_t width, uint32_t height, void* user_data);
 
 // After calling `OS_WINDOW_CreateHidden`, the window will remain hidden.
@@ -229,10 +236,12 @@ OS_WINDOW_API bool OS_WINDOW_ShouldClose(OS_WINDOW* window);
 
 OS_WINDOW_API void OS_WINDOW_GetMousePosition(OS_WINDOW* window, float* x, float* y);
 
-OS_WINDOW_API void OS_WINDOW_SetMouseCursor(OS_WINDOW_MouseCursor cursor);
-OS_WINDOW_API void OS_WINDOW_SetMouseCursorLockAndHide(bool lock_and_hide);
+OS_WINDOW_API void OS_WINDOW_SetMouseCursor(OS_WINDOW* window, OS_WINDOW_MouseCursor cursor);
+OS_WINDOW_API void OS_WINDOW_SetMouseCursorLockAndHide(OS_WINDOW* window, bool lock_and_hide);
 
-#ifdef /**********/ FIRE_OS_WINDOW_IMPLEMENTATION /**********/
+#ifdef /********************/ FIRE_OS_WINDOW_IMPLEMENTATION /********************/
+
+#pragma comment(lib, "User32.lib")
 
 #include <Windows.h> // TODO: get rid of this include and forward-declare manually
 
@@ -437,13 +446,13 @@ static int64_t OS_WINDOW_WindowProc(HWND hWnd, uint32_t uMsg, uint64_t wParam, i
 				event->raw_mouse_input[1] = (float)raw_input.data.mouse.lLastY;
 			}
 		} break;
-		/*case WM_SETCURSOR: {
-			if (LOWORD(lParam) == HTCLIENT) {
-				SetCursor(OS_current_cursor_handle);
+		case WM_SETCURSOR: {
+			if (window->current_cursor_handle && LOWORD(lParam) == HTCLIENT) {
+				SetCursor((HCURSOR)window->current_cursor_handle);
 			} else {
 				result = DefWindowProcW(hWnd, uMsg, wParam, lParam);
 			}
-		} break;*/
+		} break;
 		}
 	}
 	else {
@@ -604,8 +613,48 @@ OS_WINDOW_API void OS_WINDOW_GetMousePosition(OS_WINDOW* window, float* x, float
 	*y = (float)cursor_pos.y;
 }
 
-OS_WINDOW_API void OS_WINDOW_SetMouseCursor(OS_WINDOW_MouseCursor cursor);
-OS_WINDOW_API void OS_WINDOW_SetMouseCursorLockAndHide(bool lock_and_hide);
+OS_WINDOW_API void OS_WINDOW_SetMouseCursor(OS_WINDOW* window, OS_WINDOW_MouseCursor cursor) {
+	if (cursor != window->current_cursor) {
+		wchar_t* cursor_name = NULL;
+		switch (cursor) {
+		case OS_WINDOW_MouseCursor_Arrow: cursor_name = (wchar_t*)IDC_ARROW; break;
+		case OS_WINDOW_MouseCursor_Hand: cursor_name = (wchar_t*)IDC_HAND; break;
+		case OS_WINDOW_MouseCursor_I_Beam: cursor_name = (wchar_t*)IDC_IBEAM; break;
+		case OS_WINDOW_MouseCursor_Crosshair: cursor_name = (wchar_t*)IDC_CROSS; break;
+		case OS_WINDOW_MouseCursor_ResizeH: cursor_name = (wchar_t*)IDC_SIZEWE; break;
+		case OS_WINDOW_MouseCursor_ResizeV: cursor_name = (wchar_t*)IDC_SIZENS; break;
+		case OS_WINDOW_MouseCursor_ResizeNESW: cursor_name = (wchar_t*)IDC_SIZENESW; break;
+		case OS_WINDOW_MouseCursor_ResizeNWSE: cursor_name = (wchar_t*)IDC_SIZENWSE; break;
+		case OS_WINDOW_MouseCursor_ResizeAll: cursor_name = (wchar_t*)IDC_SIZEALL; break;
+		case OS_WINDOW_MouseCursor_COUNT: break;
+		}
+		window->current_cursor_handle = LoadCursorW(NULL, cursor_name);
+		window->current_cursor = cursor;
+	}
+}
+
+OS_WINDOW_API void OS_WINDOW_SetMouseCursorLockAndHide(OS_WINDOW* window, bool lock_and_hide) {
+	if (lock_and_hide) {
+		if (!window->mouse_is_hidden) {
+			POINT point;
+			GetCursorPos(&point);
+			window->mouse_hidden_pos[0] = point.x;
+			window->mouse_hidden_pos[1] = point.y;
+		}
+		
+		SetCursorPos(window->mouse_hidden_pos[0], window->mouse_hidden_pos[1]);
+		if (!window->mouse_is_hidden) {
+			ShowCursor(0);
+			window->mouse_is_hidden = true;
+		}
+	}
+	else {
+		if (window->mouse_is_hidden) {
+			ShowCursor(1);
+			window->mouse_is_hidden = false;
+		}
+	}
+}
 
 #endif // FIRE_OS_WINDOW_IMPLEMENTATION
 #endif // FIRE_OS_WINDOW_INCLUDED

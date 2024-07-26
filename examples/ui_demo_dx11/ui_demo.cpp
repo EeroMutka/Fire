@@ -5,6 +5,11 @@
 #pragma comment (lib, "d3d11")
 #pragma comment (lib, "d3dcompiler")
 
+#define _CRT_SECURE_NO_WARNINGS
+#include <assert.h>
+#include <stdlib.h>
+#include <stdio.h>
+
 #define COBJMACROS
 #include <windows.h>
 #include <d3d11.h>
@@ -16,32 +21,28 @@
 #define STR_USE_FIRE_DS_ARENA
 #include "fire_string.h"
 
-#define OS_USE_FIRE_DS_ARENA
-#define OS_STRING_OVERRIDE
-#define OS_String STR
-#include "fire_os.h"
+#define FIRE_OS_WINDOW_IMPLEMENTATION
+#include "fire_os_window.h"
 
-#include "fire_gpu/fire_gpu.h"
+#define FIRE_OS_CLIPBOARD_IMPLEMENTATION
+#include "fire_os_clipboard.h"
 
 #define STB_RECT_PACK_IMPLEMENTATION
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "fire_ui/stb_rect_pack.h"
 #include "fire_ui/stb_truetype.h"
 
-#include <assert.h>
-#include <stdlib.h>
-#include <stdio.h>
-
 #include "fire_ui/fire_ui.h"
 #include "fire_ui/fire_ui_color_pickers.h"
 #include "fire_ui/fire_ui_backend_dx11.h"
 #include "fire_ui/fire_ui_backend_fire_os.h"
 
-#include "../shared/ui_demo.h"
+#include "ui_demo_window.h"
 
 //// Globals ///////////////////////////////////////////////
 
 static UI_Vec2 g_window_size = {1200, 900};
+static OS_WINDOW g_window;
 
 static IDXGISwapChain* g_swapchain;
 static ID3D11RenderTargetView* g_framebuffer_rtv;
@@ -51,6 +52,22 @@ static UI_Inputs g_ui_inputs;
 static UIDemoState g_demo_state;
 
 ////////////////////////////////////////////////////////////
+
+static STR ReadEntireFile(DS_Arena* arena, const char* file) {
+	FILE* f = fopen(file, "rb");
+	assert(f);
+
+	fseek(f, 0, SEEK_END);
+	long fsize = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
+	char* data = DS_ArenaPush(arena, fsize);
+	fread(data, fsize, 1, f);
+
+	fclose(f);
+	STR result = {data, fsize};
+	return result;
+}
 
 static void UpdateAndRender() {
 	UI_DX11_BeginFrame();
@@ -65,7 +82,7 @@ static void UpdateAndRender() {
 	UI_DX11_STATE.device_context->ClearRenderTargetView(g_framebuffer_rtv, clearcolor);
 
 	UI_DX11_EndFrame(&ui_outputs, g_framebuffer_rtv);
-	UI_OS_ApplyOutputs(&ui_outputs);
+	UI_OS_ApplyOutputs(&g_window, &ui_outputs);
 	
 	g_swapchain->Present(1, 0);
 }
@@ -85,7 +102,7 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
 
 	D3D11_RENDER_TARGET_VIEW_DESC framebuffer_rtv_desc = {0};
 	framebuffer_rtv_desc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
-	framebuffer_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	framebuffer_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
 	UI_DX11_STATE.device->CreateRenderTargetView(framebuffer, &framebuffer_rtv_desc, &g_framebuffer_rtv);
 	
 	framebuffer->Release(); // We don't need this handle anymore
@@ -94,14 +111,12 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
 }
 
 int main() {
-	OS_Init();
-
 	DS_Arena persist;
 	DS_ArenaInit(&persist, 4096, DS_HEAP);
 
 	UIDemoInit(&g_demo_state, &persist);
 
-	OS_Window window = OS_WindowCreate((uint32_t)g_window_size.x, (uint32_t)g_window_size.y, OS_STR("UI demo (DX11)"));
+	g_window = OS_WINDOW_Create((uint32_t)g_window_size.x, (uint32_t)g_window_size.y, "UI demo (DX11)");
 
 	D3D_FEATURE_LEVEL dx_feature_levels[] = { D3D_FEATURE_LEVEL_11_0 };
 	
@@ -109,12 +124,12 @@ int main() {
 	swapchain_desc.BufferDesc.Width  = 0; // use window width
 	swapchain_desc.BufferDesc.Height = 0; // use window height
 	swapchain_desc.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-	swapchain_desc.SampleDesc.Count  = 1;
+	swapchain_desc.SampleDesc.Count  = 8;
 	swapchain_desc.BufferUsage       = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapchain_desc.BufferCount       = 2;
-	swapchain_desc.OutputWindow      = (HWND)window.handle;
+	swapchain_desc.OutputWindow      = (HWND)g_window.handle;
 	swapchain_desc.Windowed          = TRUE;
-	swapchain_desc.SwapEffect        = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	swapchain_desc.SwapEffect        = DXGI_SWAP_EFFECT_DISCARD;
 	
 	ID3D11Device* device;
 	ID3D11DeviceContext* device_context;
@@ -129,7 +144,7 @@ int main() {
 
 	D3D11_RENDER_TARGET_VIEW_DESC framebuffer_rtv_desc = {0};
 	framebuffer_rtv_desc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
-	framebuffer_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	framebuffer_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
 	device->CreateRenderTargetView(framebuffer, &framebuffer_rtv_desc, &g_framebuffer_rtv);
 	
 	framebuffer->Release(); // We don't need this handle anymore
@@ -141,18 +156,17 @@ int main() {
 	UI_Init(&persist, &ui_backend);
 
 	// NOTE: the font data must remain alive across the whole program lifetime!
-	STR roboto_mono_ttf, icons_ttf;
-	assert(OS_ReadEntireFile(&persist, STR_("../../fire_ui/resources/roboto_mono.ttf"), &roboto_mono_ttf));
-	assert(OS_ReadEntireFile(&persist, STR_("../../fire_ui/resources/fontello/font/fontello.ttf"), &icons_ttf));
+	STR roboto_mono_ttf = ReadEntireFile(&persist, "../../fire_ui/resources/roboto_mono.ttf");
+	STR icons_ttf = ReadEntireFile(&persist, "../../fire_ui/resources/fontello/font/fontello.ttf");
 
 	UI_Font base_font, icons_font;
 	UI_FontInit(&base_font, roboto_mono_ttf.data, -4.f);
 	UI_FontInit(&icons_font, icons_ttf.data, -2.f);
 	
-	while (!OS_WindowShouldClose(&window)) {
-		UI_OS_ResetFrameInputs(&window, &g_ui_inputs, &base_font, &icons_font);
+	while (!OS_WINDOW_ShouldClose(&g_window)) {
+		UI_OS_ResetFrameInputs(&g_window, &g_ui_inputs, &base_font, &icons_font);
 		
-		for (OS_Event event; OS_WindowPollEvent(&window, &event, OnResizeWindow, NULL);) {
+		for (OS_WINDOW_Event event; OS_WINDOW_PollEvent(&g_window, &event, OnResizeWindow, NULL);) {
 			UI_OS_RegisterInputEvent(&g_ui_inputs, &event);
 		}
 		
@@ -171,6 +185,4 @@ int main() {
 	device_context->Release();
 
 	DS_ArenaDeinit(&persist);
-
-	OS_Deinit();
 }

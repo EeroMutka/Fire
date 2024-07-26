@@ -1,3 +1,11 @@
+// fire_os_sync.h - Multithreading library (currently only implemented on windows)
+// Written by Eero Mutka.
+//
+// This code is released under the MIT license (https://opensource.org/licenses/MIT).
+//
+// If you wish to use a different prefix than OS_SYNC_, simply do a find and replace in this file.
+//
+
 #ifndef FIRE_OS_SYNC_INCLUDED
 #define FIRE_OS_SYNC_INCLUDED
 

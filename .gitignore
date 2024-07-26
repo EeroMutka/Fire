@@ -1,4 +1,9 @@
-.build/
+
+# ignore everything in the build folder except for VS project files
+**/build/*
+!**/build/*.sln
+!**/build/*.vcxproj
+
 .vs/
 *.obj
 *.exe
