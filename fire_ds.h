@@ -598,13 +598,11 @@ typedef struct DS_BucketArrayIndex {
 
 typedef DS_BucketArray(char) DS_BucketArrayRaw;
 
+
 #define DS_BucketArrayInit(ARRAY, ALLOCATOR, ELEMS_PER_BUCKET) DS_BucketArrayInitRaw((DS_BucketArrayRaw*)(ARRAY), (ALLOCATOR), (ELEMS_PER_BUCKET));
 //#define BucketArrayInitUsingSlotAllocator(ARRAY, SLOT_ALLOCATOR) BucketArrayInitUsingSlotAllocatorRaw((DS_BucketArrayRaw*)(ARRAY), (SlotAllocatorRaw*)(SLOT_ALLOCATOR), DS_BucketElemSize(ARRAY))
-		//#define DS_BucketArrayInit(ARRAY, ALLOCATOR)
 
-//#define DS_ArrPush(ARR, ...) do { \
-//	DS_ArrReserveRaw((DS_DynArrayRaw*)(ARR), (ARR)->length + 1, DS_ArrElemSize(*(ARR))); \
-//	(ARR)->data[(ARR)->length++] = __VA_ARGS__; } while (0)
+#define DS_BucketArraySetViewToArray(ARRAY, ELEMS_DATA, ELEMS_COUNT) DS_BucketArraySetViewToArrayRaw((DS_BucketArrayRaw*)(ARRAY), (ELEMS_DATA), (uint32_t)(ELEMS_COUNT))
 
 #define DS_BucketArrayPush(ARRAY, ...) do { \
 	DS_BucketArrayPushRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY)); \
@@ -750,6 +748,15 @@ static inline DS_BucketArrayIndex DS_BucketArrayFirstIndexRaw(DS_BucketArrayRaw*
 //	}
 //	array->last_bucket_end = end.slot_index;
 //}
+
+static inline void DS_BucketArraySetViewToArrayRaw(DS_BucketArrayRaw* array, const void* elems_data, uint32_t elems_count) {
+	DS_BucketArrayRaw result = {0};
+	result.last_bucket_end = (int)elems_count;
+	result.count = (int)elems_count;
+	*(const void**)&result.buckets[0] = elems_data;
+	*(const void**)&result.buckets[1] = elems_data;
+	*array = result;
+}
 
 static inline void DS_BucketArrayInitRaw(DS_BucketArrayRaw* array, DS_Allocator* allocator, int elems_per_bucket) {
 	DS_BucketArrayRaw result = {0};
