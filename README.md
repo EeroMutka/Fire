@@ -22,7 +22,7 @@ This is a collection of easy to use programming libraries that are compatible wi
 * `fire_ui/`
   * Immediate-mode user interface library to give you menus, buttons, text edit boxes and lots more
   * Depends on `fire_ds.h`, `fire_string.h`, [stb_rect_pack.h](https://github.com/nothings/stb/blob/master/stb_rect_pack.h) and [stb_truetype.h](https://github.com/nothings/stb/blob/master/stb_truetype.h)
-  * For a more detailed explanation, see [my article](https://eeromutka.github.io/projects/immediate_mode_ui/)
+  * For a more detailed explanation, see [my article](https://eeromutka.github.io/projects/imgui.html)
   * Still quite work-in-progress
 
 ## Building the Examples

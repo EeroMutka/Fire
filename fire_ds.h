@@ -142,8 +142,7 @@ static const DS_AllocatorHeader DS_HEAP_ = { DS_ALLOCATOR_TAG_HEAP };
 #define DS_SlotSize(ALLOCATOR) sizeof((ALLOCATOR)->buckets[0]->slots[0])
 
 #define DS_BucketElemSize(ARRAY) (sizeof((ARRAY)->buckets[0]->dummy_T))
-#define DS_BucketNextPtrPadding(ARRAY) ((uintptr_t)&(ARRAY)->buckets[0]->dummy_ptr - (uintptr_t)(ARRAY)->buckets[0] - DS_BucketElemSize(ARRAY))
-#define DS_BucketNextPtrOffset(ARRAY) ((ARRAY)->elems_per_bucket * DS_BucketElemSize(ARRAY) + DS_BucketNextPtrPadding(ARRAY))
+#define DS_BucketNextPtrOffset(ARRAY) ((ARRAY)->elems_per_bucket * DS_BucketElemSize(ARRAY))
 
 #ifdef __cplusplus
 template<typename T> static inline T* DS_Clone__(DS_Arena* a, const T& v) { T* x = (T*)DS_ArenaPush(a, sizeof(T)); *x = v; return x; }
@@ -813,14 +812,13 @@ static void* DS_BucketArrayGetNextBucket(DS_BucketArrayRaw* array, void* bucket,
 		else {
 			new_bucket = DS_MemAlloc(array->allocator, bucket_size);
 		}
+		*(void**)((char*)new_bucket + next_bucket_ptr_offset) = NULL;
 	}
 
 	if (bucket) {
-		// set the `next` pointer of the previous bucket to point to the new bucket
 		*(void**)((char*)bucket + next_bucket_ptr_offset) = new_bucket;
 	}
 	else {
-		// set the `first bucket` pointer to point to the new bucket
 		*(void**)&array->buckets[0] = new_bucket;
 		*(void**)((char*)new_bucket + next_bucket_ptr_offset) = NULL;
 	}
