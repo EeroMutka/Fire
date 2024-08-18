@@ -352,7 +352,8 @@ typedef struct UI_EditTextModify {
 typedef DS_Map(UI_Key, UI_Box*) UI_BoxFromKeyMap;
 
 typedef struct UI_State {
-	DS_Arena* persistent_arena;
+	DS_Allocator* allocator;
+	DS_Arena persistent_arena;
 	UI_Backend backend;
 
 	UI_Font* base_font;
@@ -496,7 +497,7 @@ UI_API inline UI_Vec2 UI_RectSize(UI_Rect rect) { UI_Vec2 x = { rect.max.x - rec
  `resources_directory` is the path of the `resources` folder that is shipped with FUI.
  FUI will load the default fonts from this folder during `UI_Init`, as well as the shader.
 */
-UI_API void UI_Init(DS_Arena* persistent_arena, const UI_Backend* backend);
+UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend);
 UI_API void UI_Deinit(void);
 
 UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size);
@@ -2100,7 +2101,7 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 	style.text_padding = UI_VEC2{ 10.f, 5.f };
 	style.child_padding = UI_VEC2{ 12.f, 12.f };
 	style.text_color = UI_COLOR{ 255, 255, 255, 255 };
-	DS_ArrPush(&UI_STATE.style_stack, DS_Clone(UI_Style, UI_STATE.persistent_arena, style));
+	DS_ArrPush(&UI_STATE.style_stack, DS_Clone(UI_Style, &UI_STATE.persistent_arena, style));
 
 	DS_ProfExit();
 }
@@ -2108,24 +2109,26 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 UI_API void UI_Deinit(void) {
 	DS_ArenaDeinit(&UI_STATE.prev_frame_arena);
 	DS_ArenaDeinit(&UI_STATE.frame_arena);
+	DS_ArenaDeinit(&UI_STATE.persistent_arena);
 
 	UI_STATE.backend.destroy_buffer(0);
 	UI_STATE.backend.destroy_buffer(1);
 	UI_STATE.backend.destroy_atlas(0);
 
-	DS_MemFree(DS_HEAP, UI_STATE.atlas_buffer_grayscale);
+	DS_MemFree(UI_STATE.allocator, UI_STATE.atlas_buffer_grayscale);
 
 	UI_TextDeinit(&UI_STATE.edit_number_text);
 }
 
-UI_API void UI_Init(DS_Arena* persistent_arena, const UI_Backend* backend) {
+UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 	DS_ProfEnter();
 
 	memset(&UI_STATE, 0, sizeof(UI_STATE));
-	UI_STATE.persistent_arena = persistent_arena;
+	UI_STATE.allocator = allocator;
 	UI_STATE.backend = *backend;
-	DS_ArenaInit(&UI_STATE.prev_frame_arena, DS_KIB(4), DS_HEAP);
-	DS_ArenaInit(&UI_STATE.frame_arena, DS_KIB(4), DS_HEAP);
+	DS_ArenaInit(&UI_STATE.persistent_arena, DS_KIB(1), allocator);
+	DS_ArenaInit(&UI_STATE.prev_frame_arena, DS_KIB(4), allocator);
+	DS_ArenaInit(&UI_STATE.frame_arena, DS_KIB(4), allocator);
 
 	stbtt_PackBegin(&UI_STATE.pack_context, NULL, UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE, 0, UI_GLYPH_PADDING, NULL);
 
@@ -2155,7 +2158,7 @@ UI_API void UI_Init(DS_Arena* persistent_arena, const UI_Backend* backend) {
 	//UI_.atlas_staging_buffer = GPU_MakeBuffer(sizeof(uint32_t)*UI_GLYPH_MAP_SIZE*UI_GLYPH_MAP_SIZE, GPU_BufferFlag_CPU, NULL);
 	//memset(UI_.atlas_staging_buffer->data, 0, UI_.atlas_staging_buffer->size);
 
-	UI_STATE.atlas_buffer_grayscale = (uint8_t*)DS_MemAlloc(DS_HEAP, sizeof(uint8_t) * UI_GLYPH_MAP_SIZE * UI_GLYPH_MAP_SIZE);
+	UI_STATE.atlas_buffer_grayscale = (uint8_t*)DS_MemAlloc(UI_STATE.allocator, sizeof(uint8_t) * UI_GLYPH_MAP_SIZE * UI_GLYPH_MAP_SIZE);
 	memset(UI_STATE.atlas_buffer_grayscale, 0, UI_GLYPH_MAP_SIZE * UI_GLYPH_MAP_SIZE);
 	UI_STATE.pack_context.pixels = UI_STATE.atlas_buffer_grayscale;
 
@@ -2174,11 +2177,11 @@ UI_API void UI_Init(DS_Arena* persistent_arena, const UI_Backend* backend) {
 		// UI_FontInit(&UI_.icons_font, icons_ttf.data, -2.f);
 	}
 
-	DS_ArrInit(&UI_STATE.style_stack, UI_STATE.persistent_arena);
-	DS_ArrInit(&UI_STATE.box_stack, UI_STATE.persistent_arena);
+	DS_ArrInit(&UI_STATE.style_stack, &UI_STATE.persistent_arena);
+	DS_ArrInit(&UI_STATE.box_stack, &UI_STATE.persistent_arena);
 	DS_ArrPush(&UI_STATE.box_stack, NULL);
 
-	UI_TextInit(DS_HEAP, &UI_STATE.edit_number_text, STR_(""));
+	UI_TextInit(allocator, &UI_STATE.edit_number_text, STR_(""));
 
 	DS_ProfExit();
 }
@@ -2525,7 +2528,7 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 
 UI_API void UI_FontInit(UI_Font* font, const void* ttf_data, float y_offset) {
 	memset(font, 0, sizeof(*font));
-	DS_MapInit(&font->glyph_map, DS_HEAP);
+	DS_MapInit(&font->glyph_map, UI_STATE.allocator);
 
 	font->data = (const unsigned char*)ttf_data;
 	font->y_offset = y_offset;
@@ -3401,3 +3404,7 @@ UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 
 #endif // UI_IMPLEMENTATION
 #endif // FIRE_UI_INCLUDED
+
+
+
+

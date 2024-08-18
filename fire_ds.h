@@ -14,7 +14,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>  // memcpy, memmove, memset, memcmp, strlen
-#include <stdlib.h>  // for DS_AllocatorFn_BuiltIn
+
+#ifndef DS_NO_MALLOC
+#include <stdlib.h>  // for DS_AllocatorFn_Default
+#endif
 
 #ifndef DS_PROFILER_MACROS_OVERRIDE
 // Function-level profiler scope. A single function may only have one of these, and it should span the entire function.
@@ -40,70 +43,56 @@
 #define DS_MAX_ELEM_SIZE 2048
 #endif
 
+#ifdef __cplusplus
+#define DS_LangAgnosticLiteral(T) T   // in C++, struct and union literals are of the form MyStructType{...}
+#else
+#define DS_LangAgnosticLiteral(T) (T) // in C, struct and union literals are of the form (MyStructType){...}
+#endif
+
 #define DS_DEFAULT_ALIGNMENT sizeof(void*)
 #define DS_MAX_ALIGNMENT     sizeof(void*[2]) // this should be the alignment of the largest SIMD type.
 
-#define DS_ALLOCATOR_TAG_ARENA 1
-#define DS_ALLOCATOR_TAG_HEAP  2
+typedef enum DS_AllocatorType {
+	DS_AllocatorType_Heap,
+	DS_AllocatorType_Arena,
+} DS_AllocatorType;
 
-typedef struct DS_AllocatorHeader {
-	int tag;
-} DS_AllocatorHeader;
+typedef struct DS_AllocatorBase_Default {
+	DS_AllocatorType type;
+} DS_AllocatorBase_Default;
 
-#define DS_AllocatorIsBuiltin(ALLOCATOR) ((ALLOCATOR)->tag >= 0 && (ALLOCATOR)->tag <= 99)
-static char* DS_AllocatorFn_BuiltIn(DS_AllocatorHeader* allocator, char* old_ptr, int old_size, int new_size, int new_alignment);
-
-#ifdef DS_USE_CUSTOM_ALLOCATOR
-char* DS_AllocatorFn_Impl(DS_AllocatorHeader* allocator, char* old_ptr, int old_size, int new_size, int new_alignment);
-#else
-static char* DS_AllocatorFn_Impl(DS_AllocatorHeader* allocator, char* old_ptr, int old_size, int new_size, int new_alignment) {
-	DS_CHECK(DS_AllocatorIsBuiltin(allocator));
-	char* result = DS_AllocatorFn_BuiltIn(allocator, old_ptr, old_size, new_size, new_alignment);
-	return result;
-}
+#ifndef DS_USE_CUSTOM_ALLOCATOR
+#define DS_AllocatorBase             DS_AllocatorBase_Default
+#define DS_AllocatorBase_Init(TYPE)  DS_LangAgnosticLiteral(DS_AllocatorBase_Default){ TYPE }
+#define DS_AllocatorFn_Impl(ALLOCATOR, OLD_PTR, OLD_SIZE, NEW_SIZE, NEW_ALIGNMENT) DS_AllocatorFn_Default(ALLOCATOR, OLD_PTR, OLD_SIZE, NEW_SIZE, NEW_ALIGNMENT)
 #endif
 
 // ----------------------------------------------------------
 
-#ifdef DS_CUSTOM_ARENA
-// If you want to implement your own custom arena, you must provide definitions for the following:
-// - DS_Arena
-// - DS_ArenaMark
-// - void DS_ArenaInit_Custom(DS_Allocator* allocator, DS_Arena *arena, int block_size)
-// - void DS_ArenaDeinit_Custom(DS_Arena *arena)
-// - char *DS_ArenaPush_Custom(DS_Arena *arena, int size, int alignment)
-// - DS_ArenaMark DS_ArenaGetMark_Custom(DS_Arena *arena)
-// - void DS_ArenaSetMark_Custom(DS_Arena *arena, DS_ArenaMark mark)
-// - void DS_ArenaReset_Custom(DS_Arena *arena)
-// Note that if you want to be able to use your custom arena as a DS_Allocator, (for example DS_Arr uses that),
-// you must have a DS_AllocatorHeader as the first member.
-#else
-typedef struct DS_DefaultArena DS_Arena;
-typedef struct DS_DefaultArenaMark DS_ArenaMark;
-#endif
+typedef struct DS_Arena DS_Arena;
 
-// A pointer to DS_Allocator is a pointer to a structure which contains DS_AllocatorHeader as its first member, and that DS_AllocatorFn_Impl uses to
-// define the behaviour of the allocator. For convenience, it's typedef'd to DS_Arena to make it easy to pass an arena pointer to any parameter
-// of type DS_Allocator*, but it doesn't have to be an arena. Simply cast your allocator pointer to (DS_Allocator*) to use it.
+// DS_Allocator can be any structure that DS_AllocatorFn_Impl defines the behaviour of.
+// For convenience, it's type-defined to be DS_Arena, to make it easy to pass an arena pointer to any parameter
+// of type DS_Allocator*, but it doesn't have to be an arena.
 typedef DS_Arena DS_Allocator;
 
-typedef struct DS_DefaultArenaBlockHeader {
+typedef struct DS_ArenaBlockHeader {
 	int size_including_header;
-	struct DS_DefaultArenaBlockHeader* next; // may be NULL
-} DS_DefaultArenaBlockHeader;
+	struct DS_ArenaBlockHeader* next; // may be NULL
+} DS_ArenaBlockHeader;
 
-typedef struct DS_DefaultArenaMark {
-	DS_DefaultArenaBlockHeader* block; // If the arena has no blocks allocated yet, then we mark the beginning of the arena by setting this member to NULL.
+typedef struct DS_ArenaMark {
+	DS_ArenaBlockHeader* block; // If the arena has no blocks allocated yet, then we mark the beginning of the arena by setting this member to NULL.
 	char* ptr;
-} DS_DefaultArenaMark;
+} DS_ArenaMark;
 
-typedef struct DS_DefaultArena {
-	DS_AllocatorHeader header;
+struct DS_Arena {
+	DS_AllocatorBase base;
 	int block_size;
-	DS_DefaultArenaBlockHeader* first_block; // may be NULL
-	DS_DefaultArenaMark mark;
+	DS_ArenaBlockHeader* first_block; // may be NULL
+	DS_ArenaMark mark;
 	DS_Allocator* allocator;
-} DS_DefaultArena;
+};
 
 // -------------------------------------------------------------------
 
@@ -118,12 +107,8 @@ typedef struct DS_DefaultArena {
 #define DS_LangAgnosticLiteral(T) (T) // in C, struct and union literals are of the form (MyStructType){...}
 #endif
 
-static const DS_AllocatorHeader DS_HEAP_ = { DS_ALLOCATOR_TAG_HEAP };
+static const DS_AllocatorBase DS_HEAP_ = DS_AllocatorBase_Init(DS_AllocatorType_Heap);
 #define DS_HEAP (DS_Allocator*)(&DS_HEAP_)
-
-// DS_ArenaOrHeap is used to mark arena parameters where you may pass DS_HEAP.
-// When using DS_HEAP, you must also remember call the appropriate deinitialization function that frees the memory.
-// typedef DS_Arena DS_ArenaOrHeap;
 
 // Results in a compile-error if `elem` does not match the array's element type
 #define DS_ArrTypecheck(array, elem) (void)((array)->data == elem)
@@ -447,25 +432,26 @@ DS_API void DS_ArenaReset(DS_Arena* arena);
 
 // -- Memory allocation --------------------------------
 
-static char* DS_AllocatorFn_BuiltIn(DS_AllocatorHeader* allocator, char* old_ptr, int old_size, int new_size, int new_alignment) {
-	char* result = NULL;
-	if (allocator->tag == DS_ALLOCATOR_TAG_ARENA) {
+#ifndef DS_NO_MALLOC
+static char* DS_AllocatorFn_Default(DS_AllocatorBase_Default* allocator, char* old_ptr, int old_size, int new_size, int new_alignment) {
+	char* result;
+	if (allocator->type == DS_AllocatorType_Arena) {
 		result = DS_ArenaPushEx((DS_Arena*)allocator, new_size, new_alignment);
 		memcpy(result, old_ptr, old_size);
 	}
 	else {
-		DS_CHECK(allocator->tag == DS_ALLOCATOR_TAG_HEAP);
 		result = (char*)_aligned_realloc(old_ptr, new_size, new_alignment);
 	}
 	return result;
 }
+#endif
 
 // DS_AllocatorFn is a combination of malloc, free and realloc.
 // - To make a new allocation (i.e. malloc/realloc), pass a size other than 0 into `new_size`,
 //   and pass an alignment, e.g. DS_DEFAULT_ALIGNMENT into `new_alignment`.
 // - To free an existing allocation (i.e. free/realloc), pass it into `old_ptr` and its size into `old_size, otherwise pass NULL and 0.
-static char* DS_AllocatorFn(DS_Allocator* allocator, const void* old_ptr, int old_size, int new_size, int new_alignment) {
-	char* result = DS_AllocatorFn_Impl((DS_AllocatorHeader*)allocator, (char*)old_ptr, old_size, new_size, new_alignment);
+static inline char* DS_AllocatorFn(DS_Allocator* allocator, const void* old_ptr, int old_size, int new_size, int new_alignment) {
+	char* result = DS_AllocatorFn_Impl((DS_AllocatorBase*)allocator, (char*)old_ptr, old_size, new_size, new_alignment);
 	DS_CHECK(((uintptr_t)result & (new_alignment - 1)) == 0); // check that the alignment is correct
 	return result;
 }
@@ -1348,27 +1334,19 @@ static inline bool DS_MapInsertRaw(DS_MapRaw* map, const void* key, DS_OUT void*
 }
 
 DS_API void DS_ArenaInit(DS_Arena* arena, int block_size, DS_Allocator* allocator) {
-#ifdef DS_CUSTOM_ARENA
-	DS_ArenaInit_Custom(allocator, arena, block_size);
-#else
 	memset(arena, 0, sizeof(*arena));
-	arena->header.tag = DS_ALLOCATOR_TAG_ARENA;
+	arena->base = DS_AllocatorBase_Init(DS_AllocatorType_Arena);
 	arena->block_size = block_size;
 	arena->allocator = allocator;
-#endif
 }
 
 DS_API void DS_ArenaDeinit(DS_Arena* arena) {
-#ifdef DS_CUSTOM_ARENA
-	DS_ArenaDeinit_Custom(arena);
-#else
-	for (DS_DefaultArenaBlockHeader* block = arena->first_block; block;) {
-		DS_DefaultArenaBlockHeader* next = block->next;
+	for (DS_ArenaBlockHeader* block = arena->first_block; block;) {
+		DS_ArenaBlockHeader* next = block->next;
 		DS_MemFree(arena->allocator, block);
 		block = next;
 	}
 	DS_DebugFillGarbage(arena, sizeof(DS_Arena));
-#endif
 }
 
 DS_API char* DS_ArenaPush(DS_Arena* arena, int size) {
@@ -1382,29 +1360,25 @@ DS_API char* DS_ArenaPushZero(DS_Arena* arena, int size) {
 }
 
 DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment) {
-#ifdef DS_CUSTOM_ARENA
-	char* result = DS_ArenaPush_Custom(arena, size, alignment)
-		return result;
-#else
 	DS_ProfEnter();
 
 	bool alignment_is_power_of_2 = ((alignment) & ((alignment)-1)) == 0;
 	DS_CHECK(alignment != 0 && alignment_is_power_of_2);
 	DS_CHECK(alignment <= DS_MAX_ALIGNMENT); // DS_Arena blocks get allocated using DS_MAX_ALIGNMENT, and so all allocations within an arena must conform to that.
 
-	DS_DefaultArenaBlockHeader* curr_block = arena->mark.block; // may be NULL
+	DS_ArenaBlockHeader* curr_block = arena->mark.block; // may be NULL
 	void* curr_ptr = arena->mark.ptr;
 
 	char* result_address = (char*)DS_AlignUpPow2((uintptr_t)curr_ptr, alignment);
 	int remaining_space = curr_block ? curr_block->size_including_header - (int)((uintptr_t)result_address - (uintptr_t)curr_block) : 0;
 
 	if (size > remaining_space) { // We need a new block!
-		int result_offset = DS_AlignUpPow2(sizeof(DS_DefaultArenaBlockHeader), alignment);
+		int result_offset = DS_AlignUpPow2(sizeof(DS_ArenaBlockHeader), alignment);
 		int new_block_size = result_offset + size;
 		if (arena->block_size > new_block_size) new_block_size = arena->block_size;
 
-		DS_DefaultArenaBlockHeader* new_block = NULL;
-		DS_DefaultArenaBlockHeader* next_block = NULL;
+		DS_ArenaBlockHeader* new_block = NULL;
+		DS_ArenaBlockHeader* next_block = NULL;
 
 		// If there is a block at the end of the list that we have used previously, but aren't using anymore, then try to start using that one.
 		if (curr_block && curr_block->next) {
@@ -1418,7 +1392,7 @@ DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment) {
 
 		// Otherwise, insert a new block.
 		if (new_block == NULL) {
-			new_block = (DS_DefaultArenaBlockHeader*)DS_AllocatorFn(arena->allocator, NULL, 0, new_block_size, DS_MAX_ALIGNMENT);
+			new_block = (DS_ArenaBlockHeader*)DS_AllocatorFn(arena->allocator, NULL, 0, new_block_size, DS_MAX_ALIGNMENT);
 			new_block->size_including_header = new_block_size;
 			new_block->next = next_block;
 
@@ -1433,18 +1407,14 @@ DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment) {
 	arena->mark.ptr = result_address + size;
 	return result_address;
 	DS_ProfExit();
-#endif
 }
 
 DS_API void DS_ArenaReset(DS_Arena* arena) {
-#ifdef DS_CUSTOM_ARENA
-	DS_ArenaReset_Custom(arena);
-#else
 	DS_ProfEnter();
 	if (arena->first_block) {
 		// Free all blocks after the first block
-		for (DS_DefaultArenaBlockHeader* block = arena->first_block->next; block;) {
-			DS_DefaultArenaBlockHeader* next = block->next;
+		for (DS_ArenaBlockHeader* block = arena->first_block->next; block;) {
+			DS_ArenaBlockHeader* next = block->next;
 			DS_MemFree(arena->allocator, block);
 			block = next;
 		}
@@ -1457,34 +1427,24 @@ DS_API void DS_ArenaReset(DS_Arena* arena) {
 		}
 	}
 	arena->mark.block = arena->first_block;
-	arena->mark.ptr = (char*)arena->first_block + sizeof(DS_DefaultArenaBlockHeader);
+	arena->mark.ptr = (char*)arena->first_block + sizeof(DS_ArenaBlockHeader);
 	DS_ProfExit();
-#endif
 }
 
 DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena* arena) {
-#ifdef DS_CUSTOM_ARENA
-	DS_ArenaMark result = DS_ArenaGetMark_Custom(arena);
-	return result;
-#else
 	return arena->mark;
-#endif
 }
 
 DS_API void DS_ArenaSetMark(DS_Arena* arena, DS_ArenaMark mark) {
-#ifdef DS_CUSTOM_ARENA
-	DS_ArenaSetMark_Custom(arena, mark);
-#else
 	DS_ProfEnter();
 	if (mark.block == NULL) {
 		arena->mark.block = arena->first_block;
-		arena->mark.ptr = (char*)arena->first_block + sizeof(DS_DefaultArenaBlockHeader);
+		arena->mark.ptr = (char*)arena->first_block + sizeof(DS_ArenaBlockHeader);
 	}
 	else {
 		arena->mark = mark;
 	}
 	DS_ProfExit();
-#endif
 }
 
 //#ifndef DS_REALLOC_OVERRIDE
