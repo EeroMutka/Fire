@@ -49,8 +49,13 @@
 #define DS_LangAgnosticLiteral(T) (T) // in C, struct and union literals are of the form (MyStructType){...}
 #endif
 
-#define DS_DEFAULT_ALIGNMENT sizeof(void*)
-#define DS_MAX_ALIGNMENT     sizeof(void*[2]) // this should be the alignment of the largest SIMD type.
+#ifndef DS_DEFAULT_ALIGNMENT
+#define DS_DEFAULT_ALIGNMENT  sizeof(void*)
+#endif
+
+#ifndef DS_ARENA_BLOCK_ALIGNMENT
+#define DS_ARENA_BLOCK_ALIGNMENT  (sizeof(void*)*2)
+#endif
 
 typedef enum DS_AllocatorType {
 	DS_AllocatorType_Heap,
@@ -92,6 +97,7 @@ struct DS_Arena {
 	DS_ArenaBlockHeader* first_block; // may be NULL
 	DS_ArenaMark mark;
 	DS_Allocator* allocator;
+	int total_mem_reserved;
 };
 
 // -------------------------------------------------------------------
@@ -458,7 +464,7 @@ static inline char* DS_AllocatorFn(DS_Allocator* allocator, const void* old_ptr,
 
 #define DS_MemAllocEx(ALLOCATOR, SIZE, ALIGNMENT) DS_AllocatorFn(ALLOCATOR, NULL, 0, SIZE, ALIGNMENT)
 #define DS_MemAlloc(ALLOCATOR, SIZE)              DS_AllocatorFn(ALLOCATOR, NULL, 0, SIZE, DS_DEFAULT_ALIGNMENT)
-#define DS_MemFree(ALLOCATOR, PTR)                DS_AllocatorFn(ALLOCATOR, PTR, 0, 0, DS_DEFAULT_ALIGNMENT)
+#define DS_MemFree(ALLOCATOR, PTR)                DS_AllocatorFn(ALLOCATOR, PTR, 0, 0, 1)
 
 static inline void* DS_CloneSize(DS_Arena* arena, const void* value, int size) { void* p = DS_ArenaPush(arena, size); return memcpy(p, value, size); }
 static inline void* DS_CloneSizeA(DS_Arena* arena, const void* value, int size, int align) { void* p = DS_ArenaPushEx(arena, size, align); return memcpy(p, value, size); }
@@ -1364,7 +1370,7 @@ DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment) {
 
 	bool alignment_is_power_of_2 = ((alignment) & ((alignment)-1)) == 0;
 	DS_CHECK(alignment != 0 && alignment_is_power_of_2);
-	DS_CHECK(alignment <= DS_MAX_ALIGNMENT); // DS_Arena blocks get allocated using DS_MAX_ALIGNMENT, and so all allocations within an arena must conform to that.
+	DS_CHECK(alignment <= DS_ARENA_BLOCK_ALIGNMENT);
 
 	DS_ArenaBlockHeader* curr_block = arena->mark.block; // may be NULL
 	void* curr_ptr = arena->mark.ptr;
@@ -1392,9 +1398,10 @@ DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment) {
 
 		// Otherwise, insert a new block.
 		if (new_block == NULL) {
-			new_block = (DS_ArenaBlockHeader*)DS_AllocatorFn(arena->allocator, NULL, 0, new_block_size, DS_MAX_ALIGNMENT);
+			new_block = (DS_ArenaBlockHeader*)DS_AllocatorFn(arena->allocator, NULL, 0, new_block_size, DS_ARENA_BLOCK_ALIGNMENT);
 			new_block->size_including_header = new_block_size;
 			new_block->next = next_block;
+			arena->total_mem_reserved += new_block_size;
 
 			if (curr_block) curr_block->next = new_block;
 			else arena->first_block = new_block;
@@ -1415,6 +1422,7 @@ DS_API void DS_ArenaReset(DS_Arena* arena) {
 		// Free all blocks after the first block
 		for (DS_ArenaBlockHeader* block = arena->first_block->next; block;) {
 			DS_ArenaBlockHeader* next = block->next;
+			arena->total_mem_reserved -= block->size_including_header;
 			DS_MemFree(arena->allocator, block);
 			block = next;
 		}
@@ -1422,6 +1430,7 @@ DS_API void DS_ArenaReset(DS_Arena* arena) {
 
 		// Free the first block too if it's larger than the regular block size
 		if (arena->first_block->size_including_header > arena->block_size) {
+			arena->total_mem_reserved -= arena->first_block->size_including_header;
 			DS_MemFree(arena->allocator, arena->first_block);
 			arena->first_block = NULL;
 		}
