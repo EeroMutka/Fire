@@ -1,3 +1,5 @@
+#define ENABLE_D3D11_DEBUG_MODE false
+
 #pragma comment (lib, "gdi32")
 #pragma comment (lib, "user32")
 #pragma comment (lib, "dxguid")
@@ -133,7 +135,13 @@ int main() {
 	
 	ID3D11Device* device;
 	ID3D11DeviceContext* device_context;
-	D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG, dx_feature_levels, ARRAYSIZE(dx_feature_levels), D3D11_SDK_VERSION, &swapchain_desc, &g_swapchain, &device, NULL, &device_context);
+	
+	uint32_t create_device_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | (ENABLE_D3D11_DEBUG_MODE ? D3D11_CREATE_DEVICE_DEBUG : 0);
+	
+	HRESULT res = D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL,
+		create_device_flags, dx_feature_levels, ARRAYSIZE(dx_feature_levels), D3D11_SDK_VERSION,
+		&swapchain_desc, &g_swapchain, &device, NULL, &device_context);
+	assert(res == S_OK);
 
 	g_swapchain->GetDesc(&swapchain_desc); // Update swapchain_desc with actual window size
 	
