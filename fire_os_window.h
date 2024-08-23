@@ -544,7 +544,47 @@ OS_WINDOW_API void OS_WINDOW_Show(OS_WINDOW* window) {
 	ShowWindow((HWND)window->handle, SW_SHOW);
 }
 
-OS_WINDOW_API bool OS_WINDOW_SetFullscreen(OS_WINDOW* window, bool fullscreen);
+OS_WINDOW_API bool OS_WINDOW_SetFullscreen(OS_WINDOW* window, bool fullscreen) {
+	// https://devblogs.microsoft.com/oldnewthing/20100412-00/?p=14353
+
+	bool ok = true;
+	int32_t style = GetWindowLongW((HWND)window->handle, GWL_STYLE);
+
+	if (fullscreen) {
+		HMONITOR monitor = MonitorFromWindow((HWND)window->handle, MONITOR_DEFAULTTONEAREST);
+
+		MONITORINFO info;
+		info.cbSize = sizeof(MONITORINFO);
+		ok = GetMonitorInfoW(monitor, &info) == 1;
+		if (ok) {
+			SetWindowLongW((HWND)window->handle, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+
+			RECT old_rect;
+			GetWindowRect((HWND)window->handle, &old_rect);
+
+			window->pre_fullscreen_state.left = old_rect.left;
+			window->pre_fullscreen_state.top = old_rect.top;
+			window->pre_fullscreen_state.right = old_rect.right;
+			window->pre_fullscreen_state.bottom = old_rect.bottom;
+
+			int32_t x = info.rcMonitor.left;
+			int32_t y = info.rcMonitor.top;
+			int32_t w = info.rcMonitor.right - x;
+			int32_t h = info.rcMonitor.bottom - y;
+			SetWindowPos((HWND)window->handle, HWND_TOPMOST, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+		}
+	}
+	else {
+		SetWindowLongW((HWND)window->handle, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
+
+		int32_t x = window->pre_fullscreen_state.left;
+		int32_t y = window->pre_fullscreen_state.top;
+		int32_t w = window->pre_fullscreen_state.left - x;
+		int32_t h = window->pre_fullscreen_state.bottom - y;
+		SetWindowPos((HWND)window->handle, HWND_TOP, x, y, w, h, SWP_FRAMECHANGED);
+	}
+	return ok;
+}
 
 // * Returns false when the window is closed.
 // * The reason for having `on_resize` as a callback is that when resizing, Windows doesn't
