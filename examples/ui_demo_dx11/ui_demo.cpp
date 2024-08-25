@@ -55,6 +55,7 @@ static UIDemoState g_demo_state;
 
 ////////////////////////////////////////////////////////////
 
+
 static STR ReadEntireFile(DS_Arena* arena, const char* file) {
 	FILE* f = fopen(file, "rb");
 	assert(f);
@@ -102,7 +103,7 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
 	ID3D11Texture2D* framebuffer;
 	g_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&framebuffer); // grab framebuffer from swapchain
 
-	D3D11_RENDER_TARGET_VIEW_DESC framebuffer_rtv_desc = {0};
+	D3D11_RENDER_TARGET_VIEW_DESC framebuffer_rtv_desc{};
 	framebuffer_rtv_desc.Format        = DXGI_FORMAT_B8G8R8A8_UNORM;
 	framebuffer_rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
 	UI_DX11_STATE.device->CreateRenderTargetView(framebuffer, &framebuffer_rtv_desc, &g_framebuffer_rtv);
@@ -161,7 +162,7 @@ int main() {
 	
 	UI_Backend ui_backend = {0};
 	UI_DX11_Init(&ui_backend, device, device_context);
-	UI_Init(&persist, &ui_backend);
+	UI_Init(DS_HEAP, &ui_backend);
 
 	// NOTE: the font data must remain alive across the whole program lifetime!
 	STR roboto_mono_ttf = ReadEntireFile(&persist, "../../fire_ui/resources/roboto_mono.ttf");

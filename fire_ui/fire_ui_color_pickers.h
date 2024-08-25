@@ -93,8 +93,8 @@ static void UI_DrawHueSaturationCircle(UI_Box* box) {
 	}
 
 	UI_Color current_rgba = UI_HSVToColor(data->hue, data->saturation, 1.f, 1.f);
-	UI_DrawCircle(circle_p, 6.f, 8, UI_COLOR{0, 0, 0, 188}, NULL);
-	UI_DrawCircle(circle_p, 5.f, 8, current_rgba, NULL);
+	UI_DrawCircle(circle_p, 6.f, 8, UI_COLOR{0, 0, 0, 188});
+	UI_DrawCircle(circle_p, 5.f, 8, current_rgba);
 }
 
 UI_API UI_Box* UI_HueSaturationCircle(UI_Key key, float diameter, float* hue, float* saturation) {
@@ -158,7 +158,7 @@ static void UI_ColorPickerSaturationSliderDraw(UI_Box* box) {
 		UI_VEC2{rect.min.x - 5.f, tri_y + 5.f},
 		UI_VEC2{rect.min.x - 5.f, tri_y - 5.f},
 		UI_VEC2{rect.min.x + 5.f, tri_y},
-		UI_WHITE, NULL);
+		UI_WHITE);
 }
 
 static void UI_ColorPickerValueSliderDraw(UI_Box* box) {
@@ -183,26 +183,26 @@ static void UI_ColorPickerValueSliderDraw(UI_Box* box) {
 		UI_VEC2{rect.min.x - 5.f, tri_y + 5.f},
 		UI_VEC2{rect.min.x - 5.f, tri_y - 5.f},
 		UI_VEC2{rect.min.x + 5.f, tri_y},
-		UI_WHITE, NULL);
+		UI_WHITE);
 }
 
 static void UI_DrawColorPickerBox(UI_Box* box) {
-	UI_DrawRect(box->computed_rect_clipped, box->style->opaque_bg_color, NULL);
+	UI_DrawRect(box->computed_rect_clipped, box->style->opaque_bg_color);
 }
 
 static void UI_DrawColorPickerBoxTransparent(UI_Box* box) {
-	UI_DrawRect(box->computed_rect_clipped, UI_WHITE, NULL);
+	UI_DrawRect(box->computed_rect_clipped, UI_WHITE);
 
 	float cell_size = box->computed_size.x / 4.f;
 	for (int y = 0; y < 4; y++) {
 		for (int x = (y & 1); x < 4; x += 2) {
 			UI_Vec2 min = {box->computed_position.x + (float)x * cell_size, box->computed_position.y + (float)y * cell_size};
 			UI_Vec2 max = {min.x + cell_size, min.y + cell_size};
-			UI_DrawRect(UI_RECT{min, max}, UI_LIGHTGRAY, NULL);
+			UI_DrawRect(UI_RECT{min, max}, UI_LIGHTGRAY);
 		}
 	}
 
-	UI_DrawRect(box->computed_rect_clipped, box->style->opaque_bg_color, NULL);
+	UI_DrawRect(box->computed_rect_clipped, box->style->opaque_bg_color);
 }
 
 UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* value, float* alpha) {

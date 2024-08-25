@@ -485,13 +485,14 @@ UI_API inline UI_Vec2 UI_LerpV2(UI_Vec2 a, UI_Vec2 b, float t) { return UI_VEC2{
 UI_API UI_Key UI_HashKey(UI_Key a, UI_Key b);
 UI_API UI_Key UI_HashPtr(UI_Key a, void* b);
 UI_API UI_Key UI_HashInt(UI_Key a, int b);
-// UI_API UI_Key UI_KeyFromN(UI_Key *keys, int keys_count);
 
 UI_API void UI_SelectionFixOrder(UI_Selection* sel);
 
 UI_API bool UI_PointIsInRect(UI_Rect rect, UI_Vec2 p);
 UI_API UI_Rect UI_RectIntersection(UI_Rect a, UI_Rect b);
 UI_API inline UI_Vec2 UI_RectSize(UI_Rect rect) { UI_Vec2 x = { rect.max.x - rect.min.x, rect.max.y - rect.min.y }; return x; }
+
+UI_API void UI_RectPad(UI_Rect* rect, float pad);
 
 /*
  `resources_directory` is the path of the `resources` folder that is shipped with FUI.
@@ -644,38 +645,38 @@ UI_API void UI_FontDeinit(UI_Font* font);
 
 // -- Drawing ----------------------
 
+UI_API bool UI_ClipRect(UI_Rect* rect, UI_Rect* uv_rect, const UI_Rect* scissor);
+
 UI_API inline UI_DrawVertex* UI_AddVertices(int count, uint32_t* out_first_index);
 UI_API inline uint32_t* UI_AddIndices(int count, UI_TextureID texture);
 UI_API inline void UI_AddTriangleIndices(uint32_t a, uint32_t b, uint32_t c, UI_TextureID texture);
 UI_API inline void UI_AddQuadIndices(uint32_t a, uint32_t b, uint32_t c, uint32_t d, UI_TextureID texture);
-UI_API void UI_AddTriangleIndicesAndClip(uint32_t a, uint32_t b, uint32_t c, UI_TextureID texture, UI_ScissorRect scissor);
-UI_API void UI_AddQuadIndicesAndClip(uint32_t a, uint32_t b, uint32_t c, uint32_t d, UI_TextureID texture, UI_ScissorRect scissor);
 
-UI_API void UI_DrawRect(UI_Rect rect, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, int num_corner_segments, UI_ScissorRect scissor);
-UI_API void UI_DrawRectRounded2(UI_Rect rect, float roundness, UI_Color inner_color, UI_Color outer_color, int num_corner_segments, UI_ScissorRect scissor);
-UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, int num_corner_segments, UI_ScissorRect scissor);
-UI_API void UI_DrawRectLines(UI_Rect rect, float thickness, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawRectLinesRounded(UI_Rect rect, float thickness, float roundness, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, float thickness, UI_ScissorRect scissor);
-UI_API void UI_DrawTriangle(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawRect(UI_Rect rect, UI_Color color);
+UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, int num_corner_segments);
+UI_API void UI_DrawRectRounded2(UI_Rect rect, float roundness, UI_Color inner_color, UI_Color outer_color, int num_corner_segments);
+UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, int num_corner_segments);
+UI_API void UI_DrawRectLines(UI_Rect rect, float thickness, UI_Color color);
+UI_API void UI_DrawRectLinesRounded(UI_Rect rect, float thickness, float roundness, UI_Color color);
+UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, float thickness);
+UI_API void UI_DrawTriangle(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Color color);
+UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color color);
 
 UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor);
 
 UI_API void UI_DrawSprite(UI_Rect rect, UI_Color color, UI_Rect uv_rect, UI_TextureID texture, UI_ScissorRect scissor);
 
-UI_API void UI_DrawCircle(UI_Vec2 p, float radius, int segments, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawCircle(UI_Vec2 p, float radius, int segments, UI_Color color);
 
-UI_API void UI_DrawConvexPolygon(const UI_Vec2* points, int points_count, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawConvexPolygon(const UI_Vec2* points, int points_count, UI_Color color);
 
-UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color, UI_ScissorRect scissor);
+UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color);
 
-UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color, UI_ScissorRect scissor);
-UI_API void UI_DrawLineEx(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color a_color, UI_Color b_color, UI_ScissorRect scissor);
-UI_API void UI_DrawPolyline(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, UI_ScissorRect scissor);
-UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, UI_ScissorRect scissor);
-UI_API void UI_DrawPolylineEx(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, bool loop, float split_miter_threshold, UI_ScissorRect scissor);
+UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color);
+UI_API void UI_DrawLineEx(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color a_color, UI_Color b_color);
+UI_API void UI_DrawPolyline(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness);
+UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness);
+UI_API void UI_DrawPolylineEx(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, bool loop, float split_miter_threshold);
 
 #ifdef /********************/ UI_IMPLEMENTATION /********************/
 
@@ -690,6 +691,8 @@ UI_API UI_State UI_STATE;
 
 #define UI_GLYPH_PADDING 1
 #define UI_GLYPH_MAP_SIZE 1024
+
+#define UI_BORDER_WIDTH 2.f
 
 static const UI_Vec2 UI_WHITE_PIXEL_UV = { 0.5f / (float)UI_GLYPH_MAP_SIZE, 0.5f / (float)UI_GLYPH_MAP_SIZE };
 
@@ -787,7 +790,7 @@ static UI_Vec2 UI_XYOffsetFromMark(const UI_Text* text, UI_Mark mark, UI_FontUsa
 	return result;
 }
 
-static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_origin, UI_String text, UI_FontUsage font, UI_Color color, UI_ScissorRect scissor) {
+static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_origin, UI_String text, UI_FontUsage font, UI_Color color) {
 	DS_ProfEnter();
 	float min_pos_x = UI_XOffsetFromColumn(min.col, text, font);
 	float max_pos_x = UI_XOffsetFromColumn(max.col, text, font); // this is not OK with multiline!
@@ -811,7 +814,7 @@ static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_ori
 		rect.min.x -= 1.f;
 		rect.max.x += 1.f;
 		rect.max.y += font.size;
-		UI_DrawRect(rect, color, scissor);
+		UI_DrawRect(rect, color);
 	}
 	DS_ProfExit();
 }
@@ -837,10 +840,6 @@ UI_API UI_Key UI_HashKey(UI_Key a, UI_Key b) {
 	return h;
 }
 
-//UI_API UI_Key UI_KeyFromN(UI_Key *keys, int keys_count) {
-//	return (UI_Key)DS_MurmurHash64A(keys, keys_count * sizeof(UI_Key), 3344);
-//}
-
 UI_API UI_Key UI_HashPtr(UI_Key a, void* b) {
 	return UI_HashKey(a, (UI_Key)b);
 }
@@ -863,6 +862,13 @@ UI_API void UI_SelectionFixOrder(UI_Selection* sel) {
 UI_API bool UI_PointIsInRect(UI_Rect rect, UI_Vec2 p) {
 	bool result = p.x >= rect.min.x && p.y >= rect.min.y && p.x <= rect.max.x && p.y <= rect.max.y;
 	return result;
+}
+
+UI_API void UI_RectPad(UI_Rect* rect, float pad) {
+	rect->min.x += pad;
+	rect->min.y += pad;
+	rect->max.x -= pad;
+	rect->max.y -= pad;
 }
 
 UI_API UI_Rect UI_RectIntersection(UI_Rect a, UI_Rect b) {
@@ -956,15 +962,6 @@ static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection
 	}
 	DS_ProfExit();
 }
-
-//UI_API void UI_SetText(UI_Text *text, UI_String value) {
-//	DS_ProfEnter();
-//	UI_Selection selection;
-//	UI_SelectAll(dst, &selection);
-//	UI_EraseRange(dst, selection.range[0], selection.range[1]);
-//	UI_InsertText(dst, &selection.range[0], text);
-//	DS_ProfExit();
-//}
 
 UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* request) {
 	if (!request->has_edit) return;
@@ -1574,47 +1571,94 @@ UI_API void UI_PopScrollArea(UI_Box* box) {
 	UI_PopBoxN(box, 4);
 }
 
+// returns "true" if the rect is fully clipped, "false" if there is still some area left
+UI_API bool UI_ClipRect(UI_Rect* rect, UI_Rect* uv_rect, const UI_Rect* scissor) {
+	if (rect->max.x < scissor->min.x) return true;
+	if (rect->min.x > scissor->max.x) return true;
+	if (rect->max.y < scissor->min.y) return true;
+	if (rect->min.y > scissor->max.y) return true;
+
+	float rect_w = rect->max.x - rect->min.x;
+	float rect_h = rect->max.y - rect->min.y;
+	float uv_rect_w = uv_rect->max.x - uv_rect->min.x;
+	float uv_rect_h = uv_rect->max.y - uv_rect->min.y;
+
+	float offset_min_x = scissor->min.x - rect->min.x;
+	float offset_max_x = scissor->max.x - rect->max.x;
+	float offset_min_y = scissor->min.y - rect->min.y;
+	float offset_max_y = scissor->max.y - rect->max.y;
+
+	if (offset_min_x > 0) {
+		rect->min.x = scissor->min.x;
+		uv_rect->min.x += offset_min_x * (uv_rect_w / rect_w);
+	}
+	if (offset_max_x < 0) {
+		rect->max.x = scissor->max.x;
+		uv_rect->max.x += offset_max_x * (uv_rect_w / rect_w);
+	}
+	if (offset_min_y > 0) {
+		rect->min.y = scissor->min.y;
+		uv_rect->min.y += offset_min_y * (uv_rect_h / rect_h);
+	}
+	if (offset_max_y < 0) {
+		rect->max.y = scissor->max.y;
+		uv_rect->max.y += offset_max_y * (uv_rect_h / rect_h);
+	}
+	return false;
+}
+
 // The "backdrop" of a box includes background, opaque background, border and hover/click highlighting
 UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 	DS_ProfEnter();
 
 	//UI_Rect box_rect = box->computed_rect_clipped;
 	UI_Rect box_rect = { box->computed_position, UI_AddV2(box->computed_position, box->computed_size) };
-	UI_ScissorRect scissor = box->flags & UI_BoxFlag_NoScissor ? NULL : &box->computed_rect_clipped;
 
-	if (box->flags & UI_BoxFlag_DrawTransparentBackground) {
-		UI_DrawRectRounded(box_rect, 4.f, box->style->transparent_bg_color, 2, scissor);
+	UI_Rect scissor_;
+	UI_ScissorRect scissor = NULL;
+
+	if (!(box->flags & UI_BoxFlag_NoScissor)) {
+		scissor = &scissor_;
+		scissor_ = box->computed_rect_clipped;
 	}
 
-	if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
-		UI_DrawRectRounded(box_rect, 4.f, box->style->opaque_bg_color, 2, scissor);
-		//UI_DrawRectEx(box_rect, box->style->opaque_bg_color, 12.f, 1.f, UI_INFINITE, scissor);
-	}
-
-	if (box->flags & UI_BoxFlag_DrawBorder) {
-		UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, box->style->border_color, scissor);
-	}
-
-	if (box->flags & UI_BoxFlag_Clickable) {
-		float r = 5.f;
-		{
-			float hovered = box->lazy_is_hovered * (1.f - box->lazy_is_holding_down); // We don't want to show the hover highlight when holding down
-			const UI_Color top = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 20.f) };
-			const UI_Color bot = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 10.f) };
-			UI_DrawRectCorners corners = {
-				{top, top, bot, bot},
-				{top, top, bot, bot},
-				{r, r, r, r} };
-			UI_DrawRectEx(box_rect, &corners, 2, scissor);
+	UI_Rect uv_rect;
+	bool fully_clipped = scissor && UI_ClipRect(&box_rect, &uv_rect, scissor);
+	if (!fully_clipped) {
+		if (box->flags & UI_BoxFlag_DrawTransparentBackground) {
+			UI_DrawRectRounded(box_rect, 4.f, box->style->transparent_bg_color, 2);
 		}
-		{
-			const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 100.f) };
-			const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 20.f) };
-			UI_DrawRectCorners corners = {
-				{top, top, bot, bot},
-				{top, top, bot, bot},
-				{r, r, r, r} };
-			UI_DrawRectEx(box_rect, &corners, 2, scissor);
+
+		if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
+			UI_DrawRectRounded(box_rect, 4.f, box->style->opaque_bg_color, 2);
+			//UI_DrawRectEx(box_rect, box->style->opaque_bg_color, 12.f, 1.f, UI_INFINITE, scissor);
+		}
+
+		if (box->flags & UI_BoxFlag_DrawBorder) {
+			UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, box->style->border_color);
+		}
+
+		if (box->flags & UI_BoxFlag_Clickable) {
+			float r = 4.f;
+			{
+				float hovered = box->lazy_is_hovered * (1.f - box->lazy_is_holding_down); // We don't want to show the hover highlight when holding down
+				const UI_Color top = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 20.f) };
+				const UI_Color bot = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 10.f) };
+				UI_DrawRectCorners corners = {
+					{top, top, bot, bot},
+					{top, top, bot, bot},
+					{r, r, r, r} };
+				UI_DrawRectEx(box_rect, &corners, 2);
+			}
+			{
+				const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 100.f) };
+				const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 20.f) };
+				UI_DrawRectCorners corners = {
+					{top, top, bot, bot},
+					{top, top, bot, bot},
+					{r, r, r, r} };
+				UI_DrawRectEx(box_rect, &corners, 2);
+			}
 		}
 	}
 	DS_ProfExit();
@@ -1641,7 +1685,7 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 		UI_Rect rect = box->computed_rect_clipped;
 		rect.min = UI_SubV2(rect.min, UI_VEC2{ 0.5f * shadow_distance, 0.5f * shadow_distance });
 		rect.max = UI_AddV2(rect.max, UI_VEC2{ shadow_distance, shadow_distance });
-		UI_DrawRectRounded2(rect, 2.f * shadow_distance, UI_COLOR{ 0, 0, 0, 50 }, UI_COLOR{ 0, 0, 0, 0 }, 2, NULL);
+		UI_DrawRectRounded2(rect, 2.f * shadow_distance, UI_COLOR{ 0, 0, 0, 50 }, UI_COLOR{ 0, 0, 0, 0 }, 2);
 		//UI_DrawRect(rect, UI_RED, NULL);
 
 	//UI_DrawRectEx(rect, UI_COLOR{0, 0, 0, 100}, shadow_distance, 2.f*shadow_distance, UI_INFINITE);
@@ -1652,7 +1696,7 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	if (UI_IsSelected(box->key) && UI_STATE.selection_is_visible) {
 		UI_Rect box_rect = box->computed_rect_clipped;
 		UI_Color color = UI_COLOR{ 250, 200, 85, 240 };
-		UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, color, scissor);
+		UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, color);
 	}
 
 	if (box->flags & UI_BoxFlag_DrawText) {
@@ -1666,10 +1710,10 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 		//UI_DrawLine(P, UI_AddV2(P, UI_VEC2{0, 5.f}), 2.f, UI_BLUE, NULL);
 
 		UI_Selection sel = UI_STATE.edit_text_selection;
-		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 50}, scissor);
+		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 50});
 
 		UI_Mark end = sel.range[sel.end];
-		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 255}, scissor);
+		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 255});
 	}
 	
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
@@ -1801,17 +1845,6 @@ UI_API void UI_PopStyle(UI_Style* style) {
 	UI_CHECK(DS_ArrPeek(UI_STATE.style_stack) == style);
 	DS_ArrPop(&UI_STATE.style_stack);
 }
-
-//UI_API UI_Data* UI_DataFromKey(UI_Key key) {
-//	UI_Data* p_data = NULL;
-//	bool newly_added = DS_MapGetOrAddPtr(&UI_STATE.imm_new.data_from_key, key, &p_data);
-//	if (newly_added) {
-//		UI_Data prev_frame_or_empty = {0};
-//		DS_MapFind(&UI_STATE.imm_old.data_from_key, key, &prev_frame_or_empty);
-//		*p_data = prev_frame_or_empty;
-//	}
-//	return p_data;
-//}
 
 UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key) {
 	UI_Box* box = NULL;
@@ -2291,6 +2324,7 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 	if (box->flags & UI_BoxFlag_ChildPadding) cursor += direction * box->style->child_padding._[axis];
 
 	UI_ScissorRect child_scissor = (box->flags & UI_BoxFlag_NoScissor) ? scissor : &box->computed_rect_clipped;
+
 	UI_Axis layout_axis = box->flags & UI_BoxFlag_LayoutInX ? UI_Axis_X : UI_Axis_Y;
 
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
@@ -2636,13 +2670,6 @@ UI_API float UI_TextWidth(UI_String text, UI_FontUsage font) {
 	return w;
 }
 
-/*
-DRAW CACHING PLAN:
-  The drawing layer (e.g. DrawRect()) is responsible for detecting changes and dirty rectangles.
-  Change detection strategy: per tile, generate a hash of the array of all draw commands that overlap that tile. If we don't want to use a hash triangle map,
-  we could store the array of draw command parameters per tile, and then on a second pass generate the actual triangle data. I guess we just need to profile all options here.
-*/
-
 UI_API inline UI_DrawVertex* UI_AddVertices(int count, uint32_t* out_first_index) {
 	*out_first_index = UI_STATE.draw_next_vertex;
 	UI_DrawVertex* v = &UI_STATE.draw_vertices[UI_STATE.draw_next_vertex];
@@ -2679,135 +2706,8 @@ UI_API inline void UI_AddQuadIndices(uint32_t a, uint32_t b, uint32_t c, uint32_
 	indices[3] = a; indices[4] = c; indices[5] = d;
 }
 
-UI_API void UI_AddQuadIndicesAndClip(uint32_t a, uint32_t b, uint32_t c, uint32_t d, UI_TextureID texture, UI_ScissorRect scissor) {
-	UI_AddTriangleIndicesAndClip(a, b, c, texture, scissor);
-	UI_AddTriangleIndicesAndClip(a, c, d, texture, scissor);
-}
 
-static void ClipConvexPolygonToHalfSpace(UI_Axis X, bool flip, float line_x, UI_Vec2* vertices, int vertices_count, UI_Vec2* out_vertices, int* out_vertices_count) {
-	*out_vertices_count = 0;
-	for (int i = 0; i < vertices_count; i++) {
-		UI_Vec2 v0 = vertices[i];
-		UI_Vec2 v1 = vertices[(i + 1) % vertices_count];
-
-		// NOTE: it's imporant that we always nudge `starts_inside` towards true. That way even degenerate edges that we delete get their start points added.
-		bool starts_inside = ((v0._[X] < line_x) != flip) || v0._[X] == line_x;
-		bool ends_inside = (v1._[X] < line_x) != flip;
-		if (starts_inside) {
-			out_vertices[*out_vertices_count] = v0;
-			*out_vertices_count += 1;
-			UI_CHECK(*out_vertices_count <= 7);
-		}
-		if (starts_inside != ends_inside) {
-			float edge_size_x = v1._[X] - v0._[X];
-			if (edge_size_x != 0.f) { // Delete degenerate edges
-				float t = (line_x - v0._[X]) / edge_size_x;
-				out_vertices[*out_vertices_count]._[X] = line_x;
-				out_vertices[*out_vertices_count]._[1 - X] = t * v1._[1 - X] + (1.f - t) * v0._[1 - X]; // Lerp between v0.y and v1.y using t
-				*out_vertices_count += 1;
-			}
-		}
-	}
-}
-
-static void UI_FindBarycentricCoordinates(const UI_Vec2* a, const UI_Vec2* b, const UI_Vec2* c, const UI_Vec2* p, float* u, float* v, float* w) {
-	// Described in the book "Real-Time Collision Detection" (chapter: Barycentric Coordinates)
-	UI_Vec2 v0 = { b->x - a->x, b->y - a->y };
-	UI_Vec2 v1 = { c->x - a->x, c->y - a->y };
-	UI_Vec2 v2 = { p->x - a->x, p->y - a->y };
-	float d00 = v0.x * v0.x + v0.y * v0.y;
-	float d01 = v0.x * v1.x + v0.y * v1.y;
-	float d11 = v1.x * v1.x + v1.y * v1.y;
-	float d20 = v2.x * v0.x + v2.y * v0.y;
-	float d21 = v2.x * v1.x + v2.y * v1.y;
-	float denom = d00 * d11 - d01 * d01;
-	*v = (d11 * d20 - d01 * d21) / denom;
-	*w = (d00 * d21 - d01 * d20) / denom;
-	*u = 1.0f - *v - *w;
-}
-
-UI_API void UI_AddTriangleIndicesAndClip(uint32_t a, uint32_t b, uint32_t c, UI_TextureID texture, UI_ScissorRect scissor) {
-	if (scissor) {
-		UI_DrawVertex* V[3] = { &UI_STATE.draw_vertices[a], &UI_STATE.draw_vertices[b], &UI_STATE.draw_vertices[c] };
-
-		// Early return if fully outside the scissor rect
-		float min_x = UI_Min(V[0]->position.x, V[1]->position.x); min_x = UI_Min(min_x, V[2]->position.x);
-		if (min_x >= scissor->max.x) return;
-		float min_y = UI_Min(V[0]->position.y, V[1]->position.y); min_y = UI_Min(min_y, V[2]->position.y);
-		if (min_y >= scissor->max.y) return;
-		float max_x = UI_Max(V[0]->position.x, V[1]->position.x); max_x = UI_Max(max_x, V[2]->position.x);
-		if (max_x <= scissor->min.x) return;
-		float max_y = UI_Max(V[0]->position.y, V[1]->position.y); max_y = UI_Max(max_y, V[2]->position.y);
-		if (max_y <= scissor->min.y) return;
-
-		// if fully inside the scissor_rect, just draw the triangle directly
-		if (max_x <= scissor->max.x && max_y <= scissor->max.y && min_x >= scissor->min.x && min_y >= scissor->min.y) goto draw;
-
-		int k = 0;
-		UI_Vec2 buffers[2][7];
-		int buffer_counts[2] = { 3, 0 };
-		buffers[0][0] = V[0]->position;
-		buffers[0][1] = V[1]->position;
-		buffers[0][2] = V[2]->position;
-
-		if (max_x > scissor->max.x) { // clip right
-			ClipConvexPolygonToHalfSpace(UI_Axis_X, false, scissor->max.x, buffers[k], buffer_counts[k], &buffers[1 - k][0], &buffer_counts[1 - k]);
-			k = 1 - k;
-		}
-		if (max_y > scissor->max.y) { // clip bottom
-			ClipConvexPolygonToHalfSpace(UI_Axis_Y, false, scissor->max.y, buffers[k], buffer_counts[k], &buffers[1 - k][0], &buffer_counts[1 - k]);
-			k = 1 - k;
-		}
-		if (min_x < scissor->min.x) { // clip left
-			ClipConvexPolygonToHalfSpace(UI_Axis_X, true, scissor->min.x, buffers[k], buffer_counts[k], &buffers[1 - k][0], &buffer_counts[1 - k]);
-			k = 1 - k;
-		}
-		if (min_y < scissor->min.y) { // clip top
-			ClipConvexPolygonToHalfSpace(UI_Axis_Y, true, scissor->min.y, buffers[k], buffer_counts[k], &buffers[1 - k][0], &buffer_counts[1 - k]);
-			k = 1 - k;
-		}
-
-		UI_Vec2* poly_verts = buffers[k];
-		int poly_verts_count = buffer_counts[k];
-		UI_CHECK(poly_verts_count <= 7); // Cutting a triangle by 4 lines means that at max it will be a 7-sided (3+4) polygon. That means that it can at max have 7 vertices.
-
-		uint32_t first_vertex_idx;
-		UI_DrawVertex* vertices = UI_AddVertices(poly_verts_count, &first_vertex_idx);
-		uint32_t* indices = UI_AddIndices(3 * (poly_verts_count - 2), texture);
-
-		for (int i = 0; i < poly_verts_count; i++) {
-			float u, v, w;
-			UI_FindBarycentricCoordinates(&V[0]->position, &V[1]->position, &V[2]->position, &poly_verts[i], &u, &v, &w);
-
-			float r[3] = { (float)V[0]->color.r, (float)V[1]->color.r, (float)V[2]->color.r };
-			float g[3] = { (float)V[0]->color.g, (float)V[1]->color.g, (float)V[2]->color.g };
-			float b[3] = { (float)V[0]->color.b, (float)V[1]->color.b, (float)V[2]->color.b };
-			float a[3] = { (float)V[0]->color.a, (float)V[1]->color.a, (float)V[2]->color.a };
-
-			float mixed_r = r[0] * u + r[1] * v + r[2] * w;
-			float mixed_g = g[0] * u + g[1] * v + g[2] * w;
-			float mixed_b = b[0] * u + b[1] * v + b[2] * w;
-			float mixed_a = a[0] * u + a[1] * v + a[2] * w;
-
-			vertices[i] = UI_DRAW_VERTEX{ poly_verts[i], {0, 0}, {(uint8_t)mixed_r, (uint8_t)mixed_g, (uint8_t)mixed_b, (uint8_t)mixed_a} };
-			//vertices[i] = UI_DRAW_VERTEX{poly_verts[i], {0, 0}, UI_RED};
-		}
-		for (int i = 2; i < poly_verts_count; i++) {
-			int first_idx = (i - 2) * 3;
-			indices[first_idx + 0] = first_vertex_idx;
-			indices[first_idx + 1] = first_vertex_idx + i - 1;
-			indices[first_idx + 2] = first_vertex_idx + i;
-		}
-		return;
-	}
-draw:;
-	uint32_t* indices = UI_AddIndices(3, texture);
-	indices[0] = a;
-	indices[1] = b;
-	indices[2] = c;
-}
-
-UI_API void UI_DrawConvexPolygon(const UI_Vec2* points, int points_count, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawConvexPolygon(const UI_Vec2* points, int points_count, UI_Color color) {
 	DS_ProfEnter();
 	uint32_t first_vertex;
 	UI_DrawVertex* vertices = UI_AddVertices(points_count, &first_vertex);
@@ -2816,45 +2716,14 @@ UI_API void UI_DrawConvexPolygon(const UI_Vec2* points, int points_count, UI_Col
 		vertices[i] = UI_DRAW_VERTEX{ {p.x, p.y}, {0, 0}, color };
 	}
 	for (int i = 2; i < points_count; i++) {
-		UI_AddTriangleIndicesAndClip(first_vertex, first_vertex + i - 1, first_vertex + i, UI_TEXTURE_ID_NIL, scissor);
+		UI_AddTriangleIndices(first_vertex, first_vertex + i - 1, first_vertex + i, UI_TEXTURE_ID_NIL);
 	}
 	DS_ProfExit();
 }
 
 UI_API void UI_DrawSprite(UI_Rect rect, UI_Color color, UI_Rect uv_rect, UI_TextureID texture, UI_ScissorRect scissor) {
-	if (scissor) {
-		if (rect.max.x < scissor->min.x) return;
-		if (rect.min.x > scissor->max.x) return;
-		if (rect.max.y < scissor->min.y) return;
-		if (rect.min.y > scissor->max.y) return;
-
-		float rect_w = rect.max.x - rect.min.x;
-		float rect_h = rect.max.y - rect.min.y;
-		float uv_rect_w = uv_rect.max.x - uv_rect.min.x;
-		float uv_rect_h = uv_rect.max.y - uv_rect.min.y;
-
-		float offset_min_x = scissor->min.x - rect.min.x;
-		float offset_max_x = scissor->max.x - rect.max.x;
-		float offset_min_y = scissor->min.y - rect.min.y;
-		float offset_max_y = scissor->max.y - rect.max.y;
-
-		if (offset_min_x > 0) {
-			rect.min.x = scissor->min.x;
-			uv_rect.min.x += offset_min_x * (uv_rect_w / rect_w);
-		}
-		if (offset_max_x < 0) {
-			rect.max.x = scissor->max.x;
-			uv_rect.max.x += offset_max_x * (uv_rect_w / rect_w);
-		}
-		if (offset_min_y > 0) {
-			rect.min.y = scissor->min.y;
-			uv_rect.min.y += offset_min_y * (uv_rect_h / rect_h);
-		}
-		if (offset_max_y < 0) {
-			rect.max.y = scissor->max.y;
-			uv_rect.max.y += offset_max_y * (uv_rect_h / rect_h);
-		}
-	}
+	if (scissor && UI_ClipRect(&rect, &uv_rect, scissor)) return;
+	
 	DS_ProfEnter();
 
 	uint32_t first_vertex;
@@ -2869,14 +2738,24 @@ UI_API void UI_DrawSprite(UI_Rect rect, UI_Color color, UI_Rect uv_rect, UI_Text
 	DS_ProfExit();
 }
 
-UI_API void UI_DrawRectLines(UI_Rect rect, float thickness, UI_Color color, UI_ScissorRect scissor) {
-	UI_DrawRectCorners corners = { {color, color, color, color}, {0}, {0.f, 0.f, 0.f, 0.f} };
-	UI_DrawRectLinesEx(rect, &corners, thickness, scissor);
+static void UI_LimitRectPadding(const UI_Rect* rect, float* padding) {
+	float size_x = (rect->max.x - rect->min.x) * 0.5f;
+	float size_y = (rect->max.y - rect->min.y) * 0.5f;
+	if (size_x < *padding) *padding = size_x;
+	if (size_y < *padding) *padding = size_y;
 }
 
-UI_API void UI_DrawRectLinesRounded(UI_Rect rect, float thickness, float roundness, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawRectLines(UI_Rect rect, float thickness, UI_Color color) {
+	UI_LimitRectPadding(&rect, &thickness);
+	UI_DrawRectCorners corners = { {color, color, color, color}, {0}, {0.f, 0.f, 0.f, 0.f} };
+	UI_DrawRectLinesEx(rect, &corners, thickness);
+}
+
+UI_API void UI_DrawRectLinesRounded(UI_Rect rect, float thickness, float roundness, UI_Color color) {
+	UI_LimitRectPadding(&rect, &roundness);
+	UI_LimitRectPadding(&rect, &thickness);
 	UI_DrawRectCorners corners = { {color, color, color, color}, {0}, {roundness, roundness, roundness, roundness} };
-	UI_DrawRectLinesEx(rect, &corners, thickness, scissor);
+	UI_DrawRectLinesEx(rect, &corners, thickness);
 }
 
 static UI_Vec2 UI_PointOnRoundedCorner(int corner_index, int vertex_index, int end_vertex_index) {
@@ -2911,7 +2790,7 @@ static UI_Vec2 UI_PointOnRoundedCorner(int corner_index, int vertex_index, int e
 	return c_rotated;
 }
 
-UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, float thickness, UI_ScissorRect scissor) {
+UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, float thickness) {
 	DS_ProfEnter();
 
 	UI_Vec2 inset_corners[4];
@@ -2945,8 +2824,8 @@ UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, 
 
 	// Generate edge quads
 	for (uint32_t base = edge_verts; base < edge_verts + 16; base += 4) {
-		UI_AddTriangleIndicesAndClip(base + 0, base + 2, base + 3, UI_TEXTURE_ID_NIL, scissor);
-		UI_AddTriangleIndicesAndClip(base + 0, base + 3, base + 1, UI_TEXTURE_ID_NIL, scissor);
+		UI_AddTriangleIndices(base + 0, base + 2, base + 3, UI_TEXTURE_ID_NIL);
+		UI_AddTriangleIndices(base + 0, base + 3, base + 1, UI_TEXTURE_ID_NIL);
 	}
 
 	const int end_corner_vertex = 2;
@@ -2976,20 +2855,20 @@ UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, 
 			new_verts[0] = UI_DRAW_VERTEX{ outer_pos, {0.f, 0.f}, corners->color[corner] };
 			new_verts[1] = UI_DRAW_VERTEX{ mid_pos, {0.f, 0.f}, corners->color[corner] };
 
-			UI_AddTriangleIndicesAndClip(prev_verts_first + 0, new_verts_first + 0, new_verts_first + 1, UI_TEXTURE_ID_NIL, scissor);
-			UI_AddTriangleIndicesAndClip(prev_verts_first + 0, new_verts_first + 1, prev_verts_first + 1, UI_TEXTURE_ID_NIL, scissor);
+			UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 0, new_verts_first + 1, UI_TEXTURE_ID_NIL);
+			UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 1, prev_verts_first + 1, UI_TEXTURE_ID_NIL);
 			prev_verts_first = new_verts_first;
 		}
 
 		uint32_t new_verts_first = edge_verts + 4 * corner;
-		UI_AddTriangleIndicesAndClip(prev_verts_first + 0, new_verts_first + 0, new_verts_first + 1, UI_TEXTURE_ID_NIL, scissor);
-		UI_AddTriangleIndicesAndClip(prev_verts_first + 0, new_verts_first + 1, prev_verts_first + 1, UI_TEXTURE_ID_NIL, scissor);
+		UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 0, new_verts_first + 1, UI_TEXTURE_ID_NIL);
+		UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 1, prev_verts_first + 1, UI_TEXTURE_ID_NIL);
 	}
 
 	DS_ProfExit();
 }
 
-UI_API void UI_DrawCircle(UI_Vec2 p, float radius, int segments, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawCircle(UI_Vec2 p, float radius, int segments, UI_Color color) {
 	uint32_t first_vertex;
 	UI_DrawVertex* vertices = UI_AddVertices(segments, &first_vertex);
 	for (int i = 0; i < segments; i++) {
@@ -2998,60 +2877,60 @@ UI_API void UI_DrawCircle(UI_Vec2 p, float radius, int segments, UI_Color color,
 		vertices[i] = UI_DRAW_VERTEX{ {v.x, v.y}, {0, 0}, color };
 	}
 	for (int i = 2; i < segments; i++) {
-		UI_AddTriangleIndicesAndClip(first_vertex, first_vertex + i - 1, first_vertex + i, UI_TEXTURE_ID_NIL, scissor);
+		UI_AddTriangleIndices(first_vertex, first_vertex + i - 1, first_vertex + i, UI_TEXTURE_ID_NIL);
 	}
 }
 
-UI_API void UI_DrawTriangle(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawTriangle(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Color color) {
 	uint32_t first_vert;
 	UI_DrawVertex* v = UI_AddVertices(4, &first_vert);
 	v[0] = UI_DRAW_VERTEX{a, UI_WHITE_PIXEL_UV, color};
 	v[1] = UI_DRAW_VERTEX{b, UI_WHITE_PIXEL_UV, color};
 	v[2] = UI_DRAW_VERTEX{c, UI_WHITE_PIXEL_UV, color};
-	UI_AddTriangleIndicesAndClip(first_vert, first_vert + 1, first_vert + 2, UI_TEXTURE_ID_NIL, scissor);
+	UI_AddTriangleIndices(first_vert, first_vert + 1, first_vert + 2, UI_TEXTURE_ID_NIL);
 }
 
-UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color color) {
 	uint32_t first_vert;
 	UI_DrawVertex* v = UI_AddVertices(4, &first_vert);
 	v[0] = UI_DRAW_VERTEX{a, UI_WHITE_PIXEL_UV, color};
 	v[1] = UI_DRAW_VERTEX{b, UI_WHITE_PIXEL_UV, color};
 	v[2] = UI_DRAW_VERTEX{c, UI_WHITE_PIXEL_UV, color};
 	v[3] = UI_DRAW_VERTEX{d, UI_WHITE_PIXEL_UV, color};
-	UI_AddQuadIndicesAndClip(first_vert, first_vert + 1, first_vert + 2, first_vert + 3, UI_TEXTURE_ID_NIL, scissor);
+	UI_AddQuadIndices(first_vert, first_vert + 1, first_vert + 2, first_vert + 3, UI_TEXTURE_ID_NIL);
 }
 
-UI_API void UI_DrawRect(UI_Rect rect, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawRect(UI_Rect rect, UI_Color color) {
 	uint32_t first_vert;
 	UI_DrawVertex* v = UI_AddVertices(4, &first_vert);
 	v[0] = UI_DRAW_VERTEX{{rect.min.x, rect.min.y}, UI_WHITE_PIXEL_UV, color};
 	v[1] = UI_DRAW_VERTEX{{rect.max.x, rect.min.y}, UI_WHITE_PIXEL_UV, color};
 	v[2] = UI_DRAW_VERTEX{{rect.max.x, rect.max.y}, UI_WHITE_PIXEL_UV, color};
 	v[3] = UI_DRAW_VERTEX{{rect.min.x, rect.max.y}, UI_WHITE_PIXEL_UV, color};
-	UI_AddQuadIndicesAndClip(first_vert, first_vert + 1, first_vert + 2, first_vert + 3, UI_TEXTURE_ID_NIL, scissor);
+	UI_AddQuadIndices(first_vert, first_vert + 1, first_vert + 2, first_vert + 3, UI_TEXTURE_ID_NIL);
 }
 
-UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, int num_corner_segments, UI_ScissorRect scissor) {
+UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, int num_corner_segments) {
+	UI_LimitRectPadding(&rect, &roundness);
 	UI_DrawRectCorners corners = { {color, color, color, color}, {color, color, color, color}, {roundness, roundness, roundness, roundness} };
-	UI_DrawRectEx(rect, &corners, num_corner_segments, scissor);
+	UI_DrawRectEx(rect, &corners, num_corner_segments);
 }
 
-UI_API void UI_DrawRectRounded2(UI_Rect rect, float roundness, UI_Color inner_color, UI_Color outer_color, int num_corner_segments, UI_ScissorRect scissor) {
+UI_API void UI_DrawRectRounded2(UI_Rect rect, float roundness, UI_Color inner_color, UI_Color outer_color, int num_corner_segments) {
+	UI_LimitRectPadding(&rect, &roundness);
 	UI_DrawRectCorners corners = {
 		{inner_color, inner_color, inner_color, inner_color},
 		{outer_color, outer_color, outer_color, outer_color},
 		{roundness, roundness, roundness, roundness} };
-	UI_DrawRectEx(rect, &corners, num_corner_segments, scissor);
+	UI_DrawRectEx(rect, &corners, num_corner_segments);
 }
 
-UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, int num_corner_segments, UI_ScissorRect scissor) {
+UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, int num_corner_segments) {
 	UI_Vec2 inset_corners[4];
 	inset_corners[0] = UI_AddV2(rect.min, UI_VEC2{ corners->roundness[0], corners->roundness[0] });
 	inset_corners[1] = UI_AddV2(UI_VEC2{ rect.max.x, rect.min.y }, UI_VEC2{ -corners->roundness[1], corners->roundness[1] });
 	inset_corners[2] = UI_AddV2(rect.max, UI_VEC2{ -corners->roundness[2], -corners->roundness[2] });
 	inset_corners[3] = UI_AddV2(UI_VEC2{ rect.min.x, rect.max.y }, UI_VEC2{ corners->roundness[3], -corners->roundness[3] });
-	if (inset_corners[0].x > inset_corners[2].x) return; // discard invalid rects
-	if (inset_corners[0].y > inset_corners[2].y) return; // discard invalid rects
 	
 	uint32_t inset_corner_verts;
 	UI_DrawVertex* v = UI_AddVertices(12, &inset_corner_verts);
@@ -3071,10 +2950,10 @@ UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, int n
 	v[11] = UI_DRAW_VERTEX{ {rect.min.x, inset_corners[3].y}, UI_WHITE_PIXEL_UV, corners->outer_color[3] };
 
 	// edge quads
-	UI_AddQuadIndicesAndClip(border_verts + 1, border_verts + 2, inset_corner_verts + 1, inset_corner_verts + 0, UI_TEXTURE_ID_NIL, scissor); // top edge
-	UI_AddQuadIndicesAndClip(border_verts + 3, border_verts + 4, inset_corner_verts + 2, inset_corner_verts + 1, UI_TEXTURE_ID_NIL, scissor); // right edge
-	UI_AddQuadIndicesAndClip(border_verts + 5, border_verts + 6, inset_corner_verts + 3, inset_corner_verts + 2, UI_TEXTURE_ID_NIL, scissor); // bottom edge
-	UI_AddQuadIndicesAndClip(border_verts + 7, border_verts + 0, inset_corner_verts + 0, inset_corner_verts + 3, UI_TEXTURE_ID_NIL, scissor); // left edge
+	UI_AddQuadIndices(border_verts + 1, border_verts + 2, inset_corner_verts + 1, inset_corner_verts + 0, UI_TEXTURE_ID_NIL); // top edge
+	UI_AddQuadIndices(border_verts + 3, border_verts + 4, inset_corner_verts + 2, inset_corner_verts + 1, UI_TEXTURE_ID_NIL); // right edge
+	UI_AddQuadIndices(border_verts + 5, border_verts + 6, inset_corner_verts + 3, inset_corner_verts + 2, UI_TEXTURE_ID_NIL); // bottom edge
+	UI_AddQuadIndices(border_verts + 7, border_verts + 0, inset_corner_verts + 0, inset_corner_verts + 3, UI_TEXTURE_ID_NIL); // left edge
 
 	for (int corner_i = 0; corner_i < 4; corner_i++) {
 		float r = -corners->roundness[corner_i];
@@ -3093,38 +2972,38 @@ UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, int n
 			UI_DrawVertex* new_vert = UI_AddVertices(1, &new_vert_idx);
 			new_vert[0] = UI_DRAW_VERTEX{ {inset_corners[corner_i].x + r*c.x, inset_corners[corner_i].y + r*c.y}, UI_WHITE_PIXEL_UV, corners->outer_color[corner_i] };
 
-			UI_AddTriangleIndicesAndClip(inset_corner_verts + corner_i, prev_vert_idx, new_vert_idx, UI_TEXTURE_ID_NIL, scissor);
+			UI_AddTriangleIndices(inset_corner_verts + corner_i, prev_vert_idx, new_vert_idx, UI_TEXTURE_ID_NIL);
 			prev_vert_idx = new_vert_idx;
 		}
 
-		UI_AddTriangleIndicesAndClip(inset_corner_verts + corner_i, prev_vert_idx, border_verts + corner_i * 2 + 1, UI_TEXTURE_ID_NIL, scissor);
+		UI_AddTriangleIndices(inset_corner_verts + corner_i, prev_vert_idx, border_verts + corner_i * 2 + 1, UI_TEXTURE_ID_NIL);
 	}
 
-	UI_AddQuadIndicesAndClip(inset_corner_verts, inset_corner_verts + 1, inset_corner_verts + 2, inset_corner_verts + 3, UI_TEXTURE_ID_NIL, scissor);
+	UI_AddQuadIndices(inset_corner_verts, inset_corner_verts + 1, inset_corner_verts + 2, inset_corner_verts + 3, UI_TEXTURE_ID_NIL);
 }
 
-UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color) {
 	DS_ProfEnter();
 	UI_Vec2 extent = { 0.5f * thickness, 0.5f * thickness };
 	UI_Rect rect = { UI_SubV2(p, extent), UI_AddV2(p, extent) };
-	UI_DrawRect(rect, color, scissor);
+	UI_DrawRect(rect, color);
 	DS_ProfExit();
 }
 
-UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color, UI_ScissorRect scissor) {
+UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color) {
 	UI_Vec2 points[] = { a, b };
 	UI_Color colors[] = { color, color };
-	UI_DrawPolyline(points, colors, 2, thickness, scissor);
+	UI_DrawPolyline(points, colors, 2, thickness);
 }
 
-UI_API void UI_DrawLineEx(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color a_color, UI_Color b_color, UI_ScissorRect scissor) {
+UI_API void UI_DrawLineEx(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color a_color, UI_Color b_color) {
 	UI_Vec2 points[] = { a, b };
 	UI_Color colors[] = { a_color, b_color };
-	UI_DrawPolyline(points, colors, 2, thickness, scissor);
+	UI_DrawPolyline(points, colors, 2, thickness);
 }
 
 UI_API void UI_DrawPolylineEx(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, bool loop,
-	float split_miter_threshold, UI_ScissorRect scissor)
+	float split_miter_threshold)
 {
 	if (points_count < 2) return;
 	DS_ProfEnter();
@@ -3183,11 +3062,11 @@ UI_API void UI_DrawPolylineEx(const UI_Vec2* points, const UI_Color* colors, int
 			v[3] = UI_DRAW_VERTEX{{p.x - n_post.x*half_thickness, p.y - n_post.y*half_thickness}, {0.f, 0.f}, color};
 
 			if (loop || (i != 0 && i != last)) {
-				UI_AddQuadIndicesAndClip(new_vertices+0, new_vertices+1, new_vertices+3, new_vertices+2, UI_TEXTURE_ID_NIL, scissor);
+				UI_AddQuadIndices(new_vertices+0, new_vertices+1, new_vertices+3, new_vertices+2, UI_TEXTURE_ID_NIL);
 			}
 
 			if (i > 0) {
-				UI_AddQuadIndicesAndClip(prev_idx[0], prev_idx[1], new_vertices + 1, new_vertices + 0, UI_TEXTURE_ID_NIL, scissor);
+				UI_AddQuadIndices(prev_idx[0], prev_idx[1], new_vertices + 1, new_vertices + 0, UI_TEXTURE_ID_NIL);
 			} else {
 				first_idx[0] = new_vertices + 0;
 				first_idx[1] = new_vertices + 1;
@@ -3206,7 +3085,7 @@ UI_API void UI_DrawPolylineEx(const UI_Vec2* points, const UI_Color* colors, int
 			v[1] = UI_DRAW_VERTEX{{p.x - n.x*t, p.y - n.y*t}, {0.f, 0.f}, color};
 
 			if (i > 0) {
-				UI_AddQuadIndicesAndClip(prev_idx[0], prev_idx[1], new_vertices + 1, new_vertices + 0, UI_TEXTURE_ID_NIL, scissor);
+				UI_AddQuadIndices(prev_idx[0], prev_idx[1], new_vertices + 1, new_vertices + 0, UI_TEXTURE_ID_NIL);
 			} else {
 				first_idx[0] = new_vertices + 0;
 				first_idx[1] = new_vertices + 1;
@@ -3217,18 +3096,18 @@ UI_API void UI_DrawPolylineEx(const UI_Vec2* points, const UI_Color* colors, int
 	}
 
 	if (loop) {
-		UI_AddQuadIndicesAndClip(prev_idx[0], prev_idx[1], first_idx[1], first_idx[0], UI_TEXTURE_ID_NIL, scissor);
+		UI_AddQuadIndices(prev_idx[0], prev_idx[1], first_idx[1], first_idx[0], UI_TEXTURE_ID_NIL);
 	}
 
 	DS_ProfExit();
 }
 
-UI_API void UI_DrawPolyline(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, UI_ScissorRect scissor) {
-	UI_DrawPolylineEx(points, colors, points_count, thickness, false, 0.7f, scissor);
+UI_API void UI_DrawPolyline(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness) {
+	UI_DrawPolylineEx(points, colors, points_count, thickness, false, 0.7f);
 }
 
-UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, UI_ScissorRect scissor) {
-	UI_DrawPolylineEx(points, colors, points_count, thickness, true, 0.7f, scissor);
+UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness) {
+	UI_DrawPolylineEx(points, colors, points_count, thickness, true, 0.7f);
 }
 
 UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {
@@ -3268,7 +3147,6 @@ UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI
 		glyph_uv_rect.max.x += glyph.size_pixels.x / (float)UI_GLYPH_MAP_SIZE;
 		glyph_uv_rect.max.y += glyph.size_pixels.y / (float)UI_GLYPH_MAP_SIZE;
 
-		// Apply clipping rect
 		UI_DrawSprite(glyph_rect, color, glyph_uv_rect, UI_STATE.atlases[atlas_index], scissor);
 		origin.x += glyph.x_advance;
 	}
@@ -3404,7 +3282,3 @@ UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 
 #endif // UI_IMPLEMENTATION
 #endif // FIRE_UI_INCLUDED
-
-
-
-
