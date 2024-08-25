@@ -2789,6 +2789,8 @@ static UI_Vec2 UI_PointOnRoundedCorner(int corner_index, int vertex_index, int e
 }
 
 UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, float thickness) {
+	if (rect.max.x < rect.min.x || rect.max.y < rect.min.y) return;
+
 	DS_ProfEnter();
 
 	UI_Vec2 inset_corners[4];
@@ -2899,6 +2901,8 @@ UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color col
 }
 
 UI_API void UI_DrawRect(UI_Rect rect, UI_Color color) {
+	if (rect.max.x < rect.min.x || rect.max.y < rect.min.y) return;
+
 	uint32_t first_vert;
 	UI_DrawVertex* v = UI_AddVertices(4, &first_vert);
 	v[0] = UI_DRAW_VERTEX{{rect.min.x, rect.min.y}, UI_WHITE_PIXEL_UV, color};
@@ -2924,6 +2928,8 @@ UI_API void UI_DrawRectRounded2(UI_Rect rect, float roundness, UI_Color inner_co
 }
 
 UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, int num_corner_segments) {
+	if (rect.max.x < rect.min.x || rect.max.y < rect.min.y) return;
+
 	UI_Vec2 inset_corners[4];
 	inset_corners[0] = UI_AddV2(rect.min, UI_VEC2{ corners->roundness[0], corners->roundness[0] });
 	inset_corners[1] = UI_AddV2(UI_VEC2{ rect.max.x, rect.min.y }, UI_VEC2{ -corners->roundness[1], corners->roundness[1] });
@@ -2955,10 +2961,6 @@ UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, int n
 
 	for (int corner_i = 0; corner_i < 4; corner_i++) {
 		float r = -corners->roundness[corner_i];
-		//float radius_x = -corners->roundness[corner];
-		//float radius_y = -corners->roundness[corner];
-
-		//float start_theta = 3.1415926f * 0.5f * (float)corner;
 
 		uint32_t prev_vert_idx = border_verts + corner_i * 2;
 
