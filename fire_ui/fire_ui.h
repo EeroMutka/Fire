@@ -692,8 +692,6 @@ UI_API UI_State UI_STATE;
 #define UI_GLYPH_PADDING 1
 #define UI_GLYPH_MAP_SIZE 1024
 
-#define UI_BORDER_WIDTH 2.f
-
 static const UI_Vec2 UI_WHITE_PIXEL_UV = { 0.5f / (float)UI_GLYPH_MAP_SIZE, 0.5f / (float)UI_GLYPH_MAP_SIZE };
 
 UI_API inline bool UI_MarkGreaterThan(UI_Mark a, UI_Mark b) { return a.line > b.line || (a.line == b.line && a.col > b.col); }
