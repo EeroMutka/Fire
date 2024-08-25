@@ -20,8 +20,7 @@
 #endif
 
 #ifndef DS_PROFILER_MACROS_OVERRIDE
-// Function-level profiler scope. A single function may only have one of these, and it should span the entire function.
-#define DS_ProfEnter()
+#define DS_ProfEnter()  // Function-level profiler scope. A single function may only have one of these, and it should span the entire function.
 #define DS_ProfExit()
 #endif
 

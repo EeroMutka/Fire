@@ -21,6 +21,13 @@
 #define UI_CHECK(x) assert(x)
 #endif
 
+#ifndef UI_PROFILER_MACROS_OVERRIDE
+// Function-level profiler scope. A single function may only have one of these, and it should span the entire function.
+// As a convention, we put this to every function in this library that does a significant amount of work. It's a bit subjective.
+#define UI_ProfEnter()
+#define UI_ProfExit()
+#endif
+
 typedef STR UI_String;
 
 #ifdef __cplusplus
@@ -698,12 +705,15 @@ UI_API inline bool UI_MarkGreaterThan(UI_Mark a, UI_Mark b) { return a.line > b.
 UI_API inline bool UI_MarkLessThan(UI_Mark a, UI_Mark b) { return a.line < b.line || (a.line == b.line && a.col < b.col); }
 
 UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string) {
+	UI_ProfEnter();
 	flags |= UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
 	UI_Box* box = UI_AddBoxWithText(key, w, h, flags, string);
+	UI_ProfExit();
 	return box;
 }
 
 UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string) {
+	UI_ProfEnter();
 	flags |= UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder |UI_BoxFlag_DrawTransparentBackground;
 	UI_Box* box = UI_AddBox(key, w, h, flags);
 	UI_PushBox(box);
@@ -715,11 +725,12 @@ UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlag
 	icon_box->style->font.font = UI_STATE.icons_font;
 
 	UI_PopBox(box);
+	UI_ProfExit();
 	return box;
 }
 
 static int UI_ColumnFromXOffset(float x, UI_String line, UI_FontUsage font) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	int column = 0;
 	float start_x = 0.f;
 	for STR_Each(line, r, offset) {
@@ -728,12 +739,12 @@ static int UI_ColumnFromXOffset(float x, UI_String line, UI_FontUsage font) {
 		if (x >= mid_x) column++;
 		start_x += glyph_width;
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 	return column;
 }
 
 static float UI_XOffsetFromColumn(int col, UI_String line, UI_FontUsage font) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	float x = 0.f;
 	int i = 0;
 	for STR_Each(line, r, offset) {
@@ -741,28 +752,32 @@ static float UI_XOffsetFromColumn(int col, UI_String line, UI_FontUsage font) {
 		x += UI_GlyphWidth(r, font);
 		i++;
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 	return x;
 }
 
 static UI_String UI_GetLineString(int line, const UI_Text* text) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	int lo = line == 0 ? 0 : DS_ArrGet(text->line_offsets, line - 1);
 	int hi = line == text->line_offsets.length ? text->text.length : DS_ArrGet(text->line_offsets, line);
 	UI_String result = { text->text.data, hi - lo };
-	DS_ProfExit();
+	UI_ProfExit();
 	return result;
 }
 
 static bool UI_MarkIsValid(UI_Mark mark, const UI_Text* text) {
-	if (mark.line < 0 || mark.line > text->line_offsets.length) return false;
-
-	UI_String line_str = UI_GetLineString(mark.line, text);
-	return mark.col >= 0 && mark.col <= STR_CodepointCount(line_str);
+	UI_ProfEnter();
+	bool result = false;
+	if (mark.line > 0 && mark.line < text->line_offsets.length) {
+		UI_String line_str = UI_GetLineString(mark.line, text);
+		result = mark.col >= 0 && mark.col <= STR_CodepointCount(line_str);
+	}
+	UI_ProfExit();
+	return result;
 }
 
 static int UI_MarkToByteOffset(UI_Mark mark, const UI_Text* text) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	int line_start = mark.line > 0 ? DS_ArrGet(text->line_offsets, mark.line - 1) : 0;
 	UI_String after = STR_SliceAfter(UI_TextToStr(*text), line_start);
 
@@ -776,20 +791,20 @@ static int UI_MarkToByteOffset(UI_Mark mark, const UI_Text* text) {
 		i++;
 	}
 
-	DS_ProfExit();
+	UI_ProfExit();
 	return result;
 }
 
 static UI_Vec2 UI_XYOffsetFromMark(const UI_Text* text, UI_Mark mark, UI_FontUsage font) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	float x = UI_XOffsetFromColumn(mark.col, UI_GetLineString(mark.line, text), font);
 	UI_Vec2 result = { x, font.size * mark.line };
-	DS_ProfExit();
+	UI_ProfExit();
 	return result;
 }
 
 static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_origin, UI_String text, UI_FontUsage font, UI_Color color) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	float min_pos_x = UI_XOffsetFromColumn(min.col, text, font);
 	float max_pos_x = UI_XOffsetFromColumn(max.col, text, font); // this is not OK with multiline!
 
@@ -814,10 +829,11 @@ static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_ori
 		rect.max.y += font.size;
 		UI_DrawRect(rect, color);
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API UI_Key UI_HashKey(UI_Key a, UI_Key b) {
+	UI_ProfEnter();
 	// Computes MurmurHash64A for two 64-bit integer keys. We could probably use some simpler/faster hash function.
 	const uint64_t m = 0xc6a4a7935bd1e995LLU;
 	const int r = 47;
@@ -835,6 +851,7 @@ UI_API UI_Key UI_HashKey(UI_Key a, UI_Key b) {
 	h ^= h >> r;
 	h *= m;
 	h ^= h >> r;
+	UI_ProfExit();
 	return h;
 }
 
@@ -847,14 +864,14 @@ UI_API UI_Key UI_HashInt(UI_Key a, int b) {
 }
 
 UI_API void UI_SelectionFixOrder(UI_Selection* sel) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	if (UI_MarkGreaterThan(sel->range[0], sel->range[1])) {
 		UI_Mark tmp = sel->range[1];
 		sel->range[1] = sel->range[0];
 		sel->range[0] = tmp;
 		sel->end = 1 - sel->end;
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API bool UI_PointIsInRect(UI_Rect rect, UI_Vec2 p) {
@@ -874,7 +891,7 @@ UI_API UI_Rect UI_RectIntersection(UI_Rect a, UI_Rect b) {
 }
 
 static void UI_MoveMarkByWord(UI_Mark* mark, const UI_Text* text, int dir) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	int byteoffset = UI_MarkToByteOffset(*mark, text);
 
 	bool was_whitespace = false;
@@ -904,11 +921,11 @@ static void UI_MoveMarkByWord(UI_Mark* mark, const UI_Text* text, int dir) {
 		was_alnum = alnum;
 		mark->col += dir;
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 static void UI_MoveMarkH(UI_Mark* mark, const UI_Text* text, int dir, bool ctrl) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	if (ctrl) {
 		UI_MoveMarkByWord(mark, text, dir);
 	}
@@ -931,11 +948,11 @@ static void UI_MoveMarkH(UI_Mark* mark, const UI_Text* text, int dir, bool ctrl)
 			mark->col += dir;
 		}
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection* selection, UI_FontUsage font) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 
 	bool shift = UI_InputIsDown(UI_Input_Shift);
 	if (!shift && !UI_MarkEquals(selection->range[0], selection->range[1])) {
@@ -958,89 +975,90 @@ static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection
 
 		UI_SelectionFixOrder(selection);
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* request) {
-	if (!request->has_edit) return;
+	UI_ProfEnter();
+	if (request->has_edit) {
+		// @speed: I think we could optimize this function by combining the erase and insert steps
 
-	// @speed: I think we could optimize this function by combining the erase and insert steps
+		{ // First erase selected range
+			int start_byteoffset = UI_MarkToByteOffset(request->replace_from, text);
+			int end_byteoffset = UI_MarkToByteOffset(request->replace_to, text);
 
-	{ // First erase selected range
-		int start_byteoffset = UI_MarkToByteOffset(request->replace_from, text);
-		int end_byteoffset = UI_MarkToByteOffset(request->replace_to, text);
+			int remove_n = end_byteoffset - start_byteoffset;
+			DS_ArrRemoveN(&text->text, start_byteoffset, remove_n);
 
-		int remove_n = end_byteoffset - start_byteoffset;
-		DS_ArrRemoveN(&text->text, start_byteoffset, remove_n);
+			DS_ArrRemoveN(&text->line_offsets, request->replace_from.line, request->replace_to.line - request->replace_from.line);
 
-		DS_ArrRemoveN(&text->line_offsets, request->replace_from.line, request->replace_to.line - request->replace_from.line);
-
-		DS_ForArrEach(int, &text->line_offsets, it) {
-			*it.ptr -= remove_n;
-		}
-	}
-
-	{ // Then insert the text
-		UI_String insertion = request->replace_with;
-		UI_Mark mark = request->replace_from;
-		int byteoffset = UI_MarkToByteOffset(mark, text);
-
-		DS_ArrInsertN(&text->text, byteoffset, insertion.data, insertion.size);
-
-		int lines_count = 0;
-		for (UI_String remaining = insertion;;) {
-			UI_String line_str = STR_ParseUntilAndSkip(&remaining, '\n');
-			lines_count++;
-			if (remaining.size == 0) break;
+			DS_ForArrEach(int, &text->line_offsets, it) {
+				*it.ptr -= remove_n;
+			}
 		}
 
-		// Should we try to do a new kind of text editing - optionally without storing line offsets?
-		if (lines_count > 1) UI_TODO();
-		mark.col += STR_CodepointCount(insertion);
+		{ // Then insert the text
+			UI_String insertion = request->replace_with;
+			UI_Mark mark = request->replace_from;
+			int byteoffset = UI_MarkToByteOffset(mark, text);
 
-		/*
-		StrRangeArray line_ranges = StrSplit(UI_FrameArena(), insertion, '\n');
+			DS_ArrInsertN(&text->text, byteoffset, insertion.data, insertion.size);
 
-		if (line_ranges.length > 1) {
-			int inserted_lines = line_ranges.length - 1;
-			DS_ArrResizeUndef(&text->line_offsets, text->line_offsets.length + inserted_lines);
-
-			for (int i = 0; i < line_ranges.length; i++) {
-				DS_ArrSet(text->line_offsets, mark.line + i + inserted_lines, DS_ArrGet(text->line_offsets, mark.line + 1));
-				DS_ArrSet(text->line_offsets, mark.line + i, byteoffset + DS_ArrGet(line_ranges, i).min);
+			int lines_count = 0;
+			for (UI_String remaining = insertion;;) {
+				UI_String line_str = STR_ParseUntilAndSkip(&remaining, '\n');
+				lines_count++;
+				if (remaining.size == 0) break;
 			}
 
-			mark.col = 0;
-			mark.line += inserted_lines;
+			// Should we try to do a new kind of text editing - optionally without storing line offsets?
+			if (lines_count > 1) UI_TODO();
+			mark.col += STR_CodepointCount(insertion);
+
+			/*
+			StrRangeArray line_ranges = StrSplit(UI_FrameArena(), insertion, '\n');
+
+			if (line_ranges.length > 1) {
+				int inserted_lines = line_ranges.length - 1;
+				DS_ArrResizeUndef(&text->line_offsets, text->line_offsets.length + inserted_lines);
+
+				for (int i = 0; i < line_ranges.length; i++) {
+					DS_ArrSet(text->line_offsets, mark.line + i + inserted_lines, DS_ArrGet(text->line_offsets, mark.line + 1));
+					DS_ArrSet(text->line_offsets, mark.line + i, byteoffset + DS_ArrGet(line_ranges, i).min);
+				}
+
+				mark.col = 0;
+				mark.line += inserted_lines;
+			}
+
+			StrRange last_line_range = DS_ArrGet(line_ranges, line_ranges.length - 1);
+			mark.col += StrRuneCount(StrSlice(insertion, last_line_range.min, last_line_range.max));
+
+			for (int i = mark.line; i < text->line_offsets.length; i++) {
+				int *line_offset = DS_ArrGetPtr(text->line_offsets, i);
+				*line_offset += insertion.length;
+			}*/
 		}
 
-		StrRange last_line_range = DS_ArrGet(line_ranges, line_ranges.length - 1);
-		mark.col += StrRuneCount(StrSlice(insertion, last_line_range.min, last_line_range.max));
-
-		for (int i = mark.line; i < text->line_offsets.length; i++) {
-			int *line_offset = DS_ArrGetPtr(text->line_offsets, i);
-			*line_offset += insertion.length;
-		}*/
+		// Update text for the box, otherwise we get 1-frame delay
+		request->box_with_text->text = STR_Clone(UI_FrameArena(), UI_TextToStr(*text));
 	}
-
-	// Update text for the box, otherwise we get 1-frame delay
-	request->box_with_text->text = STR_Clone(UI_FrameArena(), UI_TextToStr(*text));
+	UI_ProfExit();
 }
 
 UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	selection->range[0] = UI_MARK{0};
 	selection->range[1] = UI_MARK{
 		text->line_offsets.length,
 		STR_CodepointCount(UI_GetLineString(text->line_offsets.length, text)),
 	};
 	selection->end = 1;
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
-UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float)
-{
-	DS_ProfEnter();
+UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float) {
+	UI_ProfEnter();
 
 	UI_Box* box = NULL;
 	bool dragging = UI_IsClickingDown(key) && UI_InputIsDown(UI_Input_MouseLeft);
@@ -1114,7 +1132,7 @@ UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64
 		}
 	}
 
-	DS_ProfExit();
+	UI_ProfExit();
 	return box;
 }
 
@@ -1145,7 +1163,7 @@ UI_API UI_Box* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value)
 }
 
 UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* filepath, UI_EditTextModify* out_modify) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, UI_BoxFlag_LayoutInX);
 	UI_PushBox(box);
 
@@ -1177,11 +1195,12 @@ UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* file
 	}
 
 	UI_PopBox(box);
-	DS_ProfExit();
+	UI_ProfExit();
 	return box;
 }
 
 static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from, UI_Mark to, UI_String with, UI_EditTextModify* out_edit_request) {
+	UI_ProfEnter();
 	UI_CHECK(!out_edit_request->has_edit);
 	out_edit_request->has_edit = true;
 	out_edit_request->replace_from = selection->range[0];
@@ -1205,27 +1224,34 @@ static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from,
 	mark.col += STR_CodepointCount(last_line_str);
 	selection->range[0] = mark;
 	selection->range[1] = mark;
+	UI_ProfExit();
 }
 
 UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, UI_String initial_value) {
+	UI_ProfEnter();
 	memset(text, 0, sizeof(*text));
 	DS_ArrInit(&text->text, allocator);
 	DS_ArrInit(&text->line_offsets, allocator);
 	UI_TextSet(text, initial_value);
+	UI_ProfExit();
 }
 
 UI_API void UI_TextDeinit(UI_Text* text) {
+	UI_ProfEnter();
 	DS_ArrDeinit(&text->line_offsets);
 	DS_ArrDeinit(&text->text);
+	UI_ProfExit();
 }
 
 UI_API void UI_TextSet(UI_Text* text, UI_String value) {
+	UI_ProfEnter();
 	DS_ArrClear(&text->text);
 	DS_ArrPushN(&text->text, value.data, value.size);
+	UI_ProfExit();
 }
 
 UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	UI_Style* style = UI_PeekStyle();
 	UI_FontUsage font = style->font;
 
@@ -1358,12 +1384,13 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 		UI_ApplyEditTextModify(text, modify);
 	}
 
-	DS_ProfExit();
+	UI_ProfExit();
 	return outer;
 }
 
 UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
-	DS_ProfEnter();
+	UI_ProfEnter();
+
 	UI_Style* style = UI_PeekStyle();
 	float h = style->font.size + 2.f * style->text_padding.y;
 
@@ -1390,17 +1417,20 @@ UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
 	UI_PopBox(box);
 
 	if (UI_Pressed(inner->key)) *value = !*value;
-	DS_ProfExit();
+	
+	UI_ProfExit();
 }
 
 UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string) {
+	UI_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, flags | UI_BoxFlag_DrawText);
 	box->text = STR_Clone(UI_FrameArena(), string);
+	UI_ProfExit();
 	return box;
 }
 
 UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, UI_String text) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	UI_Key child_box_key = UI_KEY1(key);
 	UI_BoxFlags box_flags = UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
 	UI_Box* box = UI_AddBox(key, UI_SizeFlex(1.f), h, box_flags);
@@ -1430,17 +1460,19 @@ UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size inden
 		inner_child_box = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), flags);
 		UI_PushBox(inner_child_box);
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 	return inner_child_box;
 }
 
 UI_API void UI_PopCollapsing(UI_Box* box) {
+	UI_ProfEnter();
 	UI_PopBox(box);
 	UI_PopBox(box->parent);
+	UI_ProfExit();
 }
 
 UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 
 	UI_Key content_box_key = UI_KEY1(key);
 	UI_Key temp_box_keys[2] = { UI_KEY1(key), UI_KEY1(key) };
@@ -1561,53 +1593,59 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 	if (anchor_x == 1) temp_boxes[0]->flags |= UI_BoxFlag_LayoutFromEndX;
 	if (anchor_y == 1) temp_boxes[0]->flags |= UI_BoxFlag_LayoutFromEndY;
 
-	DS_ProfExit();
+	UI_ProfExit();
 	return parent;
 }
 
 UI_API void UI_PopScrollArea(UI_Box* box) {
+	UI_ProfEnter();
 	UI_PopBoxN(box, 4);
+	UI_ProfExit();
 }
 
 // returns "true" if the rect is fully clipped, "false" if there is still some area left
 UI_API bool UI_ClipRect(UI_Rect* rect, UI_Rect* uv_rect, const UI_Rect* scissor) {
-	if (rect->max.x < scissor->min.x) return true;
-	if (rect->min.x > scissor->max.x) return true;
-	if (rect->max.y < scissor->min.y) return true;
-	if (rect->min.y > scissor->max.y) return true;
+	UI_ProfEnter();
+	bool fully_clipped =
+		rect->max.x < scissor->min.x ||
+		rect->min.x > scissor->max.x ||
+		rect->max.y < scissor->min.y ||
+		rect->min.y > scissor->max.y;
+	if (!fully_clipped) {
+		float rect_w = rect->max.x - rect->min.x;
+		float rect_h = rect->max.y - rect->min.y;
+		float uv_rect_w = uv_rect->max.x - uv_rect->min.x;
+		float uv_rect_h = uv_rect->max.y - uv_rect->min.y;
 
-	float rect_w = rect->max.x - rect->min.x;
-	float rect_h = rect->max.y - rect->min.y;
-	float uv_rect_w = uv_rect->max.x - uv_rect->min.x;
-	float uv_rect_h = uv_rect->max.y - uv_rect->min.y;
+		float offset_min_x = scissor->min.x - rect->min.x;
+		float offset_max_x = scissor->max.x - rect->max.x;
+		float offset_min_y = scissor->min.y - rect->min.y;
+		float offset_max_y = scissor->max.y - rect->max.y;
 
-	float offset_min_x = scissor->min.x - rect->min.x;
-	float offset_max_x = scissor->max.x - rect->max.x;
-	float offset_min_y = scissor->min.y - rect->min.y;
-	float offset_max_y = scissor->max.y - rect->max.y;
-
-	if (offset_min_x > 0) {
-		rect->min.x = scissor->min.x;
-		uv_rect->min.x += offset_min_x * (uv_rect_w / rect_w);
+		if (offset_min_x > 0) {
+			rect->min.x = scissor->min.x;
+			uv_rect->min.x += offset_min_x * (uv_rect_w / rect_w);
+		}
+		if (offset_max_x < 0) {
+			rect->max.x = scissor->max.x;
+			uv_rect->max.x += offset_max_x * (uv_rect_w / rect_w);
+		}
+		if (offset_min_y > 0) {
+			rect->min.y = scissor->min.y;
+			uv_rect->min.y += offset_min_y * (uv_rect_h / rect_h);
+		}
+		if (offset_max_y < 0) {
+			rect->max.y = scissor->max.y;
+			uv_rect->max.y += offset_max_y * (uv_rect_h / rect_h);
+		}
 	}
-	if (offset_max_x < 0) {
-		rect->max.x = scissor->max.x;
-		uv_rect->max.x += offset_max_x * (uv_rect_w / rect_w);
-	}
-	if (offset_min_y > 0) {
-		rect->min.y = scissor->min.y;
-		uv_rect->min.y += offset_min_y * (uv_rect_h / rect_h);
-	}
-	if (offset_max_y < 0) {
-		rect->max.y = scissor->max.y;
-		uv_rect->max.y += offset_max_y * (uv_rect_h / rect_h);
-	}
-	return false;
+	UI_ProfExit();
+	return fully_clipped;
 }
 
 // The "backdrop" of a box includes background, opaque background, border and hover/click highlighting
 UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 
 	//UI_Rect box_rect = box->computed_rect_clipped;
 	UI_Rect box_rect = { box->computed_position, UI_AddV2(box->computed_position, box->computed_size) };
@@ -1659,19 +1697,21 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 			}
 		}
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawBox(UI_Box* box) {
+	UI_ProfEnter();
 	if (box->draw_override) {
 		box->draw_override(box);
 	} else {
 		UI_DrawBoxDefault(box);
 	}
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawBoxDefault(UI_Box* box) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 
 	UI_CHECK(box->flags & UI_BoxFlag_HasComputedRects);
 	UI_ScissorRect scissor = box->flags & UI_BoxFlag_NoScissor ? NULL : &box->computed_rect_clipped;
@@ -1686,7 +1726,7 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 		UI_DrawRectRounded2(rect, 2.f * shadow_distance, UI_COLOR{ 0, 0, 0, 50 }, UI_COLOR{ 0, 0, 0, 0 }, 2);
 		//UI_DrawRect(rect, UI_RED, NULL);
 
-	//UI_DrawRectEx(rect, UI_COLOR{0, 0, 0, 100}, shadow_distance, 2.f*shadow_distance, UI_INFINITE);
+		//UI_DrawRectEx(rect, UI_COLOR{0, 0, 0, 100}, shadow_distance, 2.f*shadow_distance, UI_INFINITE);
 	}
 
 	UI_DrawBoxBackdrop(box);
@@ -1721,7 +1761,7 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	//if (!(box->flags & UI_BoxFlag_NoScissor)) {
 	//	//UI_PopScissor();
 	//}
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API bool UI_HasMovedMouseAfterPressed(void) {
@@ -1805,17 +1845,22 @@ UI_API bool UI_IsMouseInsideOf(UI_Key key) {
 }
 
 static bool UI_HasAnyHoveredClickableChild_(UI_Box* box) {
+	UI_ProfEnter();
+	bool result = false;
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
 		if (UI_PointIsInRect(child->computed_rect_clipped, UI_STATE.mouse_pos)) {
 			if (child->flags & UI_BoxFlag_Clickable) {
-				return true;
+				result = true;
+				break;
 			}
 			if (UI_HasAnyHoveredClickableChild_(child)) {
-				return true;
+				result = true;
+				break;
 			}
 		}
 	}
-	return false;
+	UI_ProfExit();
+	return result;
 }
 
 UI_API bool UI_IsHoveredIdle(UI_Key key) {
@@ -1878,7 +1923,7 @@ UI_API UI_Box* UI_BoxFromKey(UI_Key key) {
 }
 
 UI_API bool UI_SelectionMovementInput(UI_Box* node, UI_Key* out_new_selected_box) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	// There are two strategies for tab-navigation. At any point (except the first step), stop if the node is selectable.
 
 	// Strategy 1. (going down):
@@ -1958,12 +2003,12 @@ UI_API bool UI_SelectionMovementInput(UI_Box* node, UI_Key* out_new_selected_box
 	}
 
 end:;
-	DS_ProfExit();
+	UI_ProfExit();
 	return result;
 }
 
 UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, bool is_a_root) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	UI_CHECK(w >= 0.f || (w >= -100.f && w <= -99.f));
 	UI_CHECK(h >= 0.f || (h >= -100.f && h <= -99.f));
 
@@ -2021,7 +2066,7 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 			is_clicking : UI_Lerp(box->prev_frame->lazy_is_holding_down, is_clicking, 0.2f);
 	}
 
-	DS_ProfExit();
+	UI_ProfExit();
 	return box;
 }
 
@@ -2030,6 +2075,7 @@ UI_API UI_Box* UI_MakeRootBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flag
 }
 
 UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
+	UI_ProfEnter();
 	UI_Box* parent = DS_ArrPeek(UI_STATE.box_stack);
 	UI_CHECK(parent != NULL); // AddBox creates a new box under the currently pushed box. If this fails, no box is currently pushed
 	
@@ -2042,20 +2088,21 @@ UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
 	box->next[0] = parent->first_child[1];
 	parent->first_child[1] = box;
 
+	UI_ProfExit();
 	return box;
 }
 
 UI_API void UI_PushBox(UI_Box* box) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	DS_ArrPush(&UI_STATE.box_stack, box);
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_PopBox(UI_Box* box) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	UI_Box* popped = DS_ArrPop(&UI_STATE.box_stack);
 	UI_CHECK(popped == box);
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_PopBoxN(UI_Box* box, int n) {
@@ -2066,7 +2113,7 @@ UI_API void UI_PopBoxN(UI_Box* box, int n) {
 }
 
 UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 
 	UI_STATE.draw_next_vertex = 0;
 	UI_STATE.draw_next_index = 0;
@@ -2134,10 +2181,11 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 	style.text_color = UI_COLOR{ 255, 255, 255, 255 };
 	DS_ArrPush(&UI_STATE.style_stack, DS_Clone(UI_Style, &UI_STATE.persistent_arena, style));
 
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_Deinit(void) {
+	UI_ProfEnter();
 	DS_ArenaDeinit(&UI_STATE.prev_frame_arena);
 	DS_ArenaDeinit(&UI_STATE.frame_arena);
 	DS_ArenaDeinit(&UI_STATE.persistent_arena);
@@ -2149,10 +2197,11 @@ UI_API void UI_Deinit(void) {
 	DS_MemFree(UI_STATE.allocator, UI_STATE.atlas_buffer_grayscale);
 
 	UI_TextDeinit(&UI_STATE.edit_number_text);
+	UI_ProfExit();
 }
 
 UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 
 	memset(&UI_STATE, 0, sizeof(UI_STATE));
 	UI_STATE.allocator = allocator;
@@ -2214,19 +2263,19 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 
 	UI_TextInit(allocator, &UI_STATE.edit_number_text, STR_(""));
 
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 //UI_API void UI_BoxComputeUnexpandedSize(UI_Box* box, UI_Axis axis) {
-//	DS_ProfEnter();
+//	UI_ProfEnter();
 //
 //	// if we have a special unexpanded-size override, then do it here!
 //
-//	DS_ProfExit();
+//	UI_ProfExit();
 //}
 
 UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	box->computed_size._[axis] = size;
 
 	float child_area_size = size;
@@ -2293,11 +2342,11 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 		}
 	}
 
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI_ScissorRect scissor) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	box->flags |= UI_BoxFlag_HasComputedRects;
 	box->computed_position._[axis] = position + box->offset._[axis];
 
@@ -2335,23 +2384,28 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 			cursor += direction * child->computed_size._[axis];
 		}
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_BoxComputeUnexpandedSizes(UI_Box* box) {
+	UI_ProfEnter();
 	UI_BoxComputeUnexpandedSize(box, UI_Axis_X);
 	UI_BoxComputeUnexpandedSize(box, UI_Axis_Y);
+	UI_ProfExit();
 }
 
 UI_API void UI_BoxComputeUnexpandedSize(UI_Box* box, UI_Axis axis) {
+	UI_ProfEnter();
 	if (box->compute_unexpanded_size_override) {
 		box->compute_unexpanded_size_override(box, axis);
 	} else {
 		UI_BoxComputeUnexpandedSizeDefault(box, axis);
 	}
+	UI_ProfExit();
 }
 
 UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis) {
+	UI_ProfEnter();
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
 		UI_BoxComputeUnexpandedSize(child, axis);
 	}
@@ -2382,22 +2436,27 @@ UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis) {
 
 	float unexpanded_size = box->size[axis] < 0.f ? fitting_size : box->size[axis];
 	box->computed_unexpanded_size._[axis] = unexpanded_size;
+	UI_ProfExit();
 }
 
 UI_API void UI_BoxComputeExpandedSizes(UI_Box* box) {
+	UI_ProfEnter();
 	UI_BoxComputeUnexpandedSizes(box);
 	UI_BoxComputeExpandedSize(box, UI_Axis_X, box->computed_unexpanded_size.x);
 	UI_BoxComputeExpandedSize(box, UI_Axis_Y, box->computed_unexpanded_size.y);
+	UI_ProfExit();
 }
 
 UI_API void UI_BoxComputeRects(UI_Box* box, UI_Vec2 box_position) {
+	UI_ProfEnter();
 	UI_BoxComputeExpandedSizes(box);
 	UI_BoxComputeRectsStep(box, UI_Axis_X, box_position.x, NULL);
 	UI_BoxComputeRectsStep(box, UI_Axis_Y, box_position.y, NULL);
+	UI_ProfExit();
 }
 
 static void UI_FinalizeDrawBatch() {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	uint32_t first_index = 0;
 	if (UI_STATE.draw_calls.length > 0) {
 		UI_DrawCall last = DS_ArrPeek(UI_STATE.draw_calls);
@@ -2414,15 +2473,11 @@ static void UI_FinalizeDrawBatch() {
 		draw_call.index_buffer_id = 1;
 		DS_ArrPush(&UI_STATE.draw_calls, draw_call);
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_EndFrame(UI_Outputs* outputs/*, GPU_Graph *graph, GPU_DescriptorArena *descriptor_arena*/) {
-	DS_ProfEnter();
-
-	// we could say that `UI_compute_tree_rects` and `draw` is left to the user.
-	//UI_compute_tree_rects(UI_.root);
-	//UI_.root->on_draw(UI_.root);
+	UI_ProfEnter();
 
 	// We reset these at the end of the frame so that we can still check for `was_key_released` and have these not be reset yet
 	if (UI_InputIsDown(UI_Input_MouseLeft)) {
@@ -2452,14 +2507,14 @@ UI_API void UI_EndFrame(UI_Outputs* outputs/*, GPU_Graph *graph, GPU_DescriptorA
 	UI_STATE.outputs.draw_calls_count = UI_STATE.draw_calls.length;
 	*outputs = UI_STATE.outputs;
 
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 	float* panel_end_offsets, float panel_min_width)
 {
+	UI_ProfEnter();
 	UI_CHECK(panel_count > 0);
-	DS_ProfEnter();
 
 	// Sanitize positions
 	float offset = 0.f;
@@ -2524,7 +2579,7 @@ UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 		}
 	}
 
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API bool UI_SplittersGetHoldingIndex(UI_Key key, int* out_index) {
@@ -2533,6 +2588,7 @@ UI_API bool UI_SplittersGetHoldingIndex(UI_Key key, int* out_index) {
 }
 
 UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_count, float* panel_end_offsets, int* out_splitter_index) {
+	UI_ProfEnter();
 	bool hovering = false;
 	for (int i = 0; i < panel_count - 1; i++) {
 		const float SPLITTER_HALF_WIDTH = 2.f; // this could use the current DPI
@@ -2547,6 +2603,7 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 			break;
 		}
 	}
+	UI_ProfExit();
 	return hovering;
 }
 
@@ -2559,6 +2616,7 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 #define INVALID_GLYPH_COLOR UI_MAGENTA
 
 UI_API void UI_FontInit(UI_Font* font, const void* ttf_data, float y_offset) {
+	UI_ProfEnter();
 	memset(font, 0, sizeof(*font));
 	DS_MapInit(&font->glyph_map, UI_STATE.allocator);
 
@@ -2567,13 +2625,17 @@ UI_API void UI_FontInit(UI_Font* font, const void* ttf_data, float y_offset) {
 
 	int font_offset = stbtt_GetFontOffsetForIndex(font->data, 0);
 	UI_CHECK(stbtt_InitFont(&font->font_info, font->data, font_offset));
+	UI_ProfExit();
 }
 
 UI_API void UI_FontDeinit(UI_Font* font) {
+	UI_ProfEnter();
 	DS_MapDeinit(&font->glyph_map);
+	UI_ProfExit();
 }
 
 static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontUsage font, int* out_atlas_index) {
+	UI_ProfEnter();
 	int atlas_index = 0;
 	UI_CachedGlyphKey key = { codepoint, (int)font.size };
 
@@ -2645,6 +2707,7 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontUsage font, i
 	}
 
 	if (out_atlas_index) *out_atlas_index = atlas_index;
+	UI_ProfExit();
 	return *glyph;
 }
 
@@ -2659,24 +2722,27 @@ UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontUsage font) {
 }
 
 UI_API float UI_TextWidth(UI_String text, UI_FontUsage font) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	float w = 0.f;
 	for STR_Each(text, r, i) {
 		w += UI_GlyphWidth(r, font);
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 	return w;
 }
 
 UI_API inline UI_DrawVertex* UI_AddVertices(int count, uint32_t* out_first_index) {
+	UI_ProfEnter();
 	*out_first_index = UI_STATE.draw_next_vertex;
 	UI_DrawVertex* v = &UI_STATE.draw_vertices[UI_STATE.draw_next_vertex];
 	UI_STATE.draw_next_vertex += count;
 	UI_CHECK(UI_STATE.draw_next_vertex <= UI_MAX_VERTEX_COUNT);
+	UI_ProfExit();
 	return v;
 }
 
 UI_API inline uint32_t* UI_AddIndices(int count, UI_TextureID texture) {
+	UI_ProfEnter();
 	// Set active texture
 	if (texture != UI_TEXTURE_ID_NIL && texture != UI_STATE.draw_active_texture) {
 		if (UI_STATE.draw_active_texture != UI_TEXTURE_ID_NIL) {
@@ -2688,25 +2754,29 @@ UI_API inline uint32_t* UI_AddIndices(int count, UI_TextureID texture) {
 	uint32_t* i = &UI_STATE.draw_indices[UI_STATE.draw_next_index];
 	UI_STATE.draw_next_index += count;
 	UI_CHECK(UI_STATE.draw_next_index <= UI_MAX_INDEX_COUNT);
+	UI_ProfExit();
 	return i;
 }
 
 UI_API inline void UI_AddTriangleIndices(uint32_t a, uint32_t b, uint32_t c, UI_TextureID texture) {
+	UI_ProfEnter();
 	uint32_t* indices = UI_AddIndices(3, texture);
 	indices[0] = a;
 	indices[1] = b;
 	indices[2] = c;
+	UI_ProfExit();
 }
 
 UI_API inline void UI_AddQuadIndices(uint32_t a, uint32_t b, uint32_t c, uint32_t d, UI_TextureID texture) {
+	UI_ProfEnter();
 	uint32_t* indices = UI_AddIndices(6, texture);
 	indices[0] = a; indices[1] = b; indices[2] = c;
 	indices[3] = a; indices[4] = c; indices[5] = d;
+	UI_ProfExit();
 }
 
-
 UI_API void UI_DrawConvexPolygon(const UI_Vec2* points, int points_count, UI_Color color) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	uint32_t first_vertex;
 	UI_DrawVertex* vertices = UI_AddVertices(points_count, &first_vertex);
 	for (int i = 0; i < points_count; i++) {
@@ -2716,24 +2786,22 @@ UI_API void UI_DrawConvexPolygon(const UI_Vec2* points, int points_count, UI_Col
 	for (int i = 2; i < points_count; i++) {
 		UI_AddTriangleIndices(first_vertex, first_vertex + i - 1, first_vertex + i, UI_TEXTURE_ID_NIL);
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawSprite(UI_Rect rect, UI_Color color, UI_Rect uv_rect, UI_TextureID texture, UI_ScissorRect scissor) {
-	if (scissor && UI_ClipRect(&rect, &uv_rect, scissor)) return;
-	
-	DS_ProfEnter();
+	UI_ProfEnter();
+	if (scissor == NULL || !UI_ClipRect(&rect, &uv_rect, scissor)) {
+		uint32_t first_vertex;
+		UI_DrawVertex* vertices = UI_AddVertices(4, &first_vertex);
+		vertices[0] = UI_DRAW_VERTEX{ {rect.min.x, rect.min.y}, uv_rect.min,                    color };
+		vertices[1] = UI_DRAW_VERTEX{ {rect.max.x, rect.min.y}, {uv_rect.max.x, uv_rect.min.y}, color };
+		vertices[2] = UI_DRAW_VERTEX{ {rect.max.x, rect.max.y}, uv_rect.max,                    color };
+		vertices[3] = UI_DRAW_VERTEX{ {rect.min.x, rect.max.y}, {uv_rect.min.x, uv_rect.max.y}, color };
 
-	uint32_t first_vertex;
-	UI_DrawVertex* vertices = UI_AddVertices(4, &first_vertex);
-	vertices[0] = UI_DRAW_VERTEX{ {rect.min.x, rect.min.y}, uv_rect.min,                    color };
-	vertices[1] = UI_DRAW_VERTEX{ {rect.max.x, rect.min.y}, {uv_rect.max.x, uv_rect.min.y}, color };
-	vertices[2] = UI_DRAW_VERTEX{ {rect.max.x, rect.max.y}, uv_rect.max,                    color };
-	vertices[3] = UI_DRAW_VERTEX{ {rect.min.x, rect.max.y}, {uv_rect.min.x, uv_rect.max.y}, color };
-
-	UI_AddQuadIndices(first_vertex, first_vertex + 1, first_vertex + 2, first_vertex + 3, texture);
-
-	DS_ProfExit();
+		UI_AddQuadIndices(first_vertex, first_vertex + 1, first_vertex + 2, first_vertex + 3, texture);
+	}
+	UI_ProfExit();
 }
 
 static void UI_LimitRectPadding(const UI_Rect* rect, float* padding) {
@@ -2744,19 +2812,24 @@ static void UI_LimitRectPadding(const UI_Rect* rect, float* padding) {
 }
 
 UI_API void UI_DrawRectLines(UI_Rect rect, float thickness, UI_Color color) {
+	UI_ProfEnter();
 	UI_LimitRectPadding(&rect, &thickness);
 	UI_DrawRectCorners corners = { {color, color, color, color}, {0}, {0.f, 0.f, 0.f, 0.f} };
 	UI_DrawRectLinesEx(rect, &corners, thickness);
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawRectLinesRounded(UI_Rect rect, float thickness, float roundness, UI_Color color) {
+	UI_ProfEnter();
 	UI_LimitRectPadding(&rect, &roundness);
 	UI_LimitRectPadding(&rect, &thickness);
 	UI_DrawRectCorners corners = { {color, color, color, color}, {0}, {roundness, roundness, roundness, roundness} };
 	UI_DrawRectLinesEx(rect, &corners, thickness);
+	UI_ProfExit();
 }
 
 static UI_Vec2 UI_PointOnRoundedCorner(int corner_index, int vertex_index, int end_vertex_index) {
+	UI_ProfEnter();
 	// Precomputed cos/sin tables
 	//for (int i = 0; i < 2; i++) {
 	//	float theta = 3.1415926f * 0.5f * (float)i / (float)2;
@@ -2785,90 +2858,90 @@ static UI_Vec2 UI_PointOnRoundedCorner(int corner_index, int vertex_index, int e
 	case 2: c_rotated = UI_VEC2{-c.x, -c.y}; break;
 	case 3: c_rotated = UI_VEC2{+c.y, -c.x}; break;
 	}
+	UI_ProfExit();
 	return c_rotated;
 }
 
 UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, float thickness) {
-	if (rect.max.x < rect.min.x || rect.max.y < rect.min.y) return;
+	UI_ProfEnter();
+	if (rect.max.x > rect.min.x && rect.max.y > rect.min.y) {
+		UI_Vec2 inset_corners[4];
+		inset_corners[0] = UI_AddV2(rect.min, UI_VEC2{ corners->roundness[0], corners->roundness[0] });
+		inset_corners[1] = UI_AddV2(UI_VEC2{ rect.max.x, rect.min.y }, UI_VEC2{ -corners->roundness[1], corners->roundness[1] });
+		inset_corners[2] = UI_AddV2(rect.max, UI_VEC2{ -corners->roundness[2], -corners->roundness[2] });
+		inset_corners[3] = UI_AddV2(UI_VEC2{ rect.min.x, rect.max.y }, UI_VEC2{ corners->roundness[3], -corners->roundness[3] });
 
-	DS_ProfEnter();
+		// Per each edge (top, right, bottom, left), we add 4 vertices: first outer, first inner, last outer, last inner
+		uint32_t edge_verts;
+		UI_DrawVertex* v = UI_AddVertices(4 * 4, &edge_verts);
+		v[0] = UI_DRAW_VERTEX{ {inset_corners[0].x, rect.min.y}, {0.f, 0.f}, corners->color[0] };
+		v[1] = UI_DRAW_VERTEX{ {inset_corners[0].x, rect.min.y + thickness}, {0.f, 0.f}, corners->color[0] };
+		v[2] = UI_DRAW_VERTEX{ {inset_corners[1].x, rect.min.y}, {0.f, 0.f}, corners->color[1] };
+		v[3] = UI_DRAW_VERTEX{ {inset_corners[1].x, rect.min.y + thickness}, {0.f, 0.f}, corners->color[1] };
 
-	UI_Vec2 inset_corners[4];
-	inset_corners[0] = UI_AddV2(rect.min, UI_VEC2{ corners->roundness[0], corners->roundness[0] });
-	inset_corners[1] = UI_AddV2(UI_VEC2{ rect.max.x, rect.min.y }, UI_VEC2{ -corners->roundness[1], corners->roundness[1] });
-	inset_corners[2] = UI_AddV2(rect.max, UI_VEC2{ -corners->roundness[2], -corners->roundness[2] });
-	inset_corners[3] = UI_AddV2(UI_VEC2{ rect.min.x, rect.max.y }, UI_VEC2{ corners->roundness[3], -corners->roundness[3] });
+		v[4] = UI_DRAW_VERTEX{ {rect.max.x, inset_corners[1].y}, {0.f, 0.f}, corners->color[1] };
+		v[5] = UI_DRAW_VERTEX{ {rect.max.x - thickness, inset_corners[1].y}, {0.f, 0.f}, corners->color[1] };
+		v[6] = UI_DRAW_VERTEX{ {rect.max.x, inset_corners[2].y}, {0.f, 0.f}, corners->color[2] };
+		v[7] = UI_DRAW_VERTEX{ {rect.max.x - thickness, inset_corners[2].y}, {0.f, 0.f}, corners->color[2] };
 
-	// Per each edge (top, right, bottom, left), we add 4 vertices: first outer, first inner, last outer, last inner
-	uint32_t edge_verts;
-	UI_DrawVertex* v = UI_AddVertices(4 * 4, &edge_verts);
-	v[0] = UI_DRAW_VERTEX{ {inset_corners[0].x, rect.min.y}, {0.f, 0.f}, corners->color[0] };
-	v[1] = UI_DRAW_VERTEX{ {inset_corners[0].x, rect.min.y + thickness}, {0.f, 0.f}, corners->color[0] };
-	v[2] = UI_DRAW_VERTEX{ {inset_corners[1].x, rect.min.y}, {0.f, 0.f}, corners->color[1] };
-	v[3] = UI_DRAW_VERTEX{ {inset_corners[1].x, rect.min.y + thickness}, {0.f, 0.f}, corners->color[1] };
+		v[8] = UI_DRAW_VERTEX{ {inset_corners[2].x, rect.max.y}, {0.f, 0.f}, corners->color[2] };
+		v[9] = UI_DRAW_VERTEX{ {inset_corners[2].x, rect.max.y - thickness}, {0.f, 0.f}, corners->color[2] };
+		v[10] = UI_DRAW_VERTEX{ {inset_corners[3].x, rect.max.y}, {0.f, 0.f}, corners->color[3] };
+		v[11] = UI_DRAW_VERTEX{ {inset_corners[3].x, rect.max.y - thickness}, {0.f, 0.f}, corners->color[3] };
 
-	v[4] = UI_DRAW_VERTEX{ {rect.max.x, inset_corners[1].y}, {0.f, 0.f}, corners->color[1] };
-	v[5] = UI_DRAW_VERTEX{ {rect.max.x - thickness, inset_corners[1].y}, {0.f, 0.f}, corners->color[1] };
-	v[6] = UI_DRAW_VERTEX{ {rect.max.x, inset_corners[2].y}, {0.f, 0.f}, corners->color[2] };
-	v[7] = UI_DRAW_VERTEX{ {rect.max.x - thickness, inset_corners[2].y}, {0.f, 0.f}, corners->color[2] };
+		v[12] = UI_DRAW_VERTEX{ {rect.min.x, inset_corners[3].y}, {0.f, 0.f}, corners->color[3] };
+		v[13] = UI_DRAW_VERTEX{ {rect.min.x + thickness, inset_corners[3].y}, {0.f, 0.f}, corners->color[3] };
+		v[14] = UI_DRAW_VERTEX{ {rect.min.x, inset_corners[0].y}, {0.f, 0.f}, corners->color[0] };
+		v[15] = UI_DRAW_VERTEX{ {rect.min.x + thickness, inset_corners[0].y}, {0.f, 0.f}, corners->color[0] };
 
-	v[8] = UI_DRAW_VERTEX{ {inset_corners[2].x, rect.max.y}, {0.f, 0.f}, corners->color[2] };
-	v[9] = UI_DRAW_VERTEX{ {inset_corners[2].x, rect.max.y - thickness}, {0.f, 0.f}, corners->color[2] };
-	v[10] = UI_DRAW_VERTEX{ {inset_corners[3].x, rect.max.y}, {0.f, 0.f}, corners->color[3] };
-	v[11] = UI_DRAW_VERTEX{ {inset_corners[3].x, rect.max.y - thickness}, {0.f, 0.f}, corners->color[3] };
-
-	v[12] = UI_DRAW_VERTEX{ {rect.min.x, inset_corners[3].y}, {0.f, 0.f}, corners->color[3] };
-	v[13] = UI_DRAW_VERTEX{ {rect.min.x + thickness, inset_corners[3].y}, {0.f, 0.f}, corners->color[3] };
-	v[14] = UI_DRAW_VERTEX{ {rect.min.x, inset_corners[0].y}, {0.f, 0.f}, corners->color[0] };
-	v[15] = UI_DRAW_VERTEX{ {rect.min.x + thickness, inset_corners[0].y}, {0.f, 0.f}, corners->color[0] };
-
-	// Generate edge quads
-	for (uint32_t base = edge_verts; base < edge_verts + 16; base += 4) {
-		UI_AddTriangleIndices(base + 0, base + 2, base + 3, UI_TEXTURE_ID_NIL);
-		UI_AddTriangleIndices(base + 0, base + 3, base + 1, UI_TEXTURE_ID_NIL);
-	}
-
-	const int end_corner_vertex = 2;
-
-	for (uint32_t corner = 0; corner < 4; corner++) {
-		float outer_radius_x = -corners->roundness[corner];
-		float outer_radius_y = -corners->roundness[corner];
-		float mid_radius_x = -(corners->roundness[corner] - thickness);
-		float mid_radius_y = -(corners->roundness[corner] - thickness);
-
-		//float start_theta = 3.1415926f * 0.5f * (float)(corner);
-
-		uint32_t prev_verts_first = edge_verts + 2 + 4 * ((corner + 3) % 4);
-
-		// Generate corner triangles
-		for (int i = 1; i < end_corner_vertex; i++) {
-			UI_Vec2 dir = UI_PointOnRoundedCorner(corner, i, end_corner_vertex);
-			// float theta = start_theta + ((float)i / (float)(end_corner_vertex)) * (3.1415926f * 0.5f);
-			// float dir_x = cosf(theta);
-			// float dir_y = sinf(theta);
-
-			UI_Vec2 outer_pos = UI_AddV2(inset_corners[corner], UI_VEC2{ dir.x * outer_radius_x, dir.y * outer_radius_y });
-			UI_Vec2 mid_pos = UI_AddV2(inset_corners[corner], UI_VEC2{ dir.x * mid_radius_x, dir.y * mid_radius_y });
-
-			uint32_t new_verts_first;
-			UI_DrawVertex* new_verts = UI_AddVertices(2, &new_verts_first);
-			new_verts[0] = UI_DRAW_VERTEX{ outer_pos, {0.f, 0.f}, corners->color[corner] };
-			new_verts[1] = UI_DRAW_VERTEX{ mid_pos, {0.f, 0.f}, corners->color[corner] };
-
-			UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 0, new_verts_first + 1, UI_TEXTURE_ID_NIL);
-			UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 1, prev_verts_first + 1, UI_TEXTURE_ID_NIL);
-			prev_verts_first = new_verts_first;
+		// Generate edge quads
+		for (uint32_t base = edge_verts; base < edge_verts + 16; base += 4) {
+			UI_AddTriangleIndices(base + 0, base + 2, base + 3, UI_TEXTURE_ID_NIL);
+			UI_AddTriangleIndices(base + 0, base + 3, base + 1, UI_TEXTURE_ID_NIL);
 		}
 
-		uint32_t new_verts_first = edge_verts + 4 * corner;
-		UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 0, new_verts_first + 1, UI_TEXTURE_ID_NIL);
-		UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 1, prev_verts_first + 1, UI_TEXTURE_ID_NIL);
-	}
+		const int end_corner_vertex = 2;
 
-	DS_ProfExit();
+		for (uint32_t corner = 0; corner < 4; corner++) {
+			float outer_radius_x = -corners->roundness[corner];
+			float outer_radius_y = -corners->roundness[corner];
+			float mid_radius_x = -(corners->roundness[corner] - thickness);
+			float mid_radius_y = -(corners->roundness[corner] - thickness);
+
+			//float start_theta = 3.1415926f * 0.5f * (float)(corner);
+
+			uint32_t prev_verts_first = edge_verts + 2 + 4 * ((corner + 3) % 4);
+
+			// Generate corner triangles
+			for (int i = 1; i < end_corner_vertex; i++) {
+				UI_Vec2 dir = UI_PointOnRoundedCorner(corner, i, end_corner_vertex);
+				// float theta = start_theta + ((float)i / (float)(end_corner_vertex)) * (3.1415926f * 0.5f);
+				// float dir_x = cosf(theta);
+				// float dir_y = sinf(theta);
+
+				UI_Vec2 outer_pos = UI_AddV2(inset_corners[corner], UI_VEC2{ dir.x * outer_radius_x, dir.y * outer_radius_y });
+				UI_Vec2 mid_pos = UI_AddV2(inset_corners[corner], UI_VEC2{ dir.x * mid_radius_x, dir.y * mid_radius_y });
+
+				uint32_t new_verts_first;
+				UI_DrawVertex* new_verts = UI_AddVertices(2, &new_verts_first);
+				new_verts[0] = UI_DRAW_VERTEX{ outer_pos, {0.f, 0.f}, corners->color[corner] };
+				new_verts[1] = UI_DRAW_VERTEX{ mid_pos, {0.f, 0.f}, corners->color[corner] };
+
+				UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 0, new_verts_first + 1, UI_TEXTURE_ID_NIL);
+				UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 1, prev_verts_first + 1, UI_TEXTURE_ID_NIL);
+				prev_verts_first = new_verts_first;
+			}
+
+			uint32_t new_verts_first = edge_verts + 4 * corner;
+			UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 0, new_verts_first + 1, UI_TEXTURE_ID_NIL);
+			UI_AddTriangleIndices(prev_verts_first + 0, new_verts_first + 1, prev_verts_first + 1, UI_TEXTURE_ID_NIL);
+		}
+	}
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawCircle(UI_Vec2 p, float radius, int segments, UI_Color color) {
+	UI_ProfEnter();
 	uint32_t first_vertex;
 	UI_DrawVertex* vertices = UI_AddVertices(segments, &first_vertex);
 	for (int i = 0; i < segments; i++) {
@@ -2879,18 +2952,22 @@ UI_API void UI_DrawCircle(UI_Vec2 p, float radius, int segments, UI_Color color)
 	for (int i = 2; i < segments; i++) {
 		UI_AddTriangleIndices(first_vertex, first_vertex + i - 1, first_vertex + i, UI_TEXTURE_ID_NIL);
 	}
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawTriangle(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Color color) {
+	UI_ProfEnter();
 	uint32_t first_vert;
 	UI_DrawVertex* v = UI_AddVertices(4, &first_vert);
 	v[0] = UI_DRAW_VERTEX{a, UI_WHITE_PIXEL_UV, color};
 	v[1] = UI_DRAW_VERTEX{b, UI_WHITE_PIXEL_UV, color};
 	v[2] = UI_DRAW_VERTEX{c, UI_WHITE_PIXEL_UV, color};
 	UI_AddTriangleIndices(first_vert, first_vert + 1, first_vert + 2, UI_TEXTURE_ID_NIL);
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color color) {
+	UI_ProfEnter();
 	uint32_t first_vert;
 	UI_DrawVertex* v = UI_AddVertices(4, &first_vert);
 	v[0] = UI_DRAW_VERTEX{a, UI_WHITE_PIXEL_UV, color};
@@ -2898,208 +2975,220 @@ UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color col
 	v[2] = UI_DRAW_VERTEX{c, UI_WHITE_PIXEL_UV, color};
 	v[3] = UI_DRAW_VERTEX{d, UI_WHITE_PIXEL_UV, color};
 	UI_AddQuadIndices(first_vert, first_vert + 1, first_vert + 2, first_vert + 3, UI_TEXTURE_ID_NIL);
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawRect(UI_Rect rect, UI_Color color) {
-	if (rect.max.x < rect.min.x || rect.max.y < rect.min.y) return;
-
-	uint32_t first_vert;
-	UI_DrawVertex* v = UI_AddVertices(4, &first_vert);
-	v[0] = UI_DRAW_VERTEX{{rect.min.x, rect.min.y}, UI_WHITE_PIXEL_UV, color};
-	v[1] = UI_DRAW_VERTEX{{rect.max.x, rect.min.y}, UI_WHITE_PIXEL_UV, color};
-	v[2] = UI_DRAW_VERTEX{{rect.max.x, rect.max.y}, UI_WHITE_PIXEL_UV, color};
-	v[3] = UI_DRAW_VERTEX{{rect.min.x, rect.max.y}, UI_WHITE_PIXEL_UV, color};
-	UI_AddQuadIndices(first_vert, first_vert + 1, first_vert + 2, first_vert + 3, UI_TEXTURE_ID_NIL);
+	UI_ProfEnter();
+	if (rect.max.x > rect.min.x && rect.max.y > rect.min.y) {
+		uint32_t first_vert;
+		UI_DrawVertex* v = UI_AddVertices(4, &first_vert);
+		v[0] = UI_DRAW_VERTEX{{rect.min.x, rect.min.y}, UI_WHITE_PIXEL_UV, color};
+		v[1] = UI_DRAW_VERTEX{{rect.max.x, rect.min.y}, UI_WHITE_PIXEL_UV, color};
+		v[2] = UI_DRAW_VERTEX{{rect.max.x, rect.max.y}, UI_WHITE_PIXEL_UV, color};
+		v[3] = UI_DRAW_VERTEX{{rect.min.x, rect.max.y}, UI_WHITE_PIXEL_UV, color};
+		UI_AddQuadIndices(first_vert, first_vert + 1, first_vert + 2, first_vert + 3, UI_TEXTURE_ID_NIL);
+	}
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawRectRounded(UI_Rect rect, float roundness, UI_Color color, int num_corner_segments) {
+	UI_ProfEnter();
 	UI_LimitRectPadding(&rect, &roundness);
 	UI_DrawRectCorners corners = { {color, color, color, color}, {color, color, color, color}, {roundness, roundness, roundness, roundness} };
 	UI_DrawRectEx(rect, &corners, num_corner_segments);
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawRectRounded2(UI_Rect rect, float roundness, UI_Color inner_color, UI_Color outer_color, int num_corner_segments) {
+	UI_ProfEnter();
 	UI_LimitRectPadding(&rect, &roundness);
 	UI_DrawRectCorners corners = {
 		{inner_color, inner_color, inner_color, inner_color},
 		{outer_color, outer_color, outer_color, outer_color},
 		{roundness, roundness, roundness, roundness} };
 	UI_DrawRectEx(rect, &corners, num_corner_segments);
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawRectEx(UI_Rect rect, const UI_DrawRectCorners* corners, int num_corner_segments) {
-	if (rect.max.x < rect.min.x || rect.max.y < rect.min.y) return;
+	UI_ProfEnter();
+	if (rect.max.x > rect.min.x && rect.max.y > rect.min.y) {
+		UI_Vec2 inset_corners[4];
+		inset_corners[0] = UI_AddV2(rect.min, UI_VEC2{ corners->roundness[0], corners->roundness[0] });
+		inset_corners[1] = UI_AddV2(UI_VEC2{ rect.max.x, rect.min.y }, UI_VEC2{ -corners->roundness[1], corners->roundness[1] });
+		inset_corners[2] = UI_AddV2(rect.max, UI_VEC2{ -corners->roundness[2], -corners->roundness[2] });
+		inset_corners[3] = UI_AddV2(UI_VEC2{ rect.min.x, rect.max.y }, UI_VEC2{ corners->roundness[3], -corners->roundness[3] });
+		
+		uint32_t inset_corner_verts;
+		UI_DrawVertex* v = UI_AddVertices(12, &inset_corner_verts);
+		v[0] = UI_DRAW_VERTEX{ inset_corners[0], UI_WHITE_PIXEL_UV, corners->color[0] };
+		v[1] = UI_DRAW_VERTEX{ inset_corners[1], UI_WHITE_PIXEL_UV, corners->color[1] };
+		v[2] = UI_DRAW_VERTEX{ inset_corners[2], UI_WHITE_PIXEL_UV, corners->color[2] };
+		v[3] = UI_DRAW_VERTEX{ inset_corners[3], UI_WHITE_PIXEL_UV, corners->color[3] };
 
-	UI_Vec2 inset_corners[4];
-	inset_corners[0] = UI_AddV2(rect.min, UI_VEC2{ corners->roundness[0], corners->roundness[0] });
-	inset_corners[1] = UI_AddV2(UI_VEC2{ rect.max.x, rect.min.y }, UI_VEC2{ -corners->roundness[1], corners->roundness[1] });
-	inset_corners[2] = UI_AddV2(rect.max, UI_VEC2{ -corners->roundness[2], -corners->roundness[2] });
-	inset_corners[3] = UI_AddV2(UI_VEC2{ rect.min.x, rect.max.y }, UI_VEC2{ corners->roundness[3], -corners->roundness[3] });
-	
-	uint32_t inset_corner_verts;
-	UI_DrawVertex* v = UI_AddVertices(12, &inset_corner_verts);
-	v[0] = UI_DRAW_VERTEX{ inset_corners[0], UI_WHITE_PIXEL_UV, corners->color[0] };
-	v[1] = UI_DRAW_VERTEX{ inset_corners[1], UI_WHITE_PIXEL_UV, corners->color[1] };
-	v[2] = UI_DRAW_VERTEX{ inset_corners[2], UI_WHITE_PIXEL_UV, corners->color[2] };
-	v[3] = UI_DRAW_VERTEX{ inset_corners[3], UI_WHITE_PIXEL_UV, corners->color[3] };
+		uint32_t border_verts = inset_corner_verts + 4;
+		v[4] = UI_DRAW_VERTEX{ {rect.min.x, inset_corners[0].y}, UI_WHITE_PIXEL_UV, corners->outer_color[0] };
+		v[5] = UI_DRAW_VERTEX{ {inset_corners[0].x, rect.min.y}, UI_WHITE_PIXEL_UV, corners->outer_color[0] };
+		v[6] = UI_DRAW_VERTEX{ {inset_corners[1].x, rect.min.y}, UI_WHITE_PIXEL_UV, corners->outer_color[1] };
+		v[7] = UI_DRAW_VERTEX{ {rect.max.x, inset_corners[1].y}, UI_WHITE_PIXEL_UV, corners->outer_color[1] };
+		v[8] = UI_DRAW_VERTEX{ {rect.max.x, inset_corners[2].y}, UI_WHITE_PIXEL_UV, corners->outer_color[2] };
+		v[9] = UI_DRAW_VERTEX{ {inset_corners[2].x, rect.max.y}, UI_WHITE_PIXEL_UV, corners->outer_color[2] };
+		v[10] = UI_DRAW_VERTEX{ {inset_corners[3].x, rect.max.y}, UI_WHITE_PIXEL_UV, corners->outer_color[3] };
+		v[11] = UI_DRAW_VERTEX{ {rect.min.x, inset_corners[3].y}, UI_WHITE_PIXEL_UV, corners->outer_color[3] };
 
-	uint32_t border_verts = inset_corner_verts + 4;
-	v[4] = UI_DRAW_VERTEX{ {rect.min.x, inset_corners[0].y}, UI_WHITE_PIXEL_UV, corners->outer_color[0] };
-	v[5] = UI_DRAW_VERTEX{ {inset_corners[0].x, rect.min.y}, UI_WHITE_PIXEL_UV, corners->outer_color[0] };
-	v[6] = UI_DRAW_VERTEX{ {inset_corners[1].x, rect.min.y}, UI_WHITE_PIXEL_UV, corners->outer_color[1] };
-	v[7] = UI_DRAW_VERTEX{ {rect.max.x, inset_corners[1].y}, UI_WHITE_PIXEL_UV, corners->outer_color[1] };
-	v[8] = UI_DRAW_VERTEX{ {rect.max.x, inset_corners[2].y}, UI_WHITE_PIXEL_UV, corners->outer_color[2] };
-	v[9] = UI_DRAW_VERTEX{ {inset_corners[2].x, rect.max.y}, UI_WHITE_PIXEL_UV, corners->outer_color[2] };
-	v[10] = UI_DRAW_VERTEX{ {inset_corners[3].x, rect.max.y}, UI_WHITE_PIXEL_UV, corners->outer_color[3] };
-	v[11] = UI_DRAW_VERTEX{ {rect.min.x, inset_corners[3].y}, UI_WHITE_PIXEL_UV, corners->outer_color[3] };
+		// edge quads
+		UI_AddQuadIndices(border_verts + 1, border_verts + 2, inset_corner_verts + 1, inset_corner_verts + 0, UI_TEXTURE_ID_NIL); // top edge
+		UI_AddQuadIndices(border_verts + 3, border_verts + 4, inset_corner_verts + 2, inset_corner_verts + 1, UI_TEXTURE_ID_NIL); // right edge
+		UI_AddQuadIndices(border_verts + 5, border_verts + 6, inset_corner_verts + 3, inset_corner_verts + 2, UI_TEXTURE_ID_NIL); // bottom edge
+		UI_AddQuadIndices(border_verts + 7, border_verts + 0, inset_corner_verts + 0, inset_corner_verts + 3, UI_TEXTURE_ID_NIL); // left edge
 
-	// edge quads
-	UI_AddQuadIndices(border_verts + 1, border_verts + 2, inset_corner_verts + 1, inset_corner_verts + 0, UI_TEXTURE_ID_NIL); // top edge
-	UI_AddQuadIndices(border_verts + 3, border_verts + 4, inset_corner_verts + 2, inset_corner_verts + 1, UI_TEXTURE_ID_NIL); // right edge
-	UI_AddQuadIndices(border_verts + 5, border_verts + 6, inset_corner_verts + 3, inset_corner_verts + 2, UI_TEXTURE_ID_NIL); // bottom edge
-	UI_AddQuadIndices(border_verts + 7, border_verts + 0, inset_corner_verts + 0, inset_corner_verts + 3, UI_TEXTURE_ID_NIL); // left edge
+		for (int corner_i = 0; corner_i < 4; corner_i++) {
+			float r = -corners->roundness[corner_i];
 
-	for (int corner_i = 0; corner_i < 4; corner_i++) {
-		float r = -corners->roundness[corner_i];
+			uint32_t prev_vert_idx = border_verts + corner_i * 2;
 
-		uint32_t prev_vert_idx = border_verts + corner_i * 2;
+			// Generate corner triangles
+			for (int i = 1; i < num_corner_segments; i++) {
+				UI_Vec2 c = UI_PointOnRoundedCorner(corner_i, i, num_corner_segments);
+				
+				uint32_t new_vert_idx;
+				UI_DrawVertex* new_vert = UI_AddVertices(1, &new_vert_idx);
+				new_vert[0] = UI_DRAW_VERTEX{ {inset_corners[corner_i].x + r*c.x, inset_corners[corner_i].y + r*c.y}, UI_WHITE_PIXEL_UV, corners->outer_color[corner_i] };
 
-		// Generate corner triangles
-		for (int i = 1; i < num_corner_segments; i++) {
-			UI_Vec2 c = UI_PointOnRoundedCorner(corner_i, i, num_corner_segments);
-			
-			uint32_t new_vert_idx;
-			UI_DrawVertex* new_vert = UI_AddVertices(1, &new_vert_idx);
-			new_vert[0] = UI_DRAW_VERTEX{ {inset_corners[corner_i].x + r*c.x, inset_corners[corner_i].y + r*c.y}, UI_WHITE_PIXEL_UV, corners->outer_color[corner_i] };
+				UI_AddTriangleIndices(inset_corner_verts + corner_i, prev_vert_idx, new_vert_idx, UI_TEXTURE_ID_NIL);
+				prev_vert_idx = new_vert_idx;
+			}
 
-			UI_AddTriangleIndices(inset_corner_verts + corner_i, prev_vert_idx, new_vert_idx, UI_TEXTURE_ID_NIL);
-			prev_vert_idx = new_vert_idx;
+			UI_AddTriangleIndices(inset_corner_verts + corner_i, prev_vert_idx, border_verts + corner_i * 2 + 1, UI_TEXTURE_ID_NIL);
 		}
 
-		UI_AddTriangleIndices(inset_corner_verts + corner_i, prev_vert_idx, border_verts + corner_i * 2 + 1, UI_TEXTURE_ID_NIL);
+		UI_AddQuadIndices(inset_corner_verts, inset_corner_verts + 1, inset_corner_verts + 2, inset_corner_verts + 3, UI_TEXTURE_ID_NIL);
 	}
-
-	UI_AddQuadIndices(inset_corner_verts, inset_corner_verts + 1, inset_corner_verts + 2, inset_corner_verts + 3, UI_TEXTURE_ID_NIL);
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawPoint(UI_Vec2 p, float thickness, UI_Color color) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	UI_Vec2 extent = { 0.5f * thickness, 0.5f * thickness };
 	UI_Rect rect = { UI_SubV2(p, extent), UI_AddV2(p, extent) };
 	UI_DrawRect(rect, color);
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawLine(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color color) {
+	UI_ProfEnter();
 	UI_Vec2 points[] = { a, b };
 	UI_Color colors[] = { color, color };
 	UI_DrawPolyline(points, colors, 2, thickness);
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawLineEx(UI_Vec2 a, UI_Vec2 b, float thickness, UI_Color a_color, UI_Color b_color) {
+	UI_ProfEnter();
 	UI_Vec2 points[] = { a, b };
 	UI_Color colors[] = { a_color, b_color };
 	UI_DrawPolyline(points, colors, 2, thickness);
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawPolylineEx(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness, bool loop,
 	float split_miter_threshold)
 {
-	if (points_count < 2) return;
-	DS_ProfEnter();
+	UI_ProfEnter();
+	if (points_count >= 2) {
+		float half_thickness = thickness * 0.5f;
 
-	float half_thickness = thickness * 0.5f;
+		UI_Vec2 start_dir, end_dir;
 
-	UI_Vec2 start_dir, end_dir;
+		DS_DynArray(UI_Vec2) line_normals = { UI_FrameArena() };
+		DS_ArrResizeUndef(&line_normals, points_count);
 
-	DS_DynArray(UI_Vec2) line_normals = { UI_FrameArena() };
-	DS_ArrResizeUndef(&line_normals, points_count);
+		int last = points_count - 1;
+		for (int i = 0; i < points_count; i++) {
+			UI_Vec2 p1 = points[i];
+			UI_Vec2 p2 = points[i == last ? 0 : i + 1];
 
-	int last = points_count - 1;
-	for (int i = 0; i < points_count; i++) {
-		UI_Vec2 p1 = points[i];
-		UI_Vec2 p2 = points[i == last ? 0 : i + 1];
+			UI_Vec2 dir = UI_SubV2(p2, p1);
+			float length = sqrtf(dir.x * dir.x + dir.y * dir.y);
+			dir = UI_MulV2F(dir, 1.f / length);
 
-		UI_Vec2 dir = UI_SubV2(p2, p1);
-		float length = sqrtf(dir.x * dir.x + dir.y * dir.y);
-		dir = UI_MulV2F(dir, 1.f / length);
+			UI_Vec2 dir_rotated = { -dir.y, dir.x };
+			line_normals.data[i] = dir_rotated;
 
-		UI_Vec2 dir_rotated = { -dir.y, dir.x };
-		line_normals.data[i] = dir_rotated;
-
-		if (i == 0) start_dir = dir;
-		if (i == last-1) end_dir = dir;
-	}
-
-	uint32_t first_idx[2];
-	uint32_t prev_idx[2];
-
-	for (int i = 0; i < points_count; i++) {
-		UI_Vec2 p = points[i];
-		UI_Color color = colors[i];
-
-		if (!loop) {
-			// Extend start and end points outwards by half thickness
-			if (i == 0)    p = UI_AddV2(p, UI_MulV2F(start_dir, -half_thickness));
-			if (i == last) p = UI_AddV2(p, UI_MulV2F(end_dir, half_thickness));
+			if (i == 0) start_dir = dir;
+			if (i == last-1) end_dir = dir;
 		}
 
-		UI_Vec2 n_pre, n_post;
+		uint32_t first_idx[2];
+		uint32_t prev_idx[2];
+
+		for (int i = 0; i < points_count; i++) {
+			UI_Vec2 p = points[i];
+			UI_Color color = colors[i];
+
+			if (!loop) {
+				// Extend start and end points outwards by half thickness
+				if (i == 0)    p = UI_AddV2(p, UI_MulV2F(start_dir, -half_thickness));
+				if (i == last) p = UI_AddV2(p, UI_MulV2F(end_dir, half_thickness));
+			}
+
+			UI_Vec2 n_pre, n_post;
+			if (loop) {
+				n_pre = line_normals.data[i == 0 ? last : i - 1];
+				n_post = line_normals.data[i];
+			} else {
+				n_pre = line_normals.data[i == 0 ? 0 : i - 1];
+				n_post = line_normals.data[i == last ? i - 1 : i];
+			}
+
+			if (n_pre.x*n_post.x + n_pre.y*n_post.y < split_miter_threshold) {
+				uint32_t new_vertices;
+				UI_DrawVertex* v = UI_AddVertices(4, &new_vertices);
+				v[0] = UI_DRAW_VERTEX{{p.x + n_pre.x*half_thickness, p.y + n_pre.y*half_thickness}, {0.f, 0.f}, color};
+				v[1] = UI_DRAW_VERTEX{{p.x - n_pre.x*half_thickness, p.y - n_pre.y*half_thickness}, {0.f, 0.f}, color};
+				v[2] = UI_DRAW_VERTEX{{p.x + n_post.x*half_thickness, p.y + n_post.y*half_thickness}, {0.f, 0.f}, color};
+				v[3] = UI_DRAW_VERTEX{{p.x - n_post.x*half_thickness, p.y - n_post.y*half_thickness}, {0.f, 0.f}, color};
+
+				if (loop || (i != 0 && i != last)) {
+					UI_AddQuadIndices(new_vertices+0, new_vertices+1, new_vertices+3, new_vertices+2, UI_TEXTURE_ID_NIL);
+				}
+
+				if (i > 0) {
+					UI_AddQuadIndices(prev_idx[0], prev_idx[1], new_vertices + 1, new_vertices + 0, UI_TEXTURE_ID_NIL);
+				} else {
+					first_idx[0] = new_vertices + 0;
+					first_idx[1] = new_vertices + 1;
+				}
+				prev_idx[0] = new_vertices + 2;
+				prev_idx[1] = new_vertices + 3;
+			}
+			else {
+				UI_Vec2 n = UI_AddV2(n_pre, n_post); // Note: This doesn't need to be normalized, the math works regardless
+				float denom = n.x * n_pre.x + n.y * n_pre.y;
+				float t = half_thickness / denom;
+
+				uint32_t new_vertices;
+				UI_DrawVertex* v = UI_AddVertices(2, &new_vertices);
+				v[0] = UI_DRAW_VERTEX{{p.x + n.x*t, p.y + n.y*t}, {0.f, 0.f}, color};
+				v[1] = UI_DRAW_VERTEX{{p.x - n.x*t, p.y - n.y*t}, {0.f, 0.f}, color};
+
+				if (i > 0) {
+					UI_AddQuadIndices(prev_idx[0], prev_idx[1], new_vertices + 1, new_vertices + 0, UI_TEXTURE_ID_NIL);
+				} else {
+					first_idx[0] = new_vertices + 0;
+					first_idx[1] = new_vertices + 1;
+				}
+				prev_idx[0] = new_vertices + 0;
+				prev_idx[1] = new_vertices + 1;
+			}
+		}
+
 		if (loop) {
-			n_pre = line_normals.data[i == 0 ? last : i - 1];
-			n_post = line_normals.data[i];
-		} else {
-			n_pre = line_normals.data[i == 0 ? 0 : i - 1];
-			n_post = line_normals.data[i == last ? i - 1 : i];
-		}
-
-		if (n_pre.x*n_post.x + n_pre.y*n_post.y < split_miter_threshold) {
-			uint32_t new_vertices;
-			UI_DrawVertex* v = UI_AddVertices(4, &new_vertices);
-			v[0] = UI_DRAW_VERTEX{{p.x + n_pre.x*half_thickness, p.y + n_pre.y*half_thickness}, {0.f, 0.f}, color};
-			v[1] = UI_DRAW_VERTEX{{p.x - n_pre.x*half_thickness, p.y - n_pre.y*half_thickness}, {0.f, 0.f}, color};
-			v[2] = UI_DRAW_VERTEX{{p.x + n_post.x*half_thickness, p.y + n_post.y*half_thickness}, {0.f, 0.f}, color};
-			v[3] = UI_DRAW_VERTEX{{p.x - n_post.x*half_thickness, p.y - n_post.y*half_thickness}, {0.f, 0.f}, color};
-
-			if (loop || (i != 0 && i != last)) {
-				UI_AddQuadIndices(new_vertices+0, new_vertices+1, new_vertices+3, new_vertices+2, UI_TEXTURE_ID_NIL);
-			}
-
-			if (i > 0) {
-				UI_AddQuadIndices(prev_idx[0], prev_idx[1], new_vertices + 1, new_vertices + 0, UI_TEXTURE_ID_NIL);
-			} else {
-				first_idx[0] = new_vertices + 0;
-				first_idx[1] = new_vertices + 1;
-			}
-			prev_idx[0] = new_vertices + 2;
-			prev_idx[1] = new_vertices + 3;
-		}
-		else {
-			UI_Vec2 n = UI_AddV2(n_pre, n_post); // Note: This doesn't need to be normalized, the math works regardless
-			float denom = n.x * n_pre.x + n.y * n_pre.y;
-			float t = half_thickness / denom;
-
-			uint32_t new_vertices;
-			UI_DrawVertex* v = UI_AddVertices(2, &new_vertices);
-			v[0] = UI_DRAW_VERTEX{{p.x + n.x*t, p.y + n.y*t}, {0.f, 0.f}, color};
-			v[1] = UI_DRAW_VERTEX{{p.x - n.x*t, p.y - n.y*t}, {0.f, 0.f}, color};
-
-			if (i > 0) {
-				UI_AddQuadIndices(prev_idx[0], prev_idx[1], new_vertices + 1, new_vertices + 0, UI_TEXTURE_ID_NIL);
-			} else {
-				first_idx[0] = new_vertices + 0;
-				first_idx[1] = new_vertices + 1;
-			}
-			prev_idx[0] = new_vertices + 0;
-			prev_idx[1] = new_vertices + 1;
+			UI_AddQuadIndices(prev_idx[0], prev_idx[1], first_idx[1], first_idx[0], UI_TEXTURE_ID_NIL);
 		}
 	}
-
-	if (loop) {
-		UI_AddQuadIndices(prev_idx[0], prev_idx[1], first_idx[1], first_idx[0], UI_TEXTURE_ID_NIL);
-	}
-
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API void UI_DrawPolyline(const UI_Vec2* points, const UI_Color* colors, int points_count, float thickness) {
@@ -3111,7 +3200,7 @@ UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, const UI_Color* colors, i
 }
 
 UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	UI_Vec2 s = { UI_TextWidth(text, font), font.size };
 
 	if (align_h == UI_AlignH_Middle) {
@@ -3151,26 +3240,26 @@ UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI
 		origin.x += glyph.x_advance;
 	}
 
-	DS_ProfExit();
+	UI_ProfExit();
 	return s;
 }
 
 static UI_Key UI_GetArrangerSetKey() { return UI_KEY(); }
 
 UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, /*UI_BoxFlag_NoScissor*/0);
 	UI_PushBox(box);
 	
 	UI_ArrangerSet arranger_set = {0};
 	UI_BoxAddCustomData(box, UI_GetArrangerSetKey(), &arranger_set, sizeof(UI_ArrangerSet));
 
-	DS_ProfExit();
+	UI_ProfExit();
 	return box;
 }
 
 UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	UI_PopBox(box);
 
 	UI_ArrangerSet* arranger_set = (UI_ArrangerSet*)UI_BoxGetCustomData(box, UI_GetArrangerSetKey(), sizeof(UI_ArrangerSet));
@@ -3247,11 +3336,11 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 		edit_request.move_to = target_index;
 	}
 	*out_edit_request = edit_request;
-	DS_ProfExit();
+	UI_ProfExit();
 }
 
 UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
-	DS_ProfEnter();
+	UI_ProfEnter();
 	UI_Box* box = UI_AddBoxWithText(key, w, h, UI_BoxFlag_Clickable, STR_(":"));
 
 	bool holding_down = UI_IsClickingDown(box->key);
@@ -3276,7 +3365,7 @@ UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 		// This arranger is not inside of an arranger set. Did you call UI_ArrangersPush?
 		UI_CHECK(elem);
 	}
-	DS_ProfExit();
+	UI_ProfExit();
 	return box;
 }
 
