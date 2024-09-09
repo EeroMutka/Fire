@@ -8,7 +8,7 @@ typedef struct UI_ValueEditArrayModify {
 	int remove_elem; // -1 if none
 } UI_ValueEditArrayModify;
 
-UI_API UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify);
+UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify);
 
 #define UI_AddValDSArray(KEY, NAME, ARRAY, DEFAULT_VALUE, EDIT_ELEM) \
 	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (DEFAULT_VALUE), (UI_ArrayEditElemFn)EDIT_ELEM, NULL)
@@ -49,7 +49,7 @@ static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis 
 	}
 }
 
-UI_API UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify)
+UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify)
 {
 	UI_Box* root_box = UI_AddBox(key, UI_SizeFlex(1.f), UI_SizeFit(), 0);
 	UI_PushBox(root_box);
@@ -64,14 +64,14 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count
 		is_open = !is_open;
 	}
 
-	UI_Box* label = UI_AddBoxWithText(UI_KEY1(key), 20.f, UI_SizeFit(), 0, is_open ? STR_("\x44") : STR_("\x46"));
+	UI_Box* label = UI_AddBoxWithText(UI_KEY1(key), 20.f, UI_SizeFit(), 0, is_open ? "\x44" : "\x46");
 	label->style = UI_MakeStyle();
 	label->style->font.font = UI_STATE.icons_font;
 
 	UI_AddBoxWithText(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0, name);
-	UI_Box* add_button = UI_AddButton(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, STR_("\x48"));
+	UI_Box* add_button = UI_AddButton(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x48");
 
-	UI_Box* clear_button = UI_AddButton(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, STR_("\x54"));
+	UI_Box* clear_button = UI_AddButton(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x54");
 	clear_button->style = UI_MakeStyle();
 	clear_button->style->font.font = UI_STATE.icons_font;
 	clear_button->style->font.size *= 0.8f;
@@ -104,7 +104,7 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count
 			edit_elem(UI_KEY1(elem_key), (char*)array + i*elem_size, i, user_data);
 			UI_PopBox(user_box);
 
-			UI_Box* remove_button = UI_AddButton(UI_KEY1(elem_key), UI_SizeFit(), UI_SizeFit(), 0, STR_("\x4a"));
+			UI_Box* remove_button = UI_AddButton(UI_KEY1(elem_key), UI_SizeFit(), UI_SizeFit(), 0, "\x4a");
 			remove_button->style = clear_button->style;
 			if (UI_Clicked(remove_button->key)) should_remove_elem = i;
 
@@ -128,7 +128,7 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, STR name, void* array, int array_count
 }
 
 // default_value may be NULL, in which case the element is zero-initialized
-static void UI_AddValDSArray_(UI_Key key, STR name, DS_DynArrayRaw* array, int elem_size,
+static void UI_AddValDSArray_(UI_Key key, const char* name, DS_DynArrayRaw* array, int elem_size,
 	const void* default_value, UI_ArrayEditElemFn edit_elem, void* user_data)
 {
 	UI_ValueEditArrayModify modify;
@@ -150,7 +150,8 @@ static void UI_AddValDSArray_(UI_Key key, STR name, DS_DynArrayRaw* array, int e
 
 static void UI_InfoFmtFinishCurrent_(UI_Key key, STR_Builder* current_string, int* section_index) {
 	if (current_string->str.size > 0) {
-		UI_AddBoxWithText(UI_HashInt(key, *section_index), UI_SizeFit(), UI_SizeFit(), 0, current_string->str);
+		const char* str = STR_Init(UI_FrameArena(), current_string->str);
+		UI_AddBoxWithText(UI_HashInt(key, *section_index), UI_SizeFit(), UI_SizeFit(), 0, str);
 	}
 	current_string->str.size = 0;
 	*section_index += 1;

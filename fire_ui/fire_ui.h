@@ -28,8 +28,6 @@
 #define UI_ProfExit()
 #endif
 
-typedef STR UI_String;
-
 #ifdef __cplusplus
 #define UI_LangAgnosticLiteral(T) T   // in C++, struct and union literals are of the form MyStructType{...}
 #else
@@ -180,7 +178,7 @@ struct UI_Box {
 		UI_BoxFlagBits flags_bits; // for debugger visualization
 	};
 
-	UI_String text;
+	STR text;
 	UI_Size size[2];
 	UI_Vec2 offset;
 
@@ -322,8 +320,8 @@ typedef struct UI_Inputs {
 	uint32_t text_input_utf32[16];
 	int text_input_utf32_length;
 
-	UI_String(*get_clipboard_string_fn)(void* user_data); // The returned string must stay valid for the rest of the frame
-	void (*set_clipboard_string_fn)(UI_String string, void* user_data);
+	STR (*get_clipboard_string_fn)(void* user_data); // The returned string must stay valid for the rest of the frame
+	void (*set_clipboard_string_fn)(STR string, void* user_data);
 
 	float frame_delta_time;
 
@@ -353,7 +351,7 @@ typedef struct UI_EditTextModify {
 	UI_Box* box_with_text;
 	UI_Mark replace_from; // TODO: add byteoffsets to these for maximum information to the user
 	UI_Mark replace_to;
-	UI_String replace_with;
+	STR replace_with;
 } UI_EditTextModify;
 
 typedef DS_Map(UI_Key, UI_Box*) UI_BoxFromKeyMap;
@@ -544,10 +542,10 @@ UI_API void UI_PopBox(UI_Box* box);
 UI_API void UI_PopBoxN(UI_Box* box, int n);
 
 UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags);
-UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string);
+UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
 
-UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string);
-UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string);
+UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
+UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
 
 UI_API void UI_AddCheckbox(UI_Key key, bool* value);
 
@@ -563,13 +561,13 @@ UI_API UI_Box* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value);
 UI_API UI_Box* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value);
 UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float);
 
-// * may return NULL
-UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, UI_String text);
+// * Returns NULL if the collapsable header is closed.
+UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, const char* text);
 UI_API void UI_PopCollapsing(UI_Box* box);
 
-UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, UI_String initial_value);
+UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, const char* initial_value);
 UI_API void UI_TextDeinit(UI_Text* text);
-UI_API void UI_TextSet(UI_Text* text, UI_String value);
+UI_API void UI_TextSet(UI_Text* text, const char* value);
 
 // * `anchor_x` / `anchor_y` can be 0 or 1: A value of 0 means anchoring the scrollbar to left / top, 1 means anchoring it to right / bottom.
 UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y);
@@ -637,7 +635,7 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 UI_API bool UI_SplittersGetHoldingIndex(UI_Key key, int* out_index);
 
 UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontUsage font);
-UI_API float UI_TextWidth(UI_String text, UI_FontUsage font);
+UI_API float UI_TextWidth(STR text, UI_FontUsage font);
 
 // Returns true when newly added, false when existing
 // ... do we have the ability to upload new data to a texture? That would need to inform the graphics backend.
@@ -669,7 +667,7 @@ UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, 
 UI_API void UI_DrawTriangle(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Color color);
 UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color color);
 
-UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor);
+UI_API UI_Vec2 UI_DrawText(STR text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor);
 
 UI_API void UI_DrawSprite(UI_Rect rect, UI_Color color, UI_Rect uv_rect, UI_TextureID texture, UI_ScissorRect scissor);
 
@@ -704,7 +702,7 @@ static const UI_Vec2 UI_WHITE_PIXEL_UV = { 0.5f / (float)UI_GLYPH_MAP_SIZE, 0.5f
 UI_API inline bool UI_MarkGreaterThan(UI_Mark a, UI_Mark b) { return a.line > b.line || (a.line == b.line && a.col > b.col); }
 UI_API inline bool UI_MarkLessThan(UI_Mark a, UI_Mark b) { return a.line < b.line || (a.line == b.line && a.col < b.col); }
 
-UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string) {
+UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
 	UI_ProfEnter();
 	flags |= UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
 	UI_Box* box = UI_AddBoxWithText(key, w, h, flags, string);
@@ -712,7 +710,7 @@ UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags,
 	return box;
 }
 
-UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string) {
+UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
 	UI_ProfEnter();
 	flags |= UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder |UI_BoxFlag_DrawTransparentBackground;
 	UI_Box* box = UI_AddBox(key, w, h, flags);
@@ -720,7 +718,7 @@ UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlag
 
 	UI_AddBoxWithText(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0, string);
 
-	UI_Box* icon_box = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, STR_("\x44"));
+	UI_Box* icon_box = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, "\x44");
 	icon_box->style = UI_MakeStyle();
 	icon_box->style->font.font = UI_STATE.icons_font;
 
@@ -729,7 +727,7 @@ UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlag
 	return box;
 }
 
-static int UI_ColumnFromXOffset(float x, UI_String line, UI_FontUsage font) {
+static int UI_ColumnFromXOffset(float x, STR line, UI_FontUsage font) {
 	UI_ProfEnter();
 	int column = 0;
 	float start_x = 0.f;
@@ -743,7 +741,7 @@ static int UI_ColumnFromXOffset(float x, UI_String line, UI_FontUsage font) {
 	return column;
 }
 
-static float UI_XOffsetFromColumn(int col, UI_String line, UI_FontUsage font) {
+static float UI_XOffsetFromColumn(int col, STR line, UI_FontUsage font) {
 	UI_ProfEnter();
 	float x = 0.f;
 	int i = 0;
@@ -756,11 +754,11 @@ static float UI_XOffsetFromColumn(int col, UI_String line, UI_FontUsage font) {
 	return x;
 }
 
-static UI_String UI_GetLineString(int line, const UI_Text* text) {
+static STR UI_GetLineString(int line, const UI_Text* text) {
 	UI_ProfEnter();
 	int lo = line == 0 ? 0 : DS_ArrGet(text->line_offsets, line - 1);
 	int hi = line == text->line_offsets.length ? text->text.length : DS_ArrGet(text->line_offsets, line);
-	UI_String result = { text->text.data, hi - lo };
+	STR result = { text->text.data, hi - lo };
 	UI_ProfExit();
 	return result;
 }
@@ -769,7 +767,7 @@ static bool UI_MarkIsValid(UI_Mark mark, const UI_Text* text) {
 	UI_ProfEnter();
 	bool result = false;
 	if (mark.line > 0 && mark.line < text->line_offsets.length) {
-		UI_String line_str = UI_GetLineString(mark.line, text);
+		STR line_str = UI_GetLineString(mark.line, text);
 		result = mark.col >= 0 && mark.col <= STR_CodepointCount(line_str);
 	}
 	UI_ProfExit();
@@ -779,7 +777,7 @@ static bool UI_MarkIsValid(UI_Mark mark, const UI_Text* text) {
 static int UI_MarkToByteOffset(UI_Mark mark, const UI_Text* text) {
 	UI_ProfEnter();
 	int line_start = mark.line > 0 ? DS_ArrGet(text->line_offsets, mark.line - 1) : 0;
-	UI_String after = STR_SliceAfter(UI_TextToStr(*text), line_start);
+	STR after = STR_SliceAfter(UI_TextToStr(*text), line_start);
 
 	int i = 0;
 	int result = text->text.length;
@@ -803,7 +801,7 @@ static UI_Vec2 UI_XYOffsetFromMark(const UI_Text* text, UI_Mark mark, UI_FontUsa
 	return result;
 }
 
-static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_origin, UI_String text, UI_FontUsage font, UI_Color color) {
+static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_origin, STR text, UI_FontUsage font, UI_Color color, UI_ScissorRect scissor) {
 	UI_ProfEnter();
 	float min_pos_x = UI_XOffsetFromColumn(min.col, text, font);
 	float max_pos_x = UI_XOffsetFromColumn(max.col, text, font); // this is not OK with multiline!
@@ -827,7 +825,11 @@ static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_ori
 		rect.min.x -= 1.f;
 		rect.max.x += 1.f;
 		rect.max.y += font.size;
-		UI_DrawRect(rect, color);
+		
+		UI_Rect _uv_rect;
+		if (!UI_ClipRect(&rect, &_uv_rect, scissor)) {
+			UI_DrawRect(rect, color);
+		}
 	}
 	UI_ProfExit();
 }
@@ -899,7 +901,7 @@ static void UI_MoveMarkByWord(UI_Mark* mark, const UI_Text* text, int dir) {
 	int i = 0;
 	uint32_t r;
 
-	uint32_t (*next_codepoint_fn)(UI_String, int*) = dir > 0 ? STR_NextCodepoint : STR_PrevCodepoint;
+	uint32_t (*next_codepoint_fn)(STR, int*) = dir > 0 ? STR_NextCodepoint : STR_PrevCodepoint;
 
 	for (; r = next_codepoint_fn(UI_TextToStr(*text), &byteoffset); i++) {
 		bool whitespace = r == ' ' || r == '\t';
@@ -998,15 +1000,15 @@ UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* reque
 		}
 
 		{ // Then insert the text
-			UI_String insertion = request->replace_with;
+			STR insertion = request->replace_with;
 			UI_Mark mark = request->replace_from;
 			int byteoffset = UI_MarkToByteOffset(mark, text);
 
 			DS_ArrInsertN(&text->text, byteoffset, insertion.data, insertion.size);
 
 			int lines_count = 0;
-			for (UI_String remaining = insertion;;) {
-				UI_String line_str = STR_ParseUntilAndSkip(&remaining, '\n');
+			for (STR remaining = insertion;;) {
+				STR line_str = STR_ParseUntilAndSkip(&remaining, '\n');
 				lines_count++;
 				if (remaining.size == 0) break;
 			}
@@ -1064,7 +1066,7 @@ UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64
 	bool dragging = UI_IsClickingDown(key) && UI_InputIsDown(UI_Input_MouseLeft);
 	bool has_moved_mouse_after_press = UI_Abs(UI_STATE.mouse_travel_distance_after_press.x) >= 2.f;
 
-	UI_String value_str;
+	STR value_str;
 	if (is_float) {
 		value_str = STR_FloatToStr(UI_FrameArena(), *(double*)value_64_bit, 1 /*dragging && has_moved_mouse_after_press ? 1 : 1*/);
 	} else {
@@ -1082,7 +1084,7 @@ UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64
 	if (text_edit_was_activated) {
 		UI_STATE.edit_text_should_refresh = true;
 		UI_STATE.selected_box_new = key;
-		UI_TextSet(&UI_STATE.edit_number_text, value_str);
+		UI_TextSet(&UI_STATE.edit_number_text, STR_Init(UI_FrameArena(), value_str));
 	}
 
 	bool text_editing_this = UI_STATE.text_editing_box == key && UI_STATE.selected_box_new == UI_INVALID_KEY; // The `selected_box_new` check is here as keyboard navigation could have already selected a different box
@@ -1099,7 +1101,8 @@ UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64
 	}
 	else {
 		box = UI_AddBoxWithText(key, w, h,
-			UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_PressingStaysWithoutHover, value_str);
+			UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_PressingStaysWithoutHover, "");
+		box->text = value_str;
 
 		if (UI_Pressed(box->key)) {
 			UI_STATE.outputs.lock_and_hide_cursor = true;
@@ -1172,12 +1175,12 @@ UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* file
 
 	UI_Style* button_style = UI_PushStyle();
 	button_style->font.font = UI_STATE.icons_font;
-	UI_Box* button = UI_AddButton(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, STR_("\x42"));
+	UI_Box* button = UI_AddButton(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x42");
 	UI_PopStyle(button_style);
 
 	if (UI_Clicked(button->key)) {
 		UI_TODO();
-		// UI_String pick_result;
+		// STR pick_result;
 		// if (OS_FilePicker(UI_FrameArena(), &pick_result)) {
 		// 	UI_TODO();
 		// 	// UI_Selection selection;
@@ -1199,7 +1202,7 @@ UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* file
 	return box;
 }
 
-static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from, UI_Mark to, UI_String with, UI_EditTextModify* out_edit_request) {
+static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from, UI_Mark to, STR with, UI_EditTextModify* out_edit_request) {
 	UI_ProfEnter();
 	UI_CHECK(!out_edit_request->has_edit);
 	out_edit_request->has_edit = true;
@@ -1211,8 +1214,8 @@ static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from,
 	UI_Mark mark = selection->range[0];
 
 	int lines_count = 0;
-	UI_String last_line_str = {0};
-	for (UI_String remaining = with;;) {
+	STR last_line_str = {0};
+	for (STR remaining = with;;) {
 		last_line_str = STR_ParseUntilAndSkip(&remaining, '\n');
 		lines_count++;
 		if (remaining.size == 0) break;
@@ -1227,7 +1230,7 @@ static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from,
 	UI_ProfExit();
 }
 
-UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, UI_String initial_value) {
+UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, const char* initial_value) {
 	UI_ProfEnter();
 	memset(text, 0, sizeof(*text));
 	DS_ArrInit(&text->text, allocator);
@@ -1243,10 +1246,10 @@ UI_API void UI_TextDeinit(UI_Text* text) {
 	UI_ProfExit();
 }
 
-UI_API void UI_TextSet(UI_Text* text, UI_String value) {
+UI_API void UI_TextSet(UI_Text* text, const char* value) {
 	UI_ProfEnter();
 	DS_ArrClear(&text->text);
-	DS_ArrPushN(&text->text, value.data, value.size);
+	DS_ArrPushN(&text->text, value, (int)strlen(value));
 	UI_ProfExit();
 }
 
@@ -1262,7 +1265,8 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 	UI_Box* outer = UI_AddBox(key, w, h, UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_Clickable);
 	UI_PushBox(outer);
 
-	UI_Box* inner = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, UI_TextToStr(*text));
+	UI_Box* inner = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, "");
+	inner->text = UI_TextToStr(*text);
 	modify->box_with_text = inner;
 
 	bool editing = UI_STATE.text_editing_box == key;
@@ -1320,32 +1324,36 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], text_input.str, modify);
 		}
 
-		if (UI_InputWasPressedOrRepeated(UI_Input_Home)) {
-			UI_Mark* end = &selection->range[selection->end];
-			end->col = 0;
-			if (!UI_InputIsDown(UI_Input_Shift)) {
-				selection->range[1 - selection->end] = *end;
-			}
-			UI_SelectionFixOrder(selection);
-		}
-
-		if (UI_InputWasPressedOrRepeated(UI_Input_End)) {
-			UI_TODO(); // UI_Mark *end = &selection->range[selection->end];
-			// end->col = StrRuneCount(UI_GetLineString(end->line, text));
-			// if (!UI_InputIsDown(UI_Input_Shift)) {
-			// 	selection->range[1 - selection->end] = *end;
-			// }
-			// UI_SelectionFixOrder(selection);
-		}
-
-		//if (UI_InputWasPressedOrRepeated(UI_Input_X) && UI_InputIsDown(UI_Input_Control)) {
-		//	UI_TODO(); // UI_CopySelectionToClipboard(selection, text);
-		//	UI_TODO(); //UI_EraseRangeSel(text, selection, font);
-		//	// result.edited = true;
+		//if (UI_InputWasPressedOrRepeated(UI_Input_Home)) {
+		//	UI_Mark* end = &selection->range[selection->end];
+		//	end->col = 0;
+		//	if (!UI_InputIsDown(UI_Input_Shift)) {
+		//		selection->range[1 - selection->end] = *end;
+		//	}
+		//	UI_SelectionFixOrder(selection);
 		//}
 
+		//if (UI_InputWasPressedOrRepeated(UI_Input_End)) {
+		//	UI_TODO(); // UI_Mark *end = &selection->range[selection->end];
+		//	// end->col = StrRuneCount(UI_GetLineString(end->line, text));
+		//	// if (!UI_InputIsDown(UI_Input_Shift)) {
+		//	// 	selection->range[1 - selection->end] = *end;
+		//	// }
+		//	// UI_SelectionFixOrder(selection);
+		//}
+
+		// Ctrl X
+		if (UI_InputWasPressedOrRepeated(UI_Input_X) && UI_InputIsDown(UI_Input_Control)) {
+			if (UI_STATE.inputs.set_clipboard_string_fn) {
+				int min = UI_MarkToByteOffset(selection->range[0], text);
+				int max = UI_MarkToByteOffset(selection->range[1], text);
+				UI_STATE.inputs.set_clipboard_string_fn(STR_Slice(UI_TextToStr(*text), min, max), UI_STATE.inputs.user_data);
+			}
+			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], STR_(""), modify);
+		}
+		
 		// Ctrl C
-		if (UI_InputWasPressedOrRepeated(UI_Input_C) && UI_InputIsDown(UI_Input_Control)) {
+		if ((UI_InputWasPressedOrRepeated(UI_Input_C) && UI_InputIsDown(UI_Input_Control))) {
 			if (UI_STATE.inputs.set_clipboard_string_fn) {
 				int min = UI_MarkToByteOffset(selection->range[0], text);
 				int max = UI_MarkToByteOffset(selection->range[1], text);
@@ -1356,7 +1364,7 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 		// Ctrl V
 		if (UI_InputWasPressedOrRepeated(UI_Input_V) && UI_InputIsDown(UI_Input_Control)) {
 			if (UI_STATE.inputs.get_clipboard_string_fn) {
-				UI_String str = UI_STATE.inputs.get_clipboard_string_fn(UI_STATE.inputs.user_data);
+				STR str = UI_STATE.inputs.get_clipboard_string_fn(UI_STATE.inputs.user_data);
 				UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], str, modify);
 			}
 		}
@@ -1408,7 +1416,7 @@ UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
 	UI_BoxFlags inner_flags = UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder;
 	UI_Key inner_key = UI_KEY1(key);
 	if (*value) {
-		inner = UI_AddBoxWithText(inner_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), inner_flags, STR_("A"));
+		inner = UI_AddBoxWithText(inner_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), inner_flags, "A");
 	}
 	else {
 		inner = UI_AddBox(inner_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), inner_flags);
@@ -1421,15 +1429,15 @@ UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
 	UI_ProfExit();
 }
 
-UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, UI_String string) {
+UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
 	UI_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, flags | UI_BoxFlag_DrawText);
-	box->text = STR_Clone(UI_FrameArena(), string);
+	box->text = STR_InitV(string);
 	UI_ProfExit();
 	return box;
 }
 
-UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, UI_String text) {
+UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, const char* text) {
 	UI_ProfEnter();
 	UI_Key child_box_key = UI_KEY1(key);
 	UI_BoxFlags box_flags = UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
@@ -1443,7 +1451,7 @@ UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size inden
 
 	UI_Style* label_style = UI_PushStyle();
 	label_style->font.font = UI_STATE.icons_font;
-	UI_AddBoxWithText(UI_KEY1(key), 20.f, h, 0, is_open ? STR_("\x44") : STR_("\x46"));
+	UI_AddBoxWithText(UI_KEY1(key), 20.f, h, 0, is_open ? "\x44" : "\x46");
 	UI_PopStyle(label_style);
 
 	UI_AddBoxWithText(UI_KEY1(key), w, h, 0, text);
@@ -1717,16 +1725,12 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	UI_ScissorRect scissor = box->flags & UI_BoxFlag_NoScissor ? NULL : &box->computed_rect_clipped;
 
 	if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
-		// Draw drop shadow, BEFORE applying the clipping rect
 		const float shadow_distance = 10.f;
 
 		UI_Rect rect = box->computed_rect_clipped;
 		rect.min = UI_SubV2(rect.min, UI_VEC2{ 0.5f * shadow_distance, 0.5f * shadow_distance });
 		rect.max = UI_AddV2(rect.max, UI_VEC2{ shadow_distance, shadow_distance });
 		UI_DrawRectRounded2(rect, 2.f * shadow_distance, UI_COLOR{ 0, 0, 0, 50 }, UI_COLOR{ 0, 0, 0, 0 }, 2);
-		//UI_DrawRect(rect, UI_RED, NULL);
-
-		//UI_DrawRectEx(rect, UI_COLOR{0, 0, 0, 100}, shadow_distance, 2.f*shadow_distance, UI_INFINITE);
 	}
 
 	UI_DrawBoxBackdrop(box);
@@ -1743,24 +1747,17 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	}
 
 	if (box->parent && UI_STATE.text_editing_box_new == box->parent->key) {
-		//UI_Vec2 P = box->computed_position;
-		//P.x += box->style->text_padding.x;
-		//UI_DrawLine(P, UI_AddV2(P, UI_VEC2{0, 5.f}), 2.f, UI_BLUE, NULL);
-
 		UI_Selection sel = UI_STATE.edit_text_selection;
-		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 50});
+		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 50}, scissor);
 
 		UI_Mark end = sel.range[sel.end];
-		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 255});
+		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 255}, scissor);
 	}
 	
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
 		UI_DrawBox(child);
 	}
 
-	//if (!(box->flags & UI_BoxFlag_NoScissor)) {
-	//	//UI_PopScissor();
-	//}
 	UI_ProfExit();
 }
 
@@ -2248,7 +2245,7 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 
 		// UI_.atlas = UI_InitFontAtlas(persistent_arena);
 
-		UI_String roboto_mono_ttf, icons_ttf;
+		STR roboto_mono_ttf, icons_ttf;
 		// UI_TODO();
 		// UI_CHECK(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_("/roboto_mono.ttf")), &roboto_mono_ttf));
 		// UI_CHECK(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_("/fontello/font/fontello.ttf")), &icons_ttf));
@@ -2261,7 +2258,7 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 	DS_ArrInit(&UI_STATE.box_stack, &UI_STATE.persistent_arena);
 	DS_ArrPush(&UI_STATE.box_stack, NULL);
 
-	UI_TextInit(allocator, &UI_STATE.edit_number_text, STR_(""));
+	UI_TextInit(allocator, &UI_STATE.edit_number_text, "");
 
 	UI_ProfExit();
 }
@@ -2721,7 +2718,7 @@ UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontUsage font) {
 	//return val.advance;
 }
 
-UI_API float UI_TextWidth(UI_String text, UI_FontUsage font) {
+UI_API float UI_TextWidth(STR text, UI_FontUsage font) {
 	UI_ProfEnter();
 	float w = 0.f;
 	for STR_Each(text, r, i) {
@@ -3199,7 +3196,7 @@ UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, const UI_Color* colors, i
 	UI_DrawPolylineEx(points, colors, points_count, thickness, true, 0.7f);
 }
 
-UI_API UI_Vec2 UI_DrawText(UI_String text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {
+UI_API UI_Vec2 UI_DrawText(STR text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {
 	UI_ProfEnter();
 	UI_Vec2 s = { UI_TextWidth(text, font), font.size };
 
@@ -3341,7 +3338,7 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 
 UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 	UI_ProfEnter();
-	UI_Box* box = UI_AddBoxWithText(key, w, h, UI_BoxFlag_Clickable, STR_(":"));
+	UI_Box* box = UI_AddBoxWithText(key, w, h, UI_BoxFlag_Clickable, ":");
 
 	bool holding_down = UI_IsClickingDown(box->key);
 	if (holding_down || UI_IsHovered(box->key)) {

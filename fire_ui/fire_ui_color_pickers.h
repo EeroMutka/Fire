@@ -252,7 +252,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 			UI_Box* left_column = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0);
 			UI_PushBox(left_column);
 
-			static const STR strings[] = {STR__("R"), STR__("G"), STR__("B"), STR__("A")};
+			static const char* strings[] = {"R", "G", "B", "A"};
 			float rgba[4] = {0, 0, 0, *alpha};
 			UI_HSVToRGB(*hue, *saturation, *value, &rgba[0], &rgba[1], &rgba[2]);
 
@@ -283,7 +283,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 			UI_Box* right_column = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0);
 			UI_PushBox(right_column);
 
-			static const STR strings[] = {STR__("H"), STR__("S"), STR__("V")};
+			static const char* strings[] = {"H", "S", "V"};
 			float* hsv[] = {hue, saturation, value};
 			for (int i = 0; i < 3; i++) {
 				UI_Key row_key = UI_HashInt(key, i);
