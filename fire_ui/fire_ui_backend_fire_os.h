@@ -15,10 +15,8 @@ static void UI_OS_SetClipboardText(STR string, void* user_data) {
 	OS_CLIPBOARD_SetText(string.data, string.size);
 }
 
-static void UI_OS_ResetFrameInputs(OS_WINDOW* window, UI_Inputs* ui_inputs, UI_Font* base_font, UI_Font* icons_font) {
+static void UI_OS_ResetFrameInputs(OS_WINDOW* window, UI_Inputs* ui_inputs) {
 	memset(ui_inputs, 0, sizeof(*ui_inputs));
-	ui_inputs->base_font = base_font;
-	ui_inputs->icons_font = icons_font;
 	ui_inputs->get_clipboard_string_fn = UI_OS_GetClipboardString;
 	ui_inputs->set_clipboard_string_fn = UI_OS_SetClipboardText;
 	

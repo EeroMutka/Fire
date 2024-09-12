@@ -16,9 +16,9 @@
 #ifndef FIRE_UI_INCLUDED
 #define FIRE_UI_INCLUDED
 
-#ifndef UI_CHECK_OVERRIDE
+#ifndef UI_ASSERT_OVERRIDE
 #include <assert.h>
-#define UI_CHECK(x) assert(x)
+#define UI_ASSERT(x) assert(x)
 #endif
 
 #ifndef UI_PROFILER_MACROS_OVERRIDE
@@ -119,8 +119,10 @@ typedef struct UI_CachedGlyph {
 	float x_advance;      // advance to the next character in pixel coordinates
 } UI_CachedGlyph;
 
+typedef int32_t UI_FontIndex;
+
 typedef struct UI_Font {
-	const uint8_t* data;
+	const uint8_t* data; // NULL if the font is deinitialized
 	float y_offset;
 
 	DS_Map(UI_CachedGlyphKey, UI_CachedGlyph) glyph_map;
@@ -129,10 +131,10 @@ typedef struct UI_Font {
 	stbtt_fontinfo font_info;
 } UI_Font;
 
-typedef struct UI_FontUsage {
-	UI_Font* font;
-	float size; // height in pixels
-} UI_FontUsage;
+typedef struct UI_FontView {
+	UI_FontIndex font;
+	int32_t size;
+} UI_FontView;
 
 typedef struct UI_ArrangerSet {
 	struct UI_Box* dragging_elem; // may be NULL
@@ -144,15 +146,15 @@ typedef struct UI_ArrangersRequest {
 	int move_to; // index of the moved element after the move
 } UI_ArrangersRequest;
 
-typedef struct UI_Style {
-	UI_FontUsage font;
-	UI_Color border_color;
-	UI_Color opaque_bg_color;
-	UI_Color transparent_bg_color;
-	UI_Color text_color;
-	UI_Vec2 text_padding;  // in size units
-	UI_Vec2 child_padding; // in size units
-} UI_Style;
+//typedef struct UI_Style {
+//	UI_FontUsage font;
+//	UI_Color border_color;
+//	UI_Color opaque_bg_color;
+//	UI_Color transparent_bg_color;
+//	UI_Color text_color;
+//	UI_Vec2 text_padding;
+//	UI_Vec2 child_padding;
+//} UI_Style;
 
 // If I have two functions, those function must be able to independently associate extra data to a box.
 // I think either a hash table, or a linked list of "extra data" could be good.
@@ -178,24 +180,28 @@ struct UI_Box {
 		UI_BoxFlagBits flags_bits; // for debugger visualization
 	};
 
-	STR text;
-	UI_Size size[2];
-	UI_Vec2 offset;
+	UI_FontView font;
+	UI_Vec2 inner_padding; // applied to text or children
 
-	UI_Style* style;
-	
-	void (*draw_override)(UI_Box* box);
+	STR text;
+
+	UI_Size size[2];
+	UI_Vec2 offset; // this is used for scroll-bars. Maybe I could refactor this into a function pointer or something.
+
 	void (*compute_unexpanded_size_override)(UI_Box* box, UI_Axis axis);
 
 	// Persistent / animated state
-	float lazy_is_hovered;
-	float lazy_is_holding_down;
+	// float lazy_is_hovered;
+	// float lazy_is_holding_down;
 
 	// These will be computed with UI_ComputeBox.
 	UI_Vec2 computed_position; // in absolute screen space coordinates
 	UI_Vec2 computed_unexpanded_size;
 	UI_Vec2 computed_size;
 	UI_Rect computed_rect_clipped;
+
+	// drawing
+	void (*draw)(UI_Box* box);
 
 	UI_BoxCustomDataHeader* custom_data_list;
 };
@@ -310,9 +316,6 @@ typedef struct UI_Backend {
 typedef struct UI_Inputs {
 	UI_InputEvents input_events[UI_Input_COUNT];
 
-	UI_Font* base_font;
-	UI_Font* icons_font;
-
 	UI_Vec2 mouse_position;
 	UI_Vec2 mouse_raw_delta;
 	float mouse_wheel_delta; // +1.0 means the wheel was rotated forward by one scroll step
@@ -320,6 +323,7 @@ typedef struct UI_Inputs {
 	uint32_t text_input_utf32[16];
 	int text_input_utf32_length;
 
+	// @todo: get rid of these two
 	STR (*get_clipboard_string_fn)(void* user_data); // The returned string must stay valid for the rest of the frame
 	void (*set_clipboard_string_fn)(STR string, void* user_data);
 
@@ -361,9 +365,6 @@ typedef struct UI_State {
 	DS_Arena persistent_arena;
 	UI_Backend backend;
 
-	UI_Font* base_font;
-	UI_Font* icons_font;
-
 	DS_Arena prev_frame_arena;
 	DS_Arena frame_arena;
 
@@ -381,6 +382,8 @@ typedef struct UI_State {
 	bool input_is_down[UI_Input_COUNT];
 
 	float time_since_pressed_lmb;
+
+	DS_DynArray(UI_Font) fonts;
 
 	// atlas
 	stbtt_pack_context pack_context;
@@ -404,10 +407,13 @@ typedef struct UI_State {
 	UI_Key selected_box;
 	UI_Key selected_box_new;
 	
-	DS_DynArray(UI_Box*) box_stack;
-	DS_DynArray(UI_Style*) style_stack;
-
 	float scrollbar_origin_before_press;
+	
+	// -- Builder state --
+	UI_FontView base_font;
+	UI_FontView icons_font;
+	DS_DynArray(UI_Box*) box_stack;
+	//DS_DynArray(UI_Style*) style_stack;
 
 	// -- Draw state --
 	uint32_t* draw_indices; // NULL by default
@@ -579,10 +585,10 @@ UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h);
 
 // --------------------------------------
 
-UI_API UI_Style* UI_PushStyle(void);
-UI_API UI_Style* UI_MakeStyle(void);
-UI_API void UI_PopStyle(UI_Style* style);
-UI_API UI_Style* UI_PeekStyle(void);
+//UI_API UI_Style* UI_PushStyle(void);
+//UI_API UI_Style* UI_MakeStyle(void);
+//UI_API void UI_PopStyle(UI_Style* style);
+//UI_API UI_Style* UI_PeekStyle(void);
 
 UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key); // Returns NULL if a box with this key did not exist
 UI_API UI_Box* UI_BoxFromKey(UI_Key key); // Returns NULL if a box with this key has not been created this frame so far
@@ -634,8 +640,8 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 // UI_Splitters must be called before calling UI_SplittersGetHoldingIndex
 UI_API bool UI_SplittersGetHoldingIndex(UI_Key key, int* out_index);
 
-UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontUsage font);
-UI_API float UI_TextWidth(STR text, UI_FontUsage font);
+UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontView font);
+UI_API float UI_TextWidth(STR text, UI_FontView font);
 
 // Returns true when newly added, false when existing
 // ... do we have the ability to upload new data to a texture? That would need to inform the graphics backend.
@@ -645,8 +651,8 @@ UI_API void UI_FreeTextureArea(int64_t key);
 
 // `ttf_data` should be a pointer to a TTF font file data. It is NOT copied internally,
 // and must therefore remain valid across the whole lifetime of the font!
-UI_API void UI_FontInit(UI_Font* font, const void* ttf_data, float y_offset);
-UI_API void UI_FontDeinit(UI_Font* font);
+UI_API UI_FontIndex UI_FontInit(const void* ttf_data, float y_offset);
+UI_API void UI_FontDeinit(UI_FontIndex font_idx);
 
 // -- Drawing ----------------------
 
@@ -667,7 +673,7 @@ UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, 
 UI_API void UI_DrawTriangle(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Color color);
 UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color color);
 
-UI_API UI_Vec2 UI_DrawText(STR text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor);
+UI_API UI_Vec2 UI_DrawText(STR text, UI_FontView font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor);
 
 UI_API void UI_DrawSprite(UI_Rect rect, UI_Color color, UI_Rect uv_rect, UI_TextureID texture, UI_ScissorRect scissor);
 
@@ -698,6 +704,7 @@ UI_API UI_State UI_STATE;
 #define UI_GLYPH_MAP_SIZE 1024
 
 static const UI_Vec2 UI_WHITE_PIXEL_UV = { 0.5f / (float)UI_GLYPH_MAP_SIZE, 0.5f / (float)UI_GLYPH_MAP_SIZE };
+static const UI_Vec2 UI_DEFAULT_TEXT_PADDING = { 10.f, 5.f };
 
 UI_API inline bool UI_MarkGreaterThan(UI_Mark a, UI_Mark b) { return a.line > b.line || (a.line == b.line && a.col > b.col); }
 UI_API inline bool UI_MarkLessThan(UI_Mark a, UI_Mark b) { return a.line < b.line || (a.line == b.line && a.col < b.col); }
@@ -719,15 +726,14 @@ UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlag
 	UI_AddBoxWithText(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0, string);
 
 	UI_Box* icon_box = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, "\x44");
-	icon_box->style = UI_MakeStyle();
-	icon_box->style->font.font = UI_STATE.icons_font;
-
+	icon_box->font = UI_STATE.icons_font;
+	
 	UI_PopBox(box);
 	UI_ProfExit();
 	return box;
 }
 
-static int UI_ColumnFromXOffset(float x, STR line, UI_FontUsage font) {
+static int UI_ColumnFromXOffset(float x, STR line, UI_FontView font) {
 	UI_ProfEnter();
 	int column = 0;
 	float start_x = 0.f;
@@ -741,7 +747,7 @@ static int UI_ColumnFromXOffset(float x, STR line, UI_FontUsage font) {
 	return column;
 }
 
-static float UI_XOffsetFromColumn(int col, STR line, UI_FontUsage font) {
+static float UI_XOffsetFromColumn(int col, STR line, UI_FontView font) {
 	UI_ProfEnter();
 	float x = 0.f;
 	int i = 0;
@@ -793,15 +799,15 @@ static int UI_MarkToByteOffset(UI_Mark mark, const UI_Text* text) {
 	return result;
 }
 
-static UI_Vec2 UI_XYOffsetFromMark(const UI_Text* text, UI_Mark mark, UI_FontUsage font) {
+static UI_Vec2 UI_XYOffsetFromMark(const UI_Text* text, UI_Mark mark, UI_FontView font) {
 	UI_ProfEnter();
 	float x = UI_XOffsetFromColumn(mark.col, UI_GetLineString(mark.line, text), font);
-	UI_Vec2 result = { x, font.size * mark.line };
+	UI_Vec2 result = { x, (float)font.size * mark.line };
 	UI_ProfExit();
 	return result;
 }
 
-static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_origin, STR text, UI_FontUsage font, UI_Color color, UI_ScissorRect scissor) {
+static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_origin, STR text, UI_FontView font, UI_Color color, UI_ScissorRect scissor) {
 	UI_ProfEnter();
 	float min_pos_x = UI_XOffsetFromColumn(min.col, text, font);
 	float max_pos_x = UI_XOffsetFromColumn(max.col, text, font); // this is not OK with multiline!
@@ -819,7 +825,7 @@ static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_ori
 			rect.max.x += max_pos_x;
 		}
 		else {
-			UI_CHECK(false);
+			UI_ASSERT(false);
 		}
 
 		rect.min.x -= 1.f;
@@ -953,7 +959,7 @@ static void UI_MoveMarkH(UI_Mark* mark, const UI_Text* text, int dir, bool ctrl)
 	UI_ProfExit();
 }
 
-static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection* selection, UI_FontUsage font) {
+static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection* selection, UI_FontView font) {
 	UI_ProfEnter();
 
 	bool shift = UI_InputIsDown(UI_Input_Shift);
@@ -977,11 +983,13 @@ static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection
 
 		UI_SelectionFixOrder(selection);
 	}
+
 	UI_ProfExit();
 }
 
 UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* request) {
 	UI_ProfEnter();
+
 	if (request->has_edit) {
 		// @speed: I think we could optimize this function by combining the erase and insert steps
 
@@ -1045,6 +1053,7 @@ UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* reque
 		// Update text for the box, otherwise we get 1-frame delay
 		request->box_with_text->text = STR_Clone(UI_FrameArena(), UI_TextToStr(*text));
 	}
+
 	UI_ProfExit();
 }
 
@@ -1173,10 +1182,8 @@ UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* file
 	UI_Key edit_text_key = UI_KEY1(key);
 	UI_AddValText(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath, out_modify);
 
-	UI_Style* button_style = UI_PushStyle();
-	button_style->font.font = UI_STATE.icons_font;
 	UI_Box* button = UI_AddButton(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x42");
-	UI_PopStyle(button_style);
+	button->font = UI_STATE.icons_font;
 
 	if (UI_Clicked(button->key)) {
 		UI_TODO();
@@ -1204,7 +1211,7 @@ UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* file
 
 static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from, UI_Mark to, STR with, UI_EditTextModify* out_edit_request) {
 	UI_ProfEnter();
-	UI_CHECK(!out_edit_request->has_edit);
+	UI_ASSERT(!out_edit_request->has_edit);
 	out_edit_request->has_edit = true;
 	out_edit_request->replace_from = selection->range[0];
 	out_edit_request->replace_to = selection->range[1];
@@ -1253,10 +1260,22 @@ UI_API void UI_TextSet(UI_Text* text, const char* value) {
 	UI_ProfExit();
 }
 
+static void UI_DrawValTextInnerBox(UI_Box* box) {
+	UI_DrawBoxDefault(box);
+
+	if (UI_STATE.text_editing_box_new == box->parent->key) {
+		UI_Selection sel = UI_STATE.edit_text_selection;
+		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->inner_padding), box->text, box->font, UI_COLOR{255, 255, 255, 50}, &box->computed_rect_clipped);
+
+		UI_Mark end = sel.range[sel.end];
+		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->inner_padding), box->text, box->font, UI_COLOR{255, 255, 255, 255}, &box->computed_rect_clipped);
+	}
+}
+
 UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify) {
 	UI_ProfEnter();
-	UI_Style* style = UI_PeekStyle();
-	UI_FontUsage font = style->font;
+
+	UI_FontView font = UI_STATE.base_font;
 
 	UI_EditTextModify default_modify;
 	UI_EditTextModify* modify = out_modify ? out_modify : &default_modify;
@@ -1267,6 +1286,7 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 
 	UI_Box* inner = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, "");
 	inner->text = UI_TextToStr(*text);
+	inner->draw = UI_DrawValTextInnerBox;
 	modify->box_with_text = inner;
 
 	bool editing = UI_STATE.text_editing_box == key;
@@ -1307,7 +1327,7 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 
 		if (pressed_this || UI_STATE.mouse_clicking_down_box == key) {
 			if (inner->prev_frame) {
-				float origin = inner->prev_frame->computed_position.x + style->text_padding.x;
+				float origin = inner->prev_frame->computed_position.x + inner->prev_frame->inner_padding.x;
 			
 				int col = UI_ColumnFromXOffset(UI_STATE.mouse_pos.x - origin, UI_GetLineString(0, text), font);
 				selection->range[selection->end].col = col;
@@ -1399,18 +1419,11 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
 	UI_ProfEnter();
 
-	UI_Style* style = UI_PeekStyle();
-	float h = style->font.size + 2.f * style->text_padding.y;
+	float h = UI_STATE.base_font.size + 2.f * UI_DEFAULT_TEXT_PADDING.y;
 
-	UI_Style* outer_style = UI_PushStyle();
-	outer_style->child_padding = UI_VEC2{ 5.f, 5.f };
 	UI_Box* box = UI_AddBox(UI_KEY1(key), h, h, UI_BoxFlag_ChildPadding);
-	UI_PopStyle(outer_style);
+	box->inner_padding = UI_VEC2{ 5.f, 5.f };
 	UI_PushBox(box);
-
-	UI_Style* inner_style = UI_PushStyle();
-	inner_style->text_padding = UI_VEC2{ 5.f, 2.f };
-	inner_style->font.font = UI_STATE.icons_font;
 
 	UI_Box* inner;
 	UI_BoxFlags inner_flags = UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder;
@@ -1421,7 +1434,9 @@ UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
 	else {
 		inner = UI_AddBox(inner_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), inner_flags);
 	}
-	UI_PopStyle(inner_style);
+	inner->font = UI_STATE.icons_font;
+	inner->inner_padding = UI_VEC2{ 5.f, 2.f };
+	
 	UI_PopBox(box);
 
 	if (UI_Pressed(inner->key)) *value = !*value;
@@ -1433,6 +1448,8 @@ UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 	UI_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, flags | UI_BoxFlag_DrawText);
 	box->text = STR_InitV(string);
+	box->font = UI_STATE.base_font;
+	box->inner_padding = UI_DEFAULT_TEXT_PADDING;
 	UI_ProfExit();
 	return box;
 }
@@ -1449,10 +1466,8 @@ UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size inden
 		is_open = !is_open;
 	}
 
-	UI_Style* label_style = UI_PushStyle();
-	label_style->font.font = UI_STATE.icons_font;
-	UI_AddBoxWithText(UI_KEY1(key), 20.f, h, 0, is_open ? "\x44" : "\x46");
-	UI_PopStyle(label_style);
+	UI_Box* label = UI_AddBoxWithText(UI_KEY1(key), 20.f, h, 0, is_open ? "\x44" : "\x46");
+	label->font = UI_STATE.icons_font;
 
 	UI_AddBoxWithText(UI_KEY1(key), w, h, 0, text);
 
@@ -1670,22 +1685,25 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 	bool fully_clipped = scissor && UI_ClipRect(&box_rect, &uv_rect, scissor);
 	if (!fully_clipped) {
 		if (box->flags & UI_BoxFlag_DrawTransparentBackground) {
-			UI_DrawRectRounded(box_rect, 4.f, box->style->transparent_bg_color, 2);
+			UI_Color transparent_bg_color = UI_COLOR{ 255, 255, 255, 50 };
+			UI_DrawRectRounded(box_rect, 4.f, transparent_bg_color, 2);
 		}
 
 		if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
-			UI_DrawRectRounded(box_rect, 4.f, box->style->opaque_bg_color, 2);
+			UI_Color opaque_bg_color = UI_COLOR{ 50, 50, 50, 255 };
+			UI_DrawRectRounded(box_rect, 4.f, opaque_bg_color, 2);
 			//UI_DrawRectEx(box_rect, box->style->opaque_bg_color, 12.f, 1.f, UI_INFINITE, scissor);
 		}
 
 		if (box->flags & UI_BoxFlag_DrawBorder) {
-			UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, box->style->border_color);
+			UI_Color border_color = UI_COLOR{ 0, 0, 0, 128 };
+			UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, border_color);
 		}
 
 		if (box->flags & UI_BoxFlag_Clickable) {
 			float r = 4.f;
 			{
-				float hovered = box->lazy_is_hovered * (1.f - box->lazy_is_holding_down); // We don't want to show the hover highlight when holding down
+				float hovered = 0.f;//box->lazy_is_hovered * (1.f - box->lazy_is_holding_down); // We don't want to show the hover highlight when holding down
 				const UI_Color top = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 20.f) };
 				const UI_Color bot = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 10.f) };
 				UI_DrawRectCorners corners = {
@@ -1695,8 +1713,10 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 				UI_DrawRectEx(box_rect, &corners, 2);
 			}
 			{
-				const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 100.f) };
-				const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 20.f) };
+				//const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 100.f) };
+				//const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 20.f) };
+				const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(0.f * 100.f) };
+				const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(0.f * 20.f) };
 				UI_DrawRectCorners corners = {
 					{top, top, bot, bot},
 					{top, top, bot, bot},
@@ -1710,18 +1730,14 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 
 UI_API void UI_DrawBox(UI_Box* box) {
 	UI_ProfEnter();
-	if (box->draw_override) {
-		box->draw_override(box);
-	} else {
-		UI_DrawBoxDefault(box);
-	}
+	box->draw(box);
 	UI_ProfExit();
 }
 
 UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	UI_ProfEnter();
 
-	UI_CHECK(box->flags & UI_BoxFlag_HasComputedRects);
+	UI_ASSERT(box->flags & UI_BoxFlag_HasComputedRects);
 	UI_ScissorRect scissor = box->flags & UI_BoxFlag_NoScissor ? NULL : &box->computed_rect_clipped;
 
 	if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
@@ -1742,18 +1758,11 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	}
 
 	if (box->flags & UI_BoxFlag_DrawText) {
-		UI_Vec2 text_pos = UI_AddV2(box->computed_position, box->style->text_padding);
-		UI_DrawText(box->text, box->style->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, box->style->text_color, scissor);
+		UI_Vec2 text_pos = UI_AddV2(box->computed_position, box->inner_padding);
+		UI_Color text_color = UI_COLOR{ 255, 255, 255, 255 };
+		UI_DrawText(box->text, box->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, text_color, scissor);
 	}
 
-	if (box->parent && UI_STATE.text_editing_box_new == box->parent->key) {
-		UI_Selection sel = UI_STATE.edit_text_selection;
-		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 50}, scissor);
-
-		UI_Mark end = sel.range[sel.end];
-		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->style->text_padding), box->text, box->style->font, UI_COLOR{255, 255, 255, 255}, scissor);
-	}
-	
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
 		UI_DrawBox(child);
 	}
@@ -1867,24 +1876,24 @@ UI_API bool UI_IsHoveredIdle(UI_Key key) {
 	return result;
 }
 
-UI_API UI_Style* UI_PeekStyle(void) {
-	return DS_ArrPeek(UI_STATE.style_stack);
-}
+//UI_API UI_Style* UI_PeekStyle(void) {
+//	return DS_ArrPeek(UI_STATE.style_stack);
+//}
 
-UI_API UI_Style* UI_MakeStyle(void) {
-	return DS_Clone(UI_Style, UI_FrameArena(), *DS_ArrPeek(UI_STATE.style_stack));
-}
+//UI_API UI_Style* UI_MakeStyle(void) {
+//	return DS_Clone(UI_Style, UI_FrameArena(), *DS_ArrPeek(UI_STATE.style_stack));
+//}
 
-UI_API UI_Style* UI_PushStyle(void) {
-	UI_Style* style = DS_Clone(UI_Style, UI_FrameArena(), *DS_ArrPeek(UI_STATE.style_stack));
-	DS_ArrPush(&UI_STATE.style_stack, style);
-	return style;
-}
-
-UI_API void UI_PopStyle(UI_Style* style) {
-	UI_CHECK(DS_ArrPeek(UI_STATE.style_stack) == style);
-	DS_ArrPop(&UI_STATE.style_stack);
-}
+//UI_API UI_Style* UI_PushStyle(void) {
+//	UI_Style* style = DS_Clone(UI_Style, UI_FrameArena(), *DS_ArrPeek(UI_STATE.style_stack));
+//	DS_ArrPush(&UI_STATE.style_stack, style);
+//	return style;
+//}
+//
+//UI_API void UI_PopStyle(UI_Style* style) {
+//	UI_ASSERT(DS_ArrPeek(UI_STATE.style_stack) == style);
+//	DS_ArrPop(&UI_STATE.style_stack);
+//}
 
 UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key) {
 	UI_Box* box = NULL;
@@ -1905,7 +1914,7 @@ UI_API void* UI_BoxGetCustomData(UI_Box* box, UI_Key key, int size) {
 	void* result = NULL;
 	for (UI_BoxCustomDataHeader* it = box->custom_data_list; it; it = it->next) {
 		if (it->key == key) {
-			UI_CHECK(size == it->debug_size);
+			UI_ASSERT(size == it->debug_size);
 			result = it + 1;
 			break;
 		}
@@ -2006,8 +2015,8 @@ end:;
 
 UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, bool is_a_root) {
 	UI_ProfEnter();
-	UI_CHECK(w >= 0.f || (w >= -100.f && w <= -99.f));
-	UI_CHECK(h >= 0.f || (h >= -100.f && h <= -99.f));
+	UI_ASSERT(w >= 0.f || (w >= -100.f && w <= -99.f));
+	UI_ASSERT(h >= 0.f || (h >= -100.f && h <= -99.f));
 
 	UI_Box* box = DS_New(UI_Box, UI_FrameArena());
 	bool newly_added = DS_MapInsert(&UI_STATE.box_from_key, key, box);
@@ -2018,7 +2027,7 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 	box->size[0] = w;
 	box->size[1] = h;
 	box->flags = flags;
-	box->style = UI_PeekStyle();
+	box->draw = UI_DrawBoxDefault;
 
 	if (UI_STATE.mouse_clicking_down_box == key && UI_InputIsDown(UI_Input_MouseLeft)) {
 		UI_STATE.mouse_clicking_down_box_new = key;
@@ -2058,9 +2067,9 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 		}
 
 		float is_clicking = (float)UI_IsClickingDownAndHovered(box->key);
-		box->lazy_is_hovered = (float)UI_IsHoveredIdle(box->key);
-		box->lazy_is_holding_down = is_clicking > box->prev_frame->lazy_is_holding_down ?
-			is_clicking : UI_Lerp(box->prev_frame->lazy_is_holding_down, is_clicking, 0.2f);
+		//box->lazy_is_hovered = (float)UI_IsHoveredIdle(box->key);
+		//box->lazy_is_holding_down = is_clicking > box->prev_frame->lazy_is_holding_down ?
+			//is_clicking : UI_Lerp(box->prev_frame->lazy_is_holding_down, is_clicking, 0.2f);
 	}
 
 	UI_ProfExit();
@@ -2074,7 +2083,7 @@ UI_API UI_Box* UI_MakeRootBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flag
 UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
 	UI_ProfEnter();
 	UI_Box* parent = DS_ArrPeek(UI_STATE.box_stack);
-	UI_CHECK(parent != NULL); // AddBox creates a new box under the currently pushed box. If this fails, no box is currently pushed
+	UI_ASSERT(parent != NULL); // AddBox creates a new box under the currently pushed box. If this fails, no box is currently pushed
 	
 	UI_Box* box = UI_MakeBox_(key, w, h, flags, false);
 	box->parent = parent;
@@ -2098,18 +2107,18 @@ UI_API void UI_PushBox(UI_Box* box) {
 UI_API void UI_PopBox(UI_Box* box) {
 	UI_ProfEnter();
 	UI_Box* popped = DS_ArrPop(&UI_STATE.box_stack);
-	UI_CHECK(popped == box);
+	UI_ASSERT(popped == box);
 	UI_ProfExit();
 }
 
 UI_API void UI_PopBoxN(UI_Box* box, int n) {
-	UI_CHECK(UI_STATE.box_stack.length >= n);
+	UI_ASSERT(UI_STATE.box_stack.length >= n);
 	UI_STATE.box_stack.length -= n - 1;
 	UI_Box* last_popped = DS_ArrPop(&UI_STATE.box_stack);
-	UI_CHECK(last_popped == box);
+	UI_ASSERT(last_popped == box);
 }
 
-UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
+UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size, UI_FontView base_font, UI_FontView icons_font) {
 	UI_ProfEnter();
 
 	UI_STATE.draw_next_vertex = 0;
@@ -2117,20 +2126,19 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 	UI_STATE.draw_vertices = (UI_DrawVertex*)UI_STATE.backend.buffer_map_until_frame_end(0);
 	UI_STATE.draw_indices = (uint32_t*)UI_STATE.backend.buffer_map_until_frame_end(1);
 	UI_STATE.draw_active_texture = UI_STATE.atlases[0];
-	UI_CHECK(UI_STATE.draw_active_texture != UI_TEXTURE_ID_NIL);
-	UI_CHECK(UI_STATE.draw_vertices != NULL);
-	UI_CHECK(UI_STATE.draw_indices != NULL);
+	UI_ASSERT(UI_STATE.draw_active_texture != UI_TEXTURE_ID_NIL);
+	UI_ASSERT(UI_STATE.draw_vertices != NULL);
+	UI_ASSERT(UI_STATE.draw_indices != NULL);
 
 	UI_STATE.inputs = *inputs;
 	memset(&UI_STATE.outputs, 0, sizeof(UI_STATE.outputs));
 	UI_STATE.window_size = window_size;
 
-	UI_CHECK(UI_STATE.box_stack.length == 1);
+	UI_ASSERT(UI_STATE.box_stack.length == 1);
 	UI_STATE.mouse_pos = UI_AddV2(UI_STATE.inputs.mouse_position, UI_VEC2{ 0.5f, 0.5f });
-	UI_STATE.base_font = UI_STATE.inputs.base_font;
-	UI_STATE.icons_font = UI_STATE.inputs.icons_font;
-	UI_CHECK(UI_STATE.base_font != NULL && UI_STATE.icons_font != NULL);
-
+	UI_STATE.base_font = base_font;
+	UI_STATE.icons_font = icons_font;
+	
 	DS_Arena prev_frame_arena = UI_STATE.prev_frame_arena;
 	UI_STATE.prev_frame_arena = UI_STATE.frame_arena;
 	UI_STATE.frame_arena = prev_frame_arena;
@@ -2167,24 +2175,26 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size) {
 	}
 
 	// Push default style
-	UI_Style style = {0};
-	style.font.font = UI_STATE.base_font;
-	style.font.size = 18.f;
-	style.border_color = UI_COLOR{ 0, 0, 0, 128 };
-	style.opaque_bg_color = UI_COLOR{ 50, 50, 50, 255 };
-	style.transparent_bg_color = UI_COLOR{ 255, 255, 255, 50 };
-	style.text_padding = UI_VEC2{ 10.f, 5.f };
-	style.child_padding = UI_VEC2{ 12.f, 12.f };
-	style.text_color = UI_COLOR{ 255, 255, 255, 255 };
-	DS_ArrPush(&UI_STATE.style_stack, DS_Clone(UI_Style, &UI_STATE.persistent_arena, style));
+	// UI_Style style = {0};
+	// style.font.font = UI_STATE.base_font;
+	// style.font.size = 18.f;
+	// style.border_color = UI_COLOR{ 0, 0, 0, 128 };
+	// style.opaque_bg_color = UI_COLOR{ 50, 50, 50, 255 };
+	// style.transparent_bg_color = UI_COLOR{ 255, 255, 255, 50 };
+	// style.text_padding = UI_VEC2{ 10.f, 5.f };
+	// style.child_padding = UI_VEC2{ 12.f, 12.f };
+	// style.text_color = UI_COLOR{ 255, 255, 255, 255 };
+	//DS_ArrPush(&UI_STATE.style_stack, DS_Clone(UI_Style, &UI_STATE.persistent_arena, style));
 
 	UI_ProfExit();
 }
 
 UI_API void UI_Deinit(void) {
 	UI_ProfEnter();
-	DS_ArenaDeinit(&UI_STATE.prev_frame_arena);
+
+	DS_ArrDeinit(&UI_STATE.fonts);
 	DS_ArenaDeinit(&UI_STATE.frame_arena);
+	DS_ArenaDeinit(&UI_STATE.prev_frame_arena);
 	DS_ArenaDeinit(&UI_STATE.persistent_arena);
 
 	UI_STATE.backend.destroy_buffer(0);
@@ -2206,13 +2216,14 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 	DS_ArenaInit(&UI_STATE.persistent_arena, DS_KIB(1), allocator);
 	DS_ArenaInit(&UI_STATE.prev_frame_arena, DS_KIB(4), allocator);
 	DS_ArenaInit(&UI_STATE.frame_arena, DS_KIB(4), allocator);
-
+	DS_ArrInit(&UI_STATE.fonts, allocator);
+	
 	stbtt_PackBegin(&UI_STATE.pack_context, NULL, UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE, 0, UI_GLYPH_PADDING, NULL);
 
 	// init atlas
 	{
 		UI_TextureID atlas = backend->create_atlas(0, UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE);
-		UI_CHECK(atlas != UI_TEXTURE_ID_NIL);
+		UI_ASSERT(atlas != UI_TEXTURE_ID_NIL);
 		UI_STATE.atlases[0] = atlas;
 
 		// pack a white rectangle into the atlas. See UI_WHITE_PIXEL_UV
@@ -2221,8 +2232,8 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 		rect.w = 1;
 		rect.h = 1;
 		stbtt_PackFontRangesPackRects(&UI_STATE.pack_context, &rect, 1);
-		UI_CHECK(rect.was_packed);
-		UI_CHECK(rect.x == 0 && rect.y == 0);
+		UI_ASSERT(rect.was_packed);
+		UI_ASSERT(rect.x == 0 && rect.y == 0);
 
 		uint32_t* data = (uint32_t*)backend->atlas_map_until_frame_end(0);
 		data[0] = 0xFFFFFFFF;
@@ -2247,14 +2258,14 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 
 		STR roboto_mono_ttf, icons_ttf;
 		// UI_TODO();
-		// UI_CHECK(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_("/roboto_mono.ttf")), &roboto_mono_ttf));
-		// UI_CHECK(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_("/fontello/font/fontello.ttf")), &icons_ttf));
+		// UI_ASSERT(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_("/roboto_mono.ttf")), &roboto_mono_ttf));
+		// UI_ASSERT(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_("/fontello/font/fontello.ttf")), &icons_ttf));
 
 		// UI_FontInit(&UI_.base_font, roboto_mono_ttf.data, -4.f);
 		// UI_FontInit(&UI_.icons_font, icons_ttf.data, -2.f);
 	}
 
-	DS_ArrInit(&UI_STATE.style_stack, &UI_STATE.persistent_arena);
+	//DS_ArrInit(&UI_STATE.style_stack, &UI_STATE.persistent_arena);
 	DS_ArrInit(&UI_STATE.box_stack, &UI_STATE.persistent_arena);
 	DS_ArrPush(&UI_STATE.box_stack, NULL);
 
@@ -2263,20 +2274,12 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 	UI_ProfExit();
 }
 
-//UI_API void UI_BoxComputeUnexpandedSize(UI_Box* box, UI_Axis axis) {
-//	UI_ProfEnter();
-//
-//	// if we have a special unexpanded-size override, then do it here!
-//
-//	UI_ProfExit();
-//}
-
 UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 	UI_ProfEnter();
 	box->computed_size._[axis] = size;
 
 	float child_area_size = size;
-	if (box->flags & UI_BoxFlag_ChildPadding) child_area_size -= 2.f * box->style->child_padding._[axis];
+	if (box->flags & UI_BoxFlag_ChildPadding) child_area_size -= 2.f * box->inner_padding._[axis];
 
 	UI_Axis layout_axis = box->flags & UI_BoxFlag_LayoutInX ? UI_Axis_X : UI_Axis_Y;
 	UI_BoxFlags no_flex_down_flag = axis == UI_Axis_X ? UI_BoxFlag_NoFlexDownX : UI_BoxFlag_NoFlexDownY;
@@ -2288,7 +2291,6 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
 			total_leftover -= child->computed_unexpanded_size._[axis];
 		}
-
 		
 		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
 			if (total_leftover > 0) {
@@ -2365,7 +2367,7 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 
 	float cursor_base = layout_from_end ? max : min;
 	float cursor = cursor_base;
-	if (box->flags & UI_BoxFlag_ChildPadding) cursor += direction * box->style->child_padding._[axis];
+	if (box->flags & UI_BoxFlag_ChildPadding) cursor += direction * box->inner_padding._[axis];
 
 	UI_ScissorRect child_scissor = (box->flags & UI_BoxFlag_NoScissor) ? scissor : &box->computed_rect_clipped;
 
@@ -2410,10 +2412,10 @@ UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis) {
 	float fitting_size = 0.f;
 
 	if (box->flags & UI_BoxFlag_DrawText) {
-		UI_CHECK(box->first_child[0] == NULL); // DrawText may only be used on leaf boxes
+		UI_ASSERT(box->first_child[0] == NULL); // DrawText may only be used on leaf boxes
 
-		float text_size = axis == 0 ? UI_TextWidth(box->text, box->style->font) : box->style->font.size;
-		fitting_size = (float)(int)(text_size + 0.5f) + 2.f * box->style->text_padding._[axis];
+		float text_size = axis == 0 ? UI_TextWidth(box->text, box->font) : (float)box->font.size;
+		fitting_size = (float)(int)(text_size + 0.5f) + 2.f * box->inner_padding._[axis];
 	}
 
 	if (box->first_child[0]) {
@@ -2428,7 +2430,7 @@ UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis) {
 			}
 		}
 
-		if (box->flags & UI_BoxFlag_ChildPadding) fitting_size += 2 * box->style->child_padding._[axis];
+		if (box->flags & UI_BoxFlag_ChildPadding) fitting_size += 2 * box->inner_padding._[axis];
 	}
 
 	float unexpanded_size = box->size[axis] < 0.f ? fitting_size : box->size[axis];
@@ -2497,8 +2499,8 @@ UI_API void UI_EndFrame(UI_Outputs* outputs/*, GPU_Graph *graph, GPU_DescriptorA
 
 	UI_FinalizeDrawBatch();
 
-	UI_CHECK(UI_STATE.style_stack.length == 1);
-	DS_ArrPop(&UI_STATE.style_stack);
+	//UI_ASSERT(UI_STATE.style_stack.length == 1);
+	//DS_ArrPop(&UI_STATE.style_stack);
 
 	UI_STATE.outputs.draw_calls = UI_STATE.draw_calls.data;
 	UI_STATE.outputs.draw_calls_count = UI_STATE.draw_calls.length;
@@ -2511,7 +2513,7 @@ UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 	float* panel_end_offsets, float panel_min_width)
 {
 	UI_ProfEnter();
-	UI_CHECK(panel_count > 0);
+	UI_ASSERT(panel_count > 0);
 
 	// Sanitize positions
 	float offset = 0.f;
@@ -2612,8 +2614,19 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 #define INVALID_GLYPH '?'
 #define INVALID_GLYPH_COLOR UI_MAGENTA
 
-UI_API void UI_FontInit(UI_Font* font, const void* ttf_data, float y_offset) {
+UI_API UI_FontIndex UI_FontInit(const void* ttf_data, float y_offset) {
 	UI_ProfEnter();
+	
+	UI_FontIndex idx = -1;
+	for (int i = 0; i < UI_STATE.fonts.length; i++) {
+		if (UI_STATE.fonts.data[i].data == NULL) { idx = i; break; }
+	}
+	if (idx == -1) {
+		idx = UI_STATE.fonts.length;
+		DS_ArrResizeUndef(&UI_STATE.fonts, UI_STATE.fonts.length + 1);
+	}
+
+	UI_Font* font = &UI_STATE.fonts.data[idx];
 	memset(font, 0, sizeof(*font));
 	DS_MapInit(&font->glyph_map, UI_STATE.allocator);
 
@@ -2621,23 +2634,28 @@ UI_API void UI_FontInit(UI_Font* font, const void* ttf_data, float y_offset) {
 	font->y_offset = y_offset;
 
 	int font_offset = stbtt_GetFontOffsetForIndex(font->data, 0);
-	UI_CHECK(stbtt_InitFont(&font->font_info, font->data, font_offset));
+	UI_ASSERT(stbtt_InitFont(&font->font_info, font->data, font_offset));
 	UI_ProfExit();
+	
+	return idx;
 }
 
-UI_API void UI_FontDeinit(UI_Font* font) {
-	UI_ProfEnter();
+UI_API void UI_FontDeinit(UI_FontIndex font_idx) {
+	UI_Font* font = DS_ArrGetPtr(UI_STATE.fonts, font_idx);
+	UI_ASSERT(font->data);
 	DS_MapDeinit(&font->glyph_map);
-	UI_ProfExit();
+	font->data = NULL;
 }
 
-static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontUsage font, int* out_atlas_index) {
+static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontView font, int* out_atlas_index) {
 	UI_ProfEnter();
 	int atlas_index = 0;
-	UI_CachedGlyphKey key = { codepoint, (int)font.size };
+	UI_CachedGlyphKey key = { codepoint, font.size };
+
+	UI_Font* font_data = DS_ArrGetPtr(UI_STATE.fonts, font.font);
 
 	UI_CachedGlyph* glyph = NULL;
-	if (DS_MapGetOrAddPtr(&font.font->glyph_map, key, &glyph)) {
+	if (DS_MapGetOrAddPtr(&font_data->glyph_map, key, &glyph)) {
 		// if (UI_.frame_has_split_atlas) {
 		// 
 		// }
@@ -2649,29 +2667,29 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontUsage font, i
 		stbrp_rect rect = {0};
 		stbtt_packedchar packed_char;
 		stbtt_pack_range pack_range = {0};
-		pack_range.font_size = font.size;
+		pack_range.font_size = (float)font.size;
 		pack_range.first_unicode_codepoint_in_range = 0;
 		pack_range.array_of_unicode_codepoints = (int*)&codepoint;
 		pack_range.num_chars = 1;
 		pack_range.chardata_for_range = &packed_char;
 
 		// GatherRects fills width & height fields of `rect`
-		if (stbtt_PackFontRangesGatherRects(&UI_STATE.pack_context, &font.font->font_info, &pack_range, 1, &rect) == 0) {
+		if (stbtt_PackFontRangesGatherRects(&UI_STATE.pack_context, &font_data->font_info, &pack_range, 1, &rect) == 0) {
 			UI_TODO(); // glyph is not found in the font
 		}
-		UI_CHECK(rect.h >= 0);
+		UI_ASSERT(rect.h >= 0);
 
 		stbtt_PackFontRangesPackRects(&UI_STATE.pack_context, &rect, 1);
 		if (!rect.was_packed) {
 			UI_TODO(); // ran out of space in the atlas, we need to start using a new atlas
 		}
 
-		UI_CHECK(stbtt_PackFontRangesRenderIntoRects(&UI_STATE.pack_context, &font.font->font_info, &pack_range, 1, &rect));
+		UI_ASSERT(stbtt_PackFontRangesRenderIntoRects(&UI_STATE.pack_context, &font_data->font_info, &pack_range, 1, &rect));
 
 		// The glyph will be now rasterized into UI_.atlas_buffer_grayscale. Let's convert it into RGBA8.
 
 		uint32_t* atlas_data = (uint32_t*)UI_STATE.backend.atlas_map_until_frame_end(0);
-		UI_CHECK(atlas_data);
+		UI_ASSERT(atlas_data);
 
 		for (int y = packed_char.y0; y < packed_char.y1; y++) {
 			uint8_t* src_row = UI_STATE.atlas_buffer_grayscale + y * UI_GLYPH_MAP_SIZE;
@@ -2685,10 +2703,10 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontUsage font, i
 			}
 		}
 
-		UI_CHECK(packed_char.x0 == rect.x);
-		UI_CHECK(packed_char.y0 == rect.y);
-		UI_CHECK(packed_char.y1 - packed_char.y0 == rect.h);
-		UI_CHECK(packed_char.x1 - packed_char.x0 == rect.w);
+		UI_ASSERT(packed_char.x0 == rect.x);
+		UI_ASSERT(packed_char.y0 == rect.y);
+		UI_ASSERT(packed_char.y1 - packed_char.y0 == rect.h);
+		UI_ASSERT(packed_char.x1 - packed_char.x0 == rect.w);
 
 		int w = packed_char.x1 - packed_char.x0;
 		int h = packed_char.y1 - packed_char.y0;
@@ -2697,7 +2715,7 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontUsage font, i
 		glyph->size_pixels.x = (float)w;
 		glyph->size_pixels.y = (float)h;
 		glyph->offset_pixels.x = packed_char.xoff;
-		glyph->offset_pixels.y = packed_char.yoff + font.size + font.font->y_offset;
+		glyph->offset_pixels.y = packed_char.yoff + font.size + font_data->y_offset;
 		glyph->x_advance = (float)(int)(packed_char.xadvance + 0.5f); // round to integer
 
 		// UI_.atlas_needs_reupload = true;
@@ -2708,7 +2726,7 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontUsage font, i
 	return *glyph;
 }
 
-UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontUsage font) {
+UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontView font) {
 	UI_CachedGlyph glyph = UI_GetCachedGlyph(codepoint, font, NULL);
 	return glyph.x_advance;
 	//bool ok = DS_MapFind(&font->atlas->glyphs, &((UI_FontAtlasKey){codepoint, font->id}), &val);
@@ -2718,7 +2736,7 @@ UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontUsage font) {
 	//return val.advance;
 }
 
-UI_API float UI_TextWidth(STR text, UI_FontUsage font) {
+UI_API float UI_TextWidth(STR text, UI_FontView font) {
 	UI_ProfEnter();
 	float w = 0.f;
 	for STR_Each(text, r, i) {
@@ -2733,7 +2751,7 @@ UI_API inline UI_DrawVertex* UI_AddVertices(int count, uint32_t* out_first_index
 	*out_first_index = UI_STATE.draw_next_vertex;
 	UI_DrawVertex* v = &UI_STATE.draw_vertices[UI_STATE.draw_next_vertex];
 	UI_STATE.draw_next_vertex += count;
-	UI_CHECK(UI_STATE.draw_next_vertex <= UI_MAX_VERTEX_COUNT);
+	UI_ASSERT(UI_STATE.draw_next_vertex <= UI_MAX_VERTEX_COUNT);
 	UI_ProfExit();
 	return v;
 }
@@ -2750,7 +2768,7 @@ UI_API inline uint32_t* UI_AddIndices(int count, UI_TextureID texture) {
 
 	uint32_t* i = &UI_STATE.draw_indices[UI_STATE.draw_next_index];
 	UI_STATE.draw_next_index += count;
-	UI_CHECK(UI_STATE.draw_next_index <= UI_MAX_INDEX_COUNT);
+	UI_ASSERT(UI_STATE.draw_next_index <= UI_MAX_INDEX_COUNT);
 	UI_ProfExit();
 	return i;
 }
@@ -3196,9 +3214,9 @@ UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, const UI_Color* colors, i
 	UI_DrawPolylineEx(points, colors, points_count, thickness, true, 0.7f);
 }
 
-UI_API UI_Vec2 UI_DrawText(STR text, UI_FontUsage font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {
+UI_API UI_Vec2 UI_DrawText(STR text, UI_FontView font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {
 	UI_ProfEnter();
-	UI_Vec2 s = { UI_TextWidth(text, font), font.size };
+	UI_Vec2 s = { UI_TextWidth(text, font), (float)font.size };
 
 	if (align_h == UI_AlignH_Middle) {
 		origin.x -= s.x * 0.5f;
@@ -3260,7 +3278,7 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 	UI_PopBox(box);
 
 	UI_ArrangerSet* arranger_set = (UI_ArrangerSet*)UI_BoxGetCustomData(box, UI_GetArrangerSetKey(), sizeof(UI_ArrangerSet));
-	UI_CHECK(arranger_set);
+	UI_ASSERT(arranger_set);
 
 	float box_origin_prev_frame = box->prev_frame ? box->prev_frame->computed_position.y : 0.f;
 	float mouse_rel_y = UI_STATE.mouse_pos.y - box_origin_prev_frame;
@@ -3360,7 +3378,7 @@ UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 		}
 
 		// This arranger is not inside of an arranger set. Did you call UI_ArrangersPush?
-		UI_CHECK(elem);
+		UI_ASSERT(elem);
 	}
 	UI_ProfExit();
 	return box;

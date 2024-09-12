@@ -45,7 +45,7 @@
 //// Globals ///////////////////////////////////////////////
 
 static DS_Arena g_persist;
-static UI_Font g_base_font, g_icons_font;
+static UI_FontIndex g_base_font, g_icons_font;
 
 static ID3D11Device* g_d3d11_device;
 static ID3D11DeviceContext* g_d3d11_device_context;
@@ -79,7 +79,7 @@ static STR ReadEntireFile(DS_Arena* arena, const char* file) {
 
 static void UpdateAndRender() {
 	UI_DX11_BeginFrame();
-	UI_BeginFrame(&g_ui_inputs, g_window_size);
+	UI_BeginFrame(&g_ui_inputs, g_window_size, {g_base_font, 18}, {g_icons_font, 18});
 
 	UIDemoBuild(&g_demo_state, g_window_size);
 
@@ -169,13 +169,13 @@ static void AppInit() {
 	STR roboto_mono_ttf = ReadEntireFile(&g_persist, "../../fire_ui/resources/roboto_mono.ttf");
 	STR icons_ttf = ReadEntireFile(&g_persist, "../../fire_ui/resources/fontello/font/fontello.ttf");
 
-	UI_FontInit(&g_base_font, roboto_mono_ttf.data, -4.f);
-	UI_FontInit(&g_icons_font, icons_ttf.data, -2.f);
+	g_base_font = UI_FontInit(roboto_mono_ttf.data, -4.f);
+	g_icons_font = UI_FontInit(icons_ttf.data, -2.f);
 }
 
 static void AppDeinit() {
-	UI_FontDeinit(&g_base_font);
-	UI_FontDeinit(&g_icons_font);
+	UI_FontDeinit(g_base_font);
+	UI_FontDeinit(g_icons_font);
 
 	UI_Deinit();
 	UI_DX11_Deinit();
@@ -192,7 +192,7 @@ int main() {
 	AppInit();
 	
 	while (!OS_WINDOW_ShouldClose(&g_window)) {
-		UI_OS_ResetFrameInputs(&g_window, &g_ui_inputs, &g_base_font, &g_icons_font);
+		UI_OS_ResetFrameInputs(&g_window, &g_ui_inputs);
 		
 		OS_WINDOW_Event event; 
 		while (OS_WINDOW_PollEvent(&g_window, &event, OnResizeWindow, NULL)) {

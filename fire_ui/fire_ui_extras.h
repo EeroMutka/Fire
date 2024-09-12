@@ -51,6 +51,9 @@ static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis 
 
 UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify)
 {
+	UI_TODO();
+	/*
+	
 	UI_Box* root_box = UI_AddBox(key, UI_SizeFlex(1.f), UI_SizeFit(), 0);
 	UI_PushBox(root_box);
 
@@ -124,7 +127,8 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int arr
 	}
 
 	UI_PopBox(root_box);
-	return root_box;
+	return root_box;*/
+	return NULL;
 }
 
 // default_value may be NULL, in which case the element is zero-initialized
