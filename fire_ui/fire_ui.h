@@ -589,10 +589,13 @@ UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h);
 UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key); // Returns NULL if a box with this key did not exist
 UI_API UI_Box* UI_BoxFromKey(UI_Key key); // Returns NULL if a box with this key has not been created this frame so far
 
-#define UI_BoxAddCustomVal(BOX, KEY, VALUE) UI_BoxAddCustomData(BOX, KEY, &(VALUE), sizeof(VALUE))
-#define UI_BoxGetCustomVal(T, BOX, KEY)     (T*)UI_BoxGetCustomData(BOX, KEY, sizeof(T))
+//#define UI_BoxAddCustomVal(BOX, KEY, VALUE) UI_BoxAddCustomData(BOX, KEY, &(VALUE), sizeof(VALUE))
+//#define UI_BoxGetCustomVal(T, BOX, KEY)     (T*)UI_BoxGetCustomData(BOX, KEY, sizeof(T))
+#define UI_BoxGetAnimState(T, BOX, KEY)     (T*)UI_BoxGetAnimData(BOX, KEY, sizeof(T))
+
 UI_API void UI_BoxAddCustomData(UI_Box* box, UI_Key key, void* ptr, int size);
 UI_API void* UI_BoxGetCustomData(UI_Box* box, UI_Key key, int size); // NULL is returned if no custom data using the provided key is found
+UI_API void* UI_BoxGetAnimData(UI_Box* box, UI_Key key, int size);
 
 UI_API bool UI_BoxIsAParentOf(UI_Box* box, UI_Box* child);
 
@@ -1703,22 +1706,16 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 				float lazy_is_holding_down;
 			} AnimState;
 			
-			// Update animation state
-			UI_Key anim_key = UI_KEY();
-			AnimState anim_state = {0};
-			AnimState* prev_anim_state = box->prev_frame ? UI_BoxGetCustomVal(AnimState, box->prev_frame, anim_key) : NULL;
-			if (prev_anim_state) anim_state = *prev_anim_state;
-			
-			float is_clicking = (float)UI_IsClickingDownAndHovered(box->key);
-			anim_state.lazy_is_hovered = (float)UI_IsHoveredIdle(box->key);
-			anim_state.lazy_is_holding_down = is_clicking > anim_state.lazy_is_holding_down ?
-				is_clicking : UI_Lerp(anim_state.lazy_is_holding_down, is_clicking, 0.2f);
+			AnimState* anim_state = UI_BoxGetAnimState(AnimState, box, UI_KEY());
 
-			UI_BoxAddCustomVal(box, anim_key, anim_state);
+			float is_clicking = (float)UI_IsClickingDownAndHovered(box->key);
+			anim_state->lazy_is_hovered = (float)UI_IsHoveredIdle(box->key);
+			anim_state->lazy_is_holding_down = is_clicking > anim_state->lazy_is_holding_down ?
+				is_clicking : UI_Lerp(anim_state->lazy_is_holding_down, is_clicking, 0.2f);
 
 			float r = 4.f;
 			{
-				float hovered = anim_state.lazy_is_hovered * (1.f - anim_state.lazy_is_holding_down); // We don't want to show the hover highlight when holding down
+				float hovered = anim_state->lazy_is_hovered * (1.f - anim_state->lazy_is_holding_down); // We don't want to show the hover highlight when holding down
 				const UI_Color top = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 20.f) };
 				const UI_Color bot = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 10.f) };
 				UI_DrawRectCorners corners = {
@@ -1728,8 +1725,8 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 				UI_DrawRectEx(box_rect, &corners, 2);
 			}
 			{
-				const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(anim_state.lazy_is_holding_down * 100.f) };
-				const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(anim_state.lazy_is_holding_down * 20.f) };
+				const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(anim_state->lazy_is_holding_down * 100.f) };
+				const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(anim_state->lazy_is_holding_down * 20.f) };
 				UI_DrawRectCorners corners = {
 					{top, top, bot, bot},
 					{top, top, bot, bot},
@@ -1922,6 +1919,23 @@ UI_API void UI_BoxAddCustomData(UI_Box* box, UI_Key key, void* ptr, int size) {
 	header->debug_size = size;
 	box->custom_data_list = header;
 	memcpy(header + 1, ptr, size);
+}
+
+UI_API void* UI_BoxGetAnimData(UI_Box* box, UI_Key key, int size) {
+	UI_BoxCustomDataHeader* header = (UI_BoxCustomDataHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxCustomDataHeader) + size);
+	header->key = key;
+	header->next = box->custom_data_list;
+	header->debug_size = size;
+	box->custom_data_list = header;
+	
+	void* old_data = box->prev_frame ? UI_BoxGetCustomData(box->prev_frame, key, size) : NULL;
+	if (old_data) {
+		memcpy(header + 1, old_data, size);
+	}
+	else {
+		memset(header + 1, 0, size);
+	}
+	return header + 1;
 }
 
 UI_API void* UI_BoxGetCustomData(UI_Box* box, UI_Key key, int size) {
