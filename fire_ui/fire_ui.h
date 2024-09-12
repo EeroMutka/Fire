@@ -180,19 +180,15 @@ struct UI_Box {
 		UI_BoxFlagBits flags_bits; // for debugger visualization
 	};
 
+	UI_Size size[2];
+	UI_Vec2 offset; // this is used for scroll-bars. Maybe I could refactor this into a function pointer or something.
+
 	UI_FontView font;
 	UI_Vec2 inner_padding; // applied to text or children
 
 	STR text;
 
-	UI_Size size[2];
-	UI_Vec2 offset; // this is used for scroll-bars. Maybe I could refactor this into a function pointer or something.
-
 	void (*compute_unexpanded_size_override)(UI_Box* box, UI_Axis axis);
-
-	// Persistent / animated state
-	// float lazy_is_hovered;
-	// float lazy_is_holding_down;
 
 	// These will be computed with UI_ComputeBox.
 	UI_Vec2 computed_position; // in absolute screen space coordinates
@@ -202,7 +198,7 @@ struct UI_Box {
 
 	// drawing
 	void (*draw)(UI_Box* box);
-
+	
 	UI_BoxCustomDataHeader* custom_data_list;
 };
 
@@ -1701,9 +1697,28 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 		}
 
 		if (box->flags & UI_BoxFlag_Clickable) {
+			
+			typedef struct {
+				float lazy_is_hovered;
+				float lazy_is_holding_down;
+			} AnimState;
+			
+			// Update animation state
+			UI_Key anim_key = UI_KEY();
+			AnimState anim_state = {0};
+			AnimState* prev_anim_state = box->prev_frame ? UI_BoxGetCustomVal(AnimState, box->prev_frame, anim_key) : NULL;
+			if (prev_anim_state) anim_state = *prev_anim_state;
+			
+			float is_clicking = (float)UI_IsClickingDownAndHovered(box->key);
+			anim_state.lazy_is_hovered = (float)UI_IsHoveredIdle(box->key);
+			anim_state.lazy_is_holding_down = is_clicking > anim_state.lazy_is_holding_down ?
+				is_clicking : UI_Lerp(anim_state.lazy_is_holding_down, is_clicking, 0.2f);
+
+			UI_BoxAddCustomVal(box, anim_key, anim_state);
+
 			float r = 4.f;
 			{
-				float hovered = 0.f;//box->lazy_is_hovered * (1.f - box->lazy_is_holding_down); // We don't want to show the hover highlight when holding down
+				float hovered = anim_state.lazy_is_hovered * (1.f - anim_state.lazy_is_holding_down); // We don't want to show the hover highlight when holding down
 				const UI_Color top = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 20.f) };
 				const UI_Color bot = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 10.f) };
 				UI_DrawRectCorners corners = {
@@ -1713,10 +1728,8 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 				UI_DrawRectEx(box_rect, &corners, 2);
 			}
 			{
-				//const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 100.f) };
-				//const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(box->lazy_is_holding_down * 20.f) };
-				const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(0.f * 100.f) };
-				const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(0.f * 20.f) };
+				const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(anim_state.lazy_is_holding_down * 100.f) };
+				const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(anim_state.lazy_is_holding_down * 20.f) };
 				UI_DrawRectCorners corners = {
 					{top, top, bot, bot},
 					{top, top, bot, bot},
@@ -1725,6 +1738,7 @@ UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
 			}
 		}
 	}
+	
 	UI_ProfExit();
 }
 
@@ -2065,11 +2079,6 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 				UI_STATE.selection_is_visible = true;
 			}
 		}
-
-		float is_clicking = (float)UI_IsClickingDownAndHovered(box->key);
-		//box->lazy_is_hovered = (float)UI_IsHoveredIdle(box->key);
-		//box->lazy_is_holding_down = is_clicking > box->prev_frame->lazy_is_holding_down ?
-			//is_clicking : UI_Lerp(box->prev_frame->lazy_is_holding_down, is_clicking, 0.2f);
 	}
 
 	UI_ProfExit();
