@@ -64,26 +64,23 @@ typedef enum UI_Axis {
 
 typedef int UI_BoxFlags;
 typedef enum UI_BoxFlagBits {
-	UI_BoxFlag_DrawBorder = 1 << 0,
-	UI_BoxFlag_DrawText = 1 << 1,
-	UI_BoxFlag_DrawTransparentBackground = 1 << 2,
-	UI_BoxFlag_DrawOpaqueBackground = 1 << 3,
-	UI_BoxFlag_Clickable = 1 << 4, // NOTE: When set, this will make 'pressed' input come to this box instead of the parent box
-	UI_BoxFlag_PressingStaysWithoutHover = 1 << 5,
-	UI_BoxFlag_ChildPadding = 1 << 6,
-	UI_BoxFlag_LayoutInX = 1 << 7,
-	UI_BoxFlag_LayoutFromEndX = 1 << 8, // Reverse the layout direction for children.
-	UI_BoxFlag_LayoutFromEndY = 1 << 9, // Reverse the layout direction for children.
-	UI_BoxFlag_Selectable = 1 << 10, // When set, the keyboard navigator can move to this UI box.
-	UI_BoxFlag_NoAutoOffset = 1 << 11, // When set, this box won't use the layout system to determine its position, it'll be fully controlled by the `offset` field instead.
-	UI_BoxFlag_NoScissor = 1 << 12,
-	UI_BoxFlag_NoHover = 1 << 13, // Propagated from parent during AddBox
-	UI_BoxFlag_NoFlexDownX = 1 << 14,
-	UI_BoxFlag_NoFlexDownY = 1 << 15,
-	//UI_BoxFlag_HasCalledMakeBox = 1 << 13, // Internal flag
-	//UI_BoxFlag_HasComputedUnexpandedSizes = 1 << 14, // Internal flag
-	//UI_BoxFlag_HasComputedExpandedSizes = 1 << 15, // Internal flag
-	UI_BoxFlag_HasComputedRects = 1 << 16, // Internal flag
+	UI_BoxFlag_HasText = 1 << 1, // Note: A box which has text must not have children
+	UI_BoxFlag_Clickable = 1 << 2, // Note: When set, this will make 'pressed' input come to this box instead of the parent box
+	UI_BoxFlag_PressingStaysWithoutHover = 1 << 3,
+	UI_BoxFlag_Horizontal = 1 << 4, // Children are placed horizontally rather than vertically
+	UI_BoxFlag_ReverseLayoutX = 1 << 5, // Reverse the layout direction for children.
+	UI_BoxFlag_ReverseLayoutY = 1 << 6, // Reverse the layout direction for children.
+	UI_BoxFlag_Selectable = 1 << 7,   // When set, the keyboard navigator can move to this UI box.
+	UI_BoxFlag_NoAutoOffset = 1 << 8, // When set, this box won't use the layout system to determine its position, it'll be fully controlled by the `offset` field instead.
+	UI_BoxFlag_NoScissor = 1 << 9,
+	UI_BoxFlag_NoHover = 1 << 10, // Propagated from parent during AddBox
+	UI_BoxFlag_NoFlexDownX = 1 << 11,
+	UI_BoxFlag_NoFlexDownY = 1 << 12,
+	
+	// Draw flags, applies to UI_DrawBoxDefault
+	UI_BoxFlag_DrawBorder = 1 << 13,
+	UI_BoxFlag_DrawTransparentBackground = 1 << 14,
+	UI_BoxFlag_DrawOpaqueBackground = 1 << 15,
 } UI_BoxFlagBits;
 
 typedef struct UI_Rect {
@@ -166,6 +163,13 @@ struct UI_BoxCustomDataHeader {
 	int debug_size;
 };
 
+typedef struct UI_DrawBoxDefaultArgs {
+	UI_Color text_color;
+	UI_Color transparent_bg_color;
+	UI_Color opaque_bg_color;
+	UI_Color border_color;
+} UI_DrawBoxDefaultArgs;
+
 typedef struct UI_Box UI_Box;
 
 struct UI_Box {
@@ -196,8 +200,9 @@ struct UI_Box {
 	UI_Vec2 computed_size;
 	UI_Rect computed_rect_clipped;
 
-	// drawing
-	void (*draw)(UI_Box* box);
+	// Drawing
+	void (*draw)(UI_Box* box); // UI_DrawBoxDefault by default
+	union { UI_DrawBoxDefaultArgs* draw_args; void* draw_args_custom; };
 	
 	UI_BoxCustomDataHeader* custom_data_list;
 };
@@ -518,8 +523,9 @@ UI_API void UI_EndFrame(UI_Outputs* outputs/*, GPU_Graph *graph, GPU_DescriptorA
  the entire tree of UI features that you want to support.
 */
 UI_API void UI_DrawBox(UI_Box* box);
+
 UI_API void UI_DrawBoxDefault(UI_Box* box);
-UI_API void UI_DrawBoxBackdrop(UI_Box* box);
+UI_API UI_DrawBoxDefaultArgs* UI_DrawBoxDefaultArgsInit();
 
 // -- Tree builder API with implicit context -------
 
@@ -589,13 +595,21 @@ UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h);
 UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key); // Returns NULL if a box with this key did not exist
 UI_API UI_Box* UI_BoxFromKey(UI_Key key); // Returns NULL if a box with this key has not been created this frame so far
 
-//#define UI_BoxAddCustomVal(BOX, KEY, VALUE) UI_BoxAddCustomData(BOX, KEY, &(VALUE), sizeof(VALUE))
-//#define UI_BoxGetCustomVal(T, BOX, KEY)     (T*)UI_BoxGetCustomData(BOX, KEY, sizeof(T))
-#define UI_BoxGetAnimState(T, BOX, KEY)     (T*)UI_BoxGetAnimData(BOX, KEY, sizeof(T))
+#define UI_BoxAddVar(BOX, KEY, VALUE)    UI_BoxAddVarData(BOX, KEY, VALUE, sizeof(*VALUE))
 
-UI_API void UI_BoxAddCustomData(UI_Box* box, UI_Key key, void* ptr, int size);
-UI_API void* UI_BoxGetCustomData(UI_Box* box, UI_Key key, int size); // NULL is returned if no custom data using the provided key is found
-UI_API void* UI_BoxGetAnimData(UI_Box* box, UI_Key key, int size);
+// Returns true if the variable already existed. Otherwise the OUT_VALUE is not touched.
+#define UI_BoxGetVar(BOX, KEY, OUT_VALUE)   UI_BoxGetVarData(BOX, KEY, OUT_VALUE, sizeof(*OUT_VALUE))
+
+// If the variable doesn't exist, OUT_PTR will be set to NULL.
+#define UI_BoxGetVarPtr(BOX, KEY, OUT_PTR)   UI_BoxGetVarPtrData(BOX, KEY, (void**)(OUT_PTR), sizeof(**(OUT_PTR)))
+
+// Returns true if the variable already existed. New variables get zero-initialized.
+#define UI_BoxGetRetainedVar(BOX, KEY, OUT_PTR)  UI_BoxGetRetainedVarData(BOX, KEY, (void**)(OUT_PTR), sizeof(**(OUT_PTR)))
+
+UI_API void UI_BoxAddVarData(UI_Box* box, UI_Key key, void* ptr, int size);
+UI_API bool UI_BoxGetVarData(UI_Box* box, UI_Key key, void* out_value, int size);
+UI_API void UI_BoxGetVarPtrData(UI_Box* box, UI_Key key, void** out_ptr, int size);
+UI_API bool UI_BoxGetRetainedVarData(UI_Box* box, UI_Key key, void** out_ptr, int size);
 
 UI_API bool UI_BoxIsAParentOf(UI_Box* box, UI_Box* child);
 
@@ -704,6 +718,7 @@ UI_API UI_State UI_STATE;
 
 static const UI_Vec2 UI_WHITE_PIXEL_UV = { 0.5f / (float)UI_GLYPH_MAP_SIZE, 0.5f / (float)UI_GLYPH_MAP_SIZE };
 static const UI_Vec2 UI_DEFAULT_TEXT_PADDING = { 10.f, 5.f };
+static const UI_Vec2 UI_DEFAULT_CHILD_PADDING = { 12.f, 12.f };
 
 UI_API inline bool UI_MarkGreaterThan(UI_Mark a, UI_Mark b) { return a.line > b.line || (a.line == b.line && a.col > b.col); }
 UI_API inline bool UI_MarkLessThan(UI_Mark a, UI_Mark b) { return a.line < b.line || (a.line == b.line && a.col < b.col); }
@@ -718,7 +733,7 @@ UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags,
 
 UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
 	UI_ProfEnter();
-	flags |= UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder |UI_BoxFlag_DrawTransparentBackground;
+	flags |= UI_BoxFlag_Horizontal | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder |UI_BoxFlag_DrawTransparentBackground;
 	UI_Box* box = UI_AddBox(key, w, h, flags);
 	UI_PushBox(box);
 
@@ -1175,7 +1190,7 @@ UI_API UI_Box* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value)
 
 UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* filepath, UI_EditTextModify* out_modify) {
 	UI_ProfEnter();
-	UI_Box* box = UI_AddBox(key, w, h, UI_BoxFlag_LayoutInX);
+	UI_Box* box = UI_AddBox(key, w, h, UI_BoxFlag_Horizontal);
 	UI_PushBox(box);
 
 	UI_Key edit_text_key = UI_KEY1(key);
@@ -1456,7 +1471,7 @@ UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, const char* text) {
 	UI_ProfEnter();
 	UI_Key child_box_key = UI_KEY1(key);
-	UI_BoxFlags box_flags = UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
+	UI_BoxFlags box_flags = UI_BoxFlag_Horizontal | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
 	UI_Box* box = UI_AddBox(key, UI_SizeFlex(1.f), h, box_flags);
 	UI_PushBox(box);
 
@@ -1475,7 +1490,7 @@ UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size inden
 	UI_Box* outer_child_box = NULL;
 	UI_Box* inner_child_box = NULL;
 	if (is_open) {
-		outer_child_box = UI_AddBox(child_box_key, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+		outer_child_box = UI_AddBox(child_box_key, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 		UI_PushBox(outer_child_box);
 		UI_AddBox(UI_KEY1(key), indent, UI_SizeFit(), 0);
 		
@@ -1505,7 +1520,7 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 	
 	UI_Box* temp_boxes[2] = {0};
 
-	UI_Box* parent = UI_AddBox(key, w, h, UI_BoxFlag_LayoutInX | flags);
+	UI_Box* parent = UI_AddBox(key, w, h, UI_BoxFlag_Horizontal | flags);
 	UI_PushBox(parent);
 
 	UI_Vec2 offset = { 0.f, 0.f };
@@ -1536,10 +1551,10 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 			size[x] = 18.f;
 			size[y] = UI_SizeFlex(1.f);
 
-			UI_BoxFlags layout_dir_flag = y == UI_Axis_X ? UI_BoxFlag_LayoutInX : 0;
+			UI_BoxFlags layout_dir_flag = y == UI_Axis_X ? UI_BoxFlag_Horizontal : 0;
 			UI_Box* rail_line_box = UI_AddBox(UI_KEY1(y_key), size[0], size[1], layout_dir_flag | UI_BoxFlag_DrawBorder);
 			if (anchors[y] == 1) {
-				rail_line_box->flags |= (y == 1 ? UI_BoxFlag_LayoutFromEndY : UI_BoxFlag_LayoutFromEndX);
+				rail_line_box->flags |= (y == 1 ? UI_BoxFlag_ReverseLayoutY : UI_BoxFlag_ReverseLayoutXX);
 			}
 
 			UI_PushBox(rail_line_box);
@@ -1612,8 +1627,8 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 	content->offset = offset;
 	UI_PushBox(content);
 
-	if (anchor_x == 1) temp_boxes[0]->flags |= UI_BoxFlag_LayoutFromEndX;
-	if (anchor_y == 1) temp_boxes[0]->flags |= UI_BoxFlag_LayoutFromEndY;
+	if (anchor_x == 1) temp_boxes[0]->flags |= UI_BoxFlag_ReverseLayoutXX;
+	if (anchor_y == 1) temp_boxes[0]->flags |= UI_BoxFlag_ReverseLayoutY;
 
 	UI_ProfExit();
 	return parent;
@@ -1665,113 +1680,98 @@ UI_API bool UI_ClipRect(UI_Rect* rect, UI_Rect* uv_rect, const UI_Rect* scissor)
 	return fully_clipped;
 }
 
-// The "backdrop" of a box includes background, opaque background, border and hover/click highlighting
-UI_API void UI_DrawBoxBackdrop(UI_Box* box) {
-	UI_ProfEnter();
-
-	//UI_Rect box_rect = box->computed_rect_clipped;
-	UI_Rect box_rect = { box->computed_position, UI_AddV2(box->computed_position, box->computed_size) };
-
-	UI_Rect scissor_;
-	UI_ScissorRect scissor = NULL;
-
-	if (!(box->flags & UI_BoxFlag_NoScissor)) {
-		scissor = &scissor_;
-		scissor_ = box->computed_rect_clipped;
-	}
-
-	UI_Rect uv_rect;
-	bool fully_clipped = scissor && UI_ClipRect(&box_rect, &uv_rect, scissor);
-	if (!fully_clipped) {
-		if (box->flags & UI_BoxFlag_DrawTransparentBackground) {
-			UI_Color transparent_bg_color = UI_COLOR{ 255, 255, 255, 50 };
-			UI_DrawRectRounded(box_rect, 4.f, transparent_bg_color, 2);
-		}
-
-		if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
-			UI_Color opaque_bg_color = UI_COLOR{ 50, 50, 50, 255 };
-			UI_DrawRectRounded(box_rect, 4.f, opaque_bg_color, 2);
-			//UI_DrawRectEx(box_rect, box->style->opaque_bg_color, 12.f, 1.f, UI_INFINITE, scissor);
-		}
-
-		if (box->flags & UI_BoxFlag_DrawBorder) {
-			UI_Color border_color = UI_COLOR{ 0, 0, 0, 128 };
-			UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, border_color);
-		}
-
-		if (box->flags & UI_BoxFlag_Clickable) {
-			
-			typedef struct {
-				float lazy_is_hovered;
-				float lazy_is_holding_down;
-			} AnimState;
-			
-			AnimState* anim_state = UI_BoxGetAnimState(AnimState, box, UI_KEY());
-
-			float is_clicking = (float)UI_IsClickingDownAndHovered(box->key);
-			anim_state->lazy_is_hovered = (float)UI_IsHoveredIdle(box->key);
-			anim_state->lazy_is_holding_down = is_clicking > anim_state->lazy_is_holding_down ?
-				is_clicking : UI_Lerp(anim_state->lazy_is_holding_down, is_clicking, 0.2f);
-
-			float r = 4.f;
-			{
-				float hovered = anim_state->lazy_is_hovered * (1.f - anim_state->lazy_is_holding_down); // We don't want to show the hover highlight when holding down
-				const UI_Color top = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 20.f) };
-				const UI_Color bot = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 10.f) };
-				UI_DrawRectCorners corners = {
-					{top, top, bot, bot},
-					{top, top, bot, bot},
-					{r, r, r, r} };
-				UI_DrawRectEx(box_rect, &corners, 2);
-			}
-			{
-				const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(anim_state->lazy_is_holding_down * 100.f) };
-				const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(anim_state->lazy_is_holding_down * 20.f) };
-				UI_DrawRectCorners corners = {
-					{top, top, bot, bot},
-					{top, top, bot, bot},
-					{r, r, r, r} };
-				UI_DrawRectEx(box_rect, &corners, 2);
-			}
-		}
-	}
-	
-	UI_ProfExit();
-}
-
 UI_API void UI_DrawBox(UI_Box* box) {
 	UI_ProfEnter();
 	box->draw(box);
 	UI_ProfExit();
 }
 
+static UI_DrawBoxDefaultArgs* UI_DrawBoxDefaultArgsConstDefaults() {
+	static const UI_DrawBoxDefaultArgs args = {
+		UI_COLOR{ 250, 255, 255, 255 }, // text_color
+		UI_COLOR{ 255, 255, 255, 50 },  // transparent_bg_color
+		UI_COLOR{ 50, 50, 50, 255 },    // opaque_bg_color
+		UI_COLOR{ 0, 0, 0, 128 },       // border_color
+	};
+	return (UI_DrawBoxDefaultArgs*)&args;
+}
+
+UI_API UI_DrawBoxDefaultArgs* UI_DrawBoxDefaultArgsInit() {
+	return DS_Clone(UI_DrawBoxDefaultArgs, &UI_STATE.frame_arena, *UI_DrawBoxDefaultArgsConstDefaults());
+}
+
 UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	UI_ProfEnter();
 
-	UI_ASSERT(box->flags & UI_BoxFlag_HasComputedRects);
-	UI_ScissorRect scissor = box->flags & UI_BoxFlag_NoScissor ? NULL : &box->computed_rect_clipped;
+	const UI_DrawBoxDefaultArgs* args = box->draw_args;
 
 	if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
 		const float shadow_distance = 10.f;
-
 		UI_Rect rect = box->computed_rect_clipped;
 		rect.min = UI_SubV2(rect.min, UI_VEC2{ 0.5f * shadow_distance, 0.5f * shadow_distance });
 		rect.max = UI_AddV2(rect.max, UI_VEC2{ shadow_distance, shadow_distance });
 		UI_DrawRectRounded2(rect, 2.f * shadow_distance, UI_COLOR{ 0, 0, 0, 50 }, UI_COLOR{ 0, 0, 0, 0 }, 2);
 	}
 
-	UI_DrawBoxBackdrop(box);
+	UI_Rect box_rect = box->computed_rect_clipped;
+
+	if (box->flags & UI_BoxFlag_DrawTransparentBackground) {
+		UI_DrawRectRounded(box_rect, 4.f, args->transparent_bg_color, 2);
+	}
+
+	if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
+		UI_DrawRectRounded(box_rect, 4.f, args->opaque_bg_color, 2);
+	}
+
+	if (box->flags & UI_BoxFlag_DrawBorder) {
+		UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, args->border_color);
+	}
+
+	if (box->flags & UI_BoxFlag_Clickable) {
+		typedef struct {
+			float lazy_is_hovered;
+			float lazy_is_holding_down;
+		} AnimState;
+
+		AnimState* anim_state;
+		UI_BoxGetRetainedVar(box, UI_KEY(), &anim_state);
+
+		float is_clicking = (float)UI_IsClickingDownAndHovered(box->key);
+		anim_state->lazy_is_hovered = (float)UI_IsHoveredIdle(box->key);
+		anim_state->lazy_is_holding_down = is_clicking > anim_state->lazy_is_holding_down ?
+			is_clicking : UI_Lerp(anim_state->lazy_is_holding_down, is_clicking, 0.2f);
+
+		float r = 4.f;
+		{
+			float hovered = anim_state->lazy_is_hovered * (1.f - anim_state->lazy_is_holding_down); // We don't want to show the hover highlight when holding down
+			const UI_Color top = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 20.f) };
+			const UI_Color bot = UI_COLOR{ 255, 255, 255, (uint8_t)(hovered * 10.f) };
+			UI_DrawRectCorners corners = {
+				{top, top, bot, bot},
+				{top, top, bot, bot},
+				{r, r, r, r} };
+			UI_DrawRectEx(box_rect, &corners, 2);
+		}
+		{
+			const UI_Color top = UI_COLOR{ 0, 0, 0, (uint8_t)(anim_state->lazy_is_holding_down * 100.f) };
+			const UI_Color bot = UI_COLOR{ 0, 0, 0, (uint8_t)(anim_state->lazy_is_holding_down * 20.f) };
+			UI_DrawRectCorners corners = {
+				{top, top, bot, bot},
+				{top, top, bot, bot},
+				{r, r, r, r} };
+			UI_DrawRectEx(box_rect, &corners, 2);
+		}
+	}
 
 	if (UI_IsSelected(box->key) && UI_STATE.selection_is_visible) {
-		UI_Rect box_rect = box->computed_rect_clipped;
-		UI_Color color = UI_COLOR{ 250, 200, 85, 240 };
-		UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, color);
+		//UI_Rect box_rect = box->computed_rect_clipped;
+		UI_Color selection_color = UI_COLOR{ 250, 200, 85, 240 };
+		UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, selection_color);
 	}
 
 	if (box->flags & UI_BoxFlag_DrawText) {
 		UI_Vec2 text_pos = UI_AddV2(box->computed_position, box->inner_padding);
-		UI_Color text_color = UI_COLOR{ 255, 255, 255, 255 };
-		UI_DrawText(box->text, box->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, text_color, scissor);
+		UI_DrawText(box->text, box->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, args->text_color, &box_rect);
 	}
 
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
@@ -1912,7 +1912,7 @@ UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key) {
 	return box;
 }
 
-UI_API void UI_BoxAddCustomData(UI_Box* box, UI_Key key, void* ptr, int size) {
+UI_API void UI_BoxAddVarData(UI_Box* box, UI_Key key, void* ptr, int size) {
 	UI_BoxCustomDataHeader* header = (UI_BoxCustomDataHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxCustomDataHeader) + size);
 	header->key = key;
 	header->next = box->custom_data_list;
@@ -1921,33 +1921,38 @@ UI_API void UI_BoxAddCustomData(UI_Box* box, UI_Key key, void* ptr, int size) {
 	memcpy(header + 1, ptr, size);
 }
 
-UI_API void* UI_BoxGetAnimData(UI_Box* box, UI_Key key, int size) {
+UI_API bool UI_BoxGetRetainedVarData(UI_Box* box, UI_Key key, void** out_ptr, int size) {
 	UI_BoxCustomDataHeader* header = (UI_BoxCustomDataHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxCustomDataHeader) + size);
 	header->key = key;
 	header->next = box->custom_data_list;
 	header->debug_size = size;
 	box->custom_data_list = header;
 	
-	void* old_data = box->prev_frame ? UI_BoxGetCustomData(box->prev_frame, key, size) : NULL;
-	if (old_data) {
-		memcpy(header + 1, old_data, size);
-	}
-	else {
+	bool had_variable = box->prev_frame && UI_BoxGetVarData(box->prev_frame, key, header + 1, size);
+	if (!had_variable) {
 		memset(header + 1, 0, size);
 	}
-	return header + 1;
+
+	*out_ptr = header + 1;
+	return had_variable;
 }
 
-UI_API void* UI_BoxGetCustomData(UI_Box* box, UI_Key key, int size) {
-	void* result = NULL;
+UI_API void UI_BoxGetVarPtrData(UI_Box* box, UI_Key key, void** out_ptr, int size) {
+	*out_ptr = NULL;
 	for (UI_BoxCustomDataHeader* it = box->custom_data_list; it; it = it->next) {
 		if (it->key == key) {
 			UI_ASSERT(size == it->debug_size);
-			result = it + 1;
+			*out_ptr = it + 1;
 			break;
 		}
 	}
-	return result;
+}
+
+UI_API bool UI_BoxGetVarData(UI_Box* box, UI_Key key, void* out_value, int size) {
+	void* ptr = NULL;
+	UI_BoxGetVarPtrData(box, key, &ptr, size);
+	memcpy(out_value, ptr, size);
+	return ptr != NULL;
 }
 
 UI_API UI_Box* UI_BoxFromKey(UI_Key key) {
@@ -2056,6 +2061,7 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 	box->size[1] = h;
 	box->flags = flags;
 	box->draw = UI_DrawBoxDefault;
+	box->draw_args = UI_DrawBoxDefaultArgsConstDefaults();
 
 	if (UI_STATE.mouse_clicking_down_box == key && UI_InputIsDown(UI_Input_MouseLeft)) {
 		UI_STATE.mouse_clicking_down_box_new = key;
@@ -2304,7 +2310,7 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 	float child_area_size = size;
 	if (box->flags & UI_BoxFlag_ChildPadding) child_area_size -= 2.f * box->inner_padding._[axis];
 
-	UI_Axis layout_axis = box->flags & UI_BoxFlag_LayoutInX ? UI_Axis_X : UI_Axis_Y;
+	UI_Axis layout_axis = box->flags & UI_BoxFlag_Horizontal ? UI_Axis_X : UI_Axis_Y;
 	UI_BoxFlags no_flex_down_flag = axis == UI_Axis_X ? UI_BoxFlag_NoFlexDownX : UI_BoxFlag_NoFlexDownY;
 
 	if (axis == layout_axis) {
@@ -2369,7 +2375,6 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 
 UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI_ScissorRect scissor) {
 	UI_ProfEnter();
-	box->flags |= UI_BoxFlag_HasComputedRects;
 	box->computed_position._[axis] = position + box->offset._[axis];
 
 	float min = box->computed_position._[axis];
@@ -2385,7 +2390,7 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 	box->computed_rect_clipped.min._[axis] = min_clipped;
 	box->computed_rect_clipped.max._[axis] = max_clipped;
 
-	bool layout_from_end = axis == UI_Axis_X ? box->flags & UI_BoxFlag_LayoutFromEndX : box->flags & UI_BoxFlag_LayoutFromEndY;
+	bool layout_from_end = axis == UI_Axis_X ? box->flags & UI_BoxFlag_ReverseLayoutX : box->flags & UI_BoxFlag_ReverseLayoutY;
 	float direction = layout_from_end ? -1.f : 1.f;
 
 	float cursor_base = layout_from_end ? max : min;
@@ -2394,7 +2399,7 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 
 	UI_ScissorRect child_scissor = (box->flags & UI_BoxFlag_NoScissor) ? scissor : &box->computed_rect_clipped;
 
-	UI_Axis layout_axis = box->flags & UI_BoxFlag_LayoutInX ? UI_Axis_X : UI_Axis_Y;
+	UI_Axis layout_axis = box->flags & UI_BoxFlag_Horizontal ? UI_Axis_X : UI_Axis_Y;
 
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
 		float child_position = (child->flags & UI_BoxFlag_NoAutoOffset ? cursor_base : cursor);
@@ -2442,7 +2447,7 @@ UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis) {
 	}
 
 	if (box->first_child[0]) {
-		UI_Axis layout_axis = box->flags & UI_BoxFlag_LayoutInX ? UI_Axis_X : UI_Axis_Y;
+		UI_Axis layout_axis = box->flags & UI_BoxFlag_Horizontal ? UI_Axis_X : UI_Axis_Y;
 
 		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
 			if (layout_axis == axis) {
@@ -3282,7 +3287,7 @@ UI_API UI_Vec2 UI_DrawText(STR text, UI_FontView font, UI_Vec2 origin, UI_AlignH
 	return s;
 }
 
-static UI_Key UI_GetArrangerSetKey() { return UI_KEY(); }
+static UI_Key UI_ArrangerSetVarKey() { return UI_KEY(); }
 
 UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h) {
 	UI_ProfEnter();
@@ -3290,7 +3295,7 @@ UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h) {
 	UI_PushBox(box);
 	
 	UI_ArrangerSet arranger_set = {0};
-	UI_BoxAddCustomData(box, UI_GetArrangerSetKey(), &arranger_set, sizeof(UI_ArrangerSet));
+	UI_BoxAddVar(box, UI_ArrangerSetVarKey(), &arranger_set);
 
 	UI_ProfExit();
 	return box;
@@ -3300,7 +3305,8 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 	UI_ProfEnter();
 	UI_PopBox(box);
 
-	UI_ArrangerSet* arranger_set = (UI_ArrangerSet*)UI_BoxGetCustomData(box, UI_GetArrangerSetKey(), sizeof(UI_ArrangerSet));
+	UI_ArrangerSet* arranger_set;
+	UI_BoxGetVarPtr(box, UI_ArrangerSetVarKey(), &arranger_set);
 	UI_ASSERT(arranger_set);
 
 	float box_origin_prev_frame = box->prev_frame ? box->prev_frame->computed_position.y : 0.f;
@@ -3392,7 +3398,8 @@ UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 		UI_Box* elem = box;
 		for (; elem; elem = elem->parent) {
 			if (elem->parent) {
-				UI_ArrangerSet* arranger_set = (UI_ArrangerSet*)UI_BoxGetCustomData(elem->parent, UI_GetArrangerSetKey(), sizeof(UI_ArrangerSet));
+				UI_ArrangerSet* arranger_set;
+				UI_BoxGetVarPtr(elem->parent, UI_ArrangerSetVarKey(), &arranger_set);
 				if (arranger_set) {
 					arranger_set->dragging_elem = elem;
 					break;

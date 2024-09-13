@@ -97,6 +97,9 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
 	UI_Box* another_button = UI_AddButton(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Another button");
+	another_button->draw_args = UI_DrawBoxDefaultArgsInit();
+	another_button->draw_args->text_color = UI_GREEN;
+
 	if (UI_Clicked(another_button->key)) {
 		printf("Another button was clicked. He's not as thankful.\n");
 	}
@@ -168,8 +171,8 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_AddBox(UI_KEY(), 0.f, 20.f, 0); // padding
 
 		UI_Box* colorful_text = UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "This text is very colorful!");
-		//colorful_text->style = UI_MakeStyle();
-		UI_TODO();//colorful_text->style->text_color = UI_HSVToColor(hue, saturation, value, alpha);
+		colorful_text->draw_args = UI_DrawBoxDefaultArgsInit();
+		colorful_text->draw_args->text_color = UI_HSVToColor(hue, saturation, value, alpha);
 
 		UI_PopCollapsing(color_picker_section);
 	}

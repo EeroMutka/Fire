@@ -60,7 +60,8 @@ typedef struct UI_HueSaturationCircleData {
 static UI_Key UI_GetHueSaturationCircleDataKey() { return UI_KEY(); }
 
 static void UI_DrawHueSaturationCircle(UI_Box* box) {
-	UI_HueSaturationCircleData* data = UI_BoxGetCustomVal(UI_HueSaturationCircleData, box, UI_GetHueSaturationCircleDataKey());
+	UI_HueSaturationCircleData* data;
+	UI_BoxGetVarPtr(box, UI_GetHueSaturationCircleDataKey(), &data);
 
 	float radius = 0.5f*box->computed_size.x;
 	UI_Vec2 middle = {box->computed_position.x + radius, box->computed_position.y + radius};
@@ -102,7 +103,7 @@ UI_API UI_Box* UI_HueSaturationCircle(UI_Key key, float diameter, float* hue, fl
 	UI_ASSERT(*saturation >= 0.f && *saturation <= 1.f);
 
 	UI_Box* box = UI_AddBox(key, diameter, diameter, UI_BoxFlag_DrawBorder);
-	UI_TODO();//box->draw_override = UI_DrawHueSaturationCircle;
+	box->draw = UI_DrawHueSaturationCircle;
 
 	if (box->prev_frame) {
 		float radius = 0.5f*box->prev_frame->computed_size.x;
@@ -129,7 +130,7 @@ UI_API UI_Box* UI_HueSaturationCircle(UI_Key key, float diameter, float* hue, fl
 	}
 
 	UI_HueSaturationCircleData data = {*hue, *saturation};
-	UI_BoxAddCustomVal(box, UI_GetHueSaturationCircleDataKey(), data);
+	UI_BoxAddVar(box, UI_GetHueSaturationCircleDataKey(), &data);
 	return box;
 }
 
@@ -137,7 +138,9 @@ typedef struct { float h, s, v; } UI_HueSaturationValueEditData;
 static UI_Key UI_GetHueSaturationValueEditDataKey() { return UI_KEY(); }
 
 static void UI_ColorPickerSaturationSliderDraw(UI_Box* box) {
-	UI_HueSaturationValueEditData* data = UI_BoxGetCustomVal(UI_HueSaturationValueEditData, box, UI_GetHueSaturationValueEditDataKey());
+	UI_HueSaturationValueEditData* data;
+	UI_BoxGetVarPtr(box, UI_GetHueSaturationValueEditDataKey(), &data);
+	
 	UI_Rect rect = box->computed_rect_clipped;
 
 	uint32_t first_vertex;
@@ -162,7 +165,9 @@ static void UI_ColorPickerSaturationSliderDraw(UI_Box* box) {
 }
 
 static void UI_ColorPickerValueSliderDraw(UI_Box* box) {
-	UI_HueSaturationValueEditData* data = UI_BoxGetCustomVal(UI_HueSaturationValueEditData, box, UI_GetHueSaturationValueEditDataKey());
+	UI_HueSaturationValueEditData* data;
+	UI_BoxGetVarPtr(box, UI_GetHueSaturationValueEditDataKey(), &data);
+
 	UI_Rect rect = box->computed_rect_clipped;
 
 	uint32_t first_vertex;
@@ -202,7 +207,7 @@ static void UI_DrawColorPickerBoxTransparent(UI_Box* box) {
 		}
 	}
 
-	UI_TODO();//UI_DrawRect(box->computed_rect_clipped, box->style->opaque_bg_color);
+	UI_DrawRect(box->computed_rect_clipped, box->draw_args->opaque_bg_color);
 }
 
 UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* value, float* alpha) {
@@ -213,12 +218,12 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 	UI_AddBox(UI_KEY1(key), 5.f, UI_SizeFit(), 0); // pad
 
 	UI_Box* sat_slider_box = UI_AddBox(UI_KEY1(key), 20.f, UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
-	UI_TODO();//sat_slider_box->draw_override = UI_ColorPickerSaturationSliderDraw;
+	sat_slider_box->draw = UI_ColorPickerSaturationSliderDraw;
 
 	UI_AddBox(UI_KEY1(key), 5.f, UI_SizeFit(), 0); // pad
 
 	UI_Box* val_slider_box = UI_AddBox(UI_KEY1(key), 20.f, UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
-	UI_TODO();//val_slider_box->draw_override = UI_ColorPickerValueSliderDraw;
+	val_slider_box->draw = UI_ColorPickerValueSliderDraw;
 
 	UI_AddBox(UI_KEY1(key), 5.f, UI_SizeFit(), 0); // pad
 
@@ -234,10 +239,10 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 		UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0); // pad
 
 		color_box_1 = UI_AddBox(UI_KEY1(key), 80.f, 80.f, UI_BoxFlag_DrawOpaqueBackground);
-		UI_TODO();//color_box_1->draw_override = UI_DrawColorPickerBox;
+		color_box_1->draw = UI_DrawColorPickerBox;
 
 		color_box_2 = UI_AddBox(UI_KEY1(key), 80.f, 80.f, UI_BoxFlag_DrawOpaqueBackground);
-		UI_TODO();//color_box_2->draw_override = UI_DrawColorPickerBoxTransparent;
+		color_box_2->draw = UI_DrawColorPickerBoxTransparent;
 
 		UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0); // pad
 
@@ -334,14 +339,14 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 	}
 
 	UI_Color color = UI_HSVToColor(*hue, *saturation, *value, *alpha);
-	UI_TODO();//color_box_1->style = UI_MakeStyle();
-	UI_TODO();//color_box_1->style->opaque_bg_color = UI_COLOR{color.r, color.g, color.b, 255};
-	UI_TODO();//color_box_2->style = UI_MakeStyle();
-	UI_TODO();//color_box_2->style->opaque_bg_color = color;
+	color_box_1->draw_args = UI_DrawBoxDefaultArgsInit();
+	color_box_1->draw_args->opaque_bg_color = UI_COLOR{color.r, color.g, color.b, 255};
+	color_box_2->draw_args = UI_DrawBoxDefaultArgsInit();
+	color_box_2->draw_args->opaque_bg_color = color;
 
 	UI_HueSaturationValueEditData data = {*hue, *saturation, *value};
-	UI_BoxAddCustomVal(sat_slider_box, UI_GetHueSaturationValueEditDataKey(), data);
-	UI_BoxAddCustomVal(val_slider_box, UI_GetHueSaturationValueEditDataKey(), data);
+	UI_BoxAddVar(sat_slider_box, UI_GetHueSaturationValueEditDataKey(), &data);
+	UI_BoxAddVar(val_slider_box, UI_GetHueSaturationValueEditDataKey(), &data);
 
 	return main_box;
 }
