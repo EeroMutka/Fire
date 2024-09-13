@@ -63,7 +63,7 @@ static void UI_DrawHueSaturationCircle(UI_Box* box) {
 	UI_HueSaturationCircleData* data;
 	UI_BoxGetVarPtr(box, UI_GetHueSaturationCircleDataKey(), &data);
 
-	float radius = 0.5f*box->computed_size.x;
+	float radius = 0.5f * box->computed_expanded_size.x;
 	UI_Vec2 middle = {box->computed_position.x + radius, box->computed_position.y + radius};
 
 	float circle_theta = 2.f * 3.1415926f * data->hue;
@@ -106,7 +106,7 @@ UI_API UI_Box* UI_HueSaturationCircle(UI_Key key, float diameter, float* hue, fl
 	box->draw = UI_DrawHueSaturationCircle;
 
 	if (box->prev_frame) {
-		float radius = 0.5f*box->prev_frame->computed_size.x;
+		float radius = 0.5f*box->prev_frame->computed_expanded_size.x;
 		UI_Vec2 middle = {box->prev_frame->computed_position.x + radius, box->prev_frame->computed_position.y + radius};
 
 		if (UI_InputWasPressed(UI_Input_MouseLeft)) {
@@ -141,7 +141,7 @@ static void UI_ColorPickerSaturationSliderDraw(UI_Box* box) {
 	UI_HueSaturationValueEditData* data;
 	UI_BoxGetVarPtr(box, UI_GetHueSaturationValueEditDataKey(), &data);
 	
-	UI_Rect rect = box->computed_rect_clipped;
+	UI_Rect rect = box->computed_rect;
 
 	uint32_t first_vertex;
 	UI_DrawVertex* vertices = UI_AddVertices(4, &first_vertex);
@@ -168,7 +168,7 @@ static void UI_ColorPickerValueSliderDraw(UI_Box* box) {
 	UI_HueSaturationValueEditData* data;
 	UI_BoxGetVarPtr(box, UI_GetHueSaturationValueEditDataKey(), &data);
 
-	UI_Rect rect = box->computed_rect_clipped;
+	UI_Rect rect = box->computed_rect;
 
 	uint32_t first_vertex;
 	UI_DrawVertex* vertices = UI_AddVertices(4, &first_vertex);
@@ -192,13 +192,13 @@ static void UI_ColorPickerValueSliderDraw(UI_Box* box) {
 }
 
 static void UI_DrawColorPickerBox(UI_Box* box) {
-	//UI_DrawRect(box->computed_rect_clipped, box->style->opaque_bg_color);
+	UI_DrawRect(box->computed_rect, box->draw_args->opaque_bg_color);
 }
 
 static void UI_DrawColorPickerBoxTransparent(UI_Box* box) {
-	UI_DrawRect(box->computed_rect_clipped, UI_WHITE);
+	UI_DrawRect(box->computed_rect, UI_WHITE);
 
-	float cell_size = box->computed_size.x / 4.f;
+	float cell_size = box->computed_expanded_size.x / 4.f;
 	for (int y = 0; y < 4; y++) {
 		for (int x = (y & 1); x < 4; x += 2) {
 			UI_Vec2 min = {box->computed_position.x + (float)x * cell_size, box->computed_position.y + (float)y * cell_size};
@@ -207,7 +207,7 @@ static void UI_DrawColorPickerBoxTransparent(UI_Box* box) {
 		}
 	}
 
-	UI_DrawRect(box->computed_rect_clipped, box->draw_args->opaque_bg_color);
+	UI_DrawRect(box->computed_rect, box->draw_args->opaque_bg_color);
 }
 
 UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* value, float* alpha) {
@@ -314,8 +314,8 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 
 	// Handle input for saturation & value sliders
 	if (sat_slider_box->prev_frame && val_slider_box->prev_frame) {
-		UI_Rect sat_rect = sat_slider_box->prev_frame->computed_rect_clipped;
-		UI_Rect val_rect = val_slider_box->prev_frame->computed_rect_clipped;
+		UI_Rect sat_rect = sat_slider_box->prev_frame->computed_rect;
+		UI_Rect val_rect = val_slider_box->prev_frame->computed_rect;
 
 		if (UI_InputWasPressed(UI_Input_MouseLeft) && UI_PointIsInRect(sat_rect, UI_STATE.mouse_pos)) {
 			UI_STATE.mouse_clicking_down_box = sat_slider_box->key;

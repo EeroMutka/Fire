@@ -10,6 +10,8 @@ typedef struct UI_ValueEditArrayModify {
 
 UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify);
 
+UI_API UI_Box* UI_AddBoxWithTextWrapped(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR string);
+
 #define UI_AddValDSArray(KEY, NAME, ARRAY, DEFAULT_VALUE, EDIT_ELEM) \
 	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (DEFAULT_VALUE), (UI_ArrayEditElemFn)EDIT_ELEM, NULL)
 #define UI_AddValDSArrayEx(KEY, NAME, ARRAY, DEFAULT_VALUE, EDIT_ELEM, USER_DATA) \
@@ -42,8 +44,8 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...);
 
 #ifdef /********************/ UI_IMPLEMENTATION /********************/
 
-static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis axis) {
-	UI_BoxComputeUnexpandedSizeDefault(box, axis);
+static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass) {
+	UI_BoxComputeUnexpandedSizeDefault(box, axis, pass, request_second_pass);
 	if (axis == UI_Axis_Y) {
 		box->computed_unexpanded_size.y = UI_Min(box->computed_unexpanded_size.y, 200.f);
 	}
@@ -301,6 +303,89 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 	UI_PopBox(row);
 
 	va_end(args);
+}
+
+
+typedef struct UI_BoxWithTextWrappedData {
+	float line_height;
+	DS_DynArray(STR) line_strings;
+} UI_BoxWithTextWrappedData;
+
+static UI_Key UI_BoxWithTextWrappedDataKey() { return UI_KEY(); }
+
+static void UI_AddBoxWithTextWrappedComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass) {
+	box->computed_unexpanded_size._[axis] = 0.f;
+	if (axis == UI_Axis_Y) {
+		float line_width = box->computed_expanded_size.x - 2.f * box->inner_padding.x;
+
+		float space_width = UI_TextWidth(STR_(" "), box->font);
+
+		UI_BoxWithTextWrappedData data = {0};
+		data.line_height = (float)box->font.size;
+		DS_ArrInit(&data.line_strings, UI_FrameArena());
+
+		STR remaining = box->text;
+		char* text_end = (char*)box->text.data + box->text.size;
+		float line_remaining = line_width;
+		char* line_start = (char*)box->text.data;
+		bool line_has_content = false;
+
+		for (;;) {
+			STR remaining_before = remaining;
+			STR_ParseUntilAndSkip(&remaining, ' ');
+
+			STR word = { remaining_before.data, (int)(remaining.data - remaining_before.data) };
+			float word_width = UI_TextWidth(word, box->font);
+
+			bool break_line = word.size == 0 || (line_remaining < word_width && line_has_content);
+			if (break_line) {
+				STR line_string = {line_start, (int)(word.data - line_start)};
+				DS_ArrPush(&data.line_strings, line_string);
+
+				line_start = (char*)word.data;
+				remaining = { word.data, (int)(text_end - word.data) };
+				line_remaining = line_width;
+				line_has_content = false;
+			}
+			else {
+				line_remaining -= word_width;
+				line_has_content = true;
+			}
+
+			if (word.size == 0) break;
+		}
+
+		UI_BoxAddVar(box, UI_BoxWithTextWrappedDataKey(), &data);
+
+		box->computed_unexpanded_size.y = data.line_height * (float)data.line_strings.length + 2.f * box->inner_padding.y;
+	}
+}
+
+static void UI_DrawBoxWithTextWrapped(UI_Box* box) {
+	UI_DrawBoxDefault(box);
+
+	UI_BoxWithTextWrappedData* data;
+	UI_BoxGetVarPtr(box, UI_BoxWithTextWrappedDataKey(), &data);
+
+	for (int i = 0; i < data->line_strings.length; i++) {
+		STR line_string = data->line_strings.data[i];
+
+		UI_Vec2 text_pos = {
+			box->computed_position.x + box->inner_padding.x,
+			box->computed_position.y + box->inner_padding.y + (float)i * data->line_height,
+		};
+		UI_DrawText(line_string, box->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, UI_WHITE, &box->computed_rect);
+	}
+}
+
+UI_API UI_Box* UI_AddBoxWithTextWrapped(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR string) {
+	UI_Box* box = UI_AddBox(key, w, h, flags);
+	box->text = string;
+	box->font = UI_STATE.base_font;
+	box->inner_padding = UI_DEFAULT_TEXT_PADDING;
+	box->compute_unexpanded_size = UI_AddBoxWithTextWrappedComputeUnexpandedSizeDefault;
+	box->draw = UI_DrawBoxWithTextWrapped;
+	return box;
 }
 
 #endif // UI_IMPLEMENTATION

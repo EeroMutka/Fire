@@ -185,7 +185,7 @@ STR_API STR STR_AfterLast(STR str, uint32_t codepoint);   // returns `str` if no
 
 STR_API bool STR_Find(STR str, const char* substr, int* out_offset);
 STR_API bool STR_FindV(STR str, STR substr, int* out_offset);
-STR_API STR STR_ParseUntilAndSkip(STR* remaining, uint32_t codepoint); // cuts forward until `codepoint` or end of the string is reached
+STR_API STR STR_ParseUntilAndSkip(STR* remaining, uint32_t codepoint); // cuts forward until `codepoint` or end of the string is reached and an empty string is returned
 STR_API bool STR_FindFirst(STR str, uint32_t codepoint, int* out_offset);
 STR_API bool STR_FindLast(STR str, uint32_t codepoint, int* out_offset);
 STR_API bool STR_LastIdxOfAnyChar(STR str, STR chars, int* out_index);

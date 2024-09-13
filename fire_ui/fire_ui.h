@@ -52,7 +52,11 @@ typedef union {
 } UI_Vec2;
 #define UI_VEC2  UI_LangAgnosticLiteral(UI_Vec2)
 
+// -100 to -99 is unexpanded size fit, take as much parent space as the ratio
+// -200 to -199 is unexpanded size 0, take as much parent space as the ratio
 typedef float UI_Size;
+#define UI_SizeFit()        (-100.f)
+#define UI_SizeFlex(WEIGHT) ((WEIGHT) - 100.f)
 
 typedef uint64_t UI_Key; // 0 is invalid value
 #define UI_INVALID_KEY (UI_Key)0
@@ -143,23 +147,10 @@ typedef struct UI_ArrangersRequest {
 	int move_to; // index of the moved element after the move
 } UI_ArrangersRequest;
 
-//typedef struct UI_Style {
-//	UI_FontUsage font;
-//	UI_Color border_color;
-//	UI_Color opaque_bg_color;
-//	UI_Color transparent_bg_color;
-//	UI_Color text_color;
-//	UI_Vec2 text_padding;
-//	UI_Vec2 child_padding;
-//} UI_Style;
-
-// If I have two functions, those function must be able to independently associate extra data to a box.
-// I think either a hash table, or a linked list of "extra data" could be good.
-
-typedef struct UI_BoxCustomDataHeader UI_BoxCustomDataHeader;
-struct UI_BoxCustomDataHeader {
+typedef struct UI_BoxVariableHeader UI_BoxVariableHeader;
+struct UI_BoxVariableHeader {
 	UI_Key key;
-	UI_BoxCustomDataHeader* next;
+	UI_BoxVariableHeader* next;
 	int debug_size;
 };
 
@@ -186,25 +177,24 @@ struct UI_Box {
 
 	UI_Size size[2];
 	UI_Vec2 offset; // this is used for scroll-bars. Maybe I could refactor this into a function pointer or something.
-
-	UI_FontView font;
 	UI_Vec2 inner_padding; // applied to text or children
 
 	STR text;
+	UI_FontView font;
 
-	void (*compute_unexpanded_size_override)(UI_Box* box, UI_Axis axis);
+	void (*compute_unexpanded_size)(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass);
 
-	// These will be computed with UI_ComputeBox.
-	UI_Vec2 computed_position; // in absolute screen space coordinates
+	UI_BoxVariableHeader* variables; // linked list of variables
+
+	// These will be computed in UI_ComputeBox
+	UI_Vec2 computed_position;
 	UI_Vec2 computed_unexpanded_size;
-	UI_Vec2 computed_size;
-	UI_Rect computed_rect_clipped;
-
+	UI_Vec2 computed_expanded_size;
+	UI_Rect computed_rect; // final rectangle including clipping
+	
 	// Drawing
 	void (*draw)(UI_Box* box); // UI_DrawBoxDefault by default
 	union { UI_DrawBoxDefaultArgs* draw_args; void* draw_args_custom; };
-	
-	UI_BoxCustomDataHeader* custom_data_list;
 };
 
 typedef struct UI_Mark {
@@ -529,18 +519,10 @@ UI_API UI_DrawBoxDefaultArgs* UI_DrawBoxDefaultArgsInit();
 
 // -- Tree builder API with implicit context -------
 
-// -100 to -99 is unexpanded size fit, take as much parent space as the ratio
-// -200 to -199 is unexpanded size 0, take as much parent space as the ratio
-
-#define UI_SizeFit()        (-100.f)
-#define UI_SizeFlex(WEIGHT) ((WEIGHT) - 100.f)
-
-UI_API void UI_BoxComputeUnexpandedSizes(UI_Box* box);
 UI_API void UI_BoxComputeExpandedSizes(UI_Box* box);
 UI_API void UI_BoxComputeRects(UI_Box* box, UI_Vec2 box_position);
 
-UI_API void UI_BoxComputeUnexpandedSize(UI_Box* box, UI_Axis axis);
-UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis);
+UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass);
 UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size);
 UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI_ScissorRect scissor);
 
@@ -1278,10 +1260,10 @@ static void UI_DrawValTextInnerBox(UI_Box* box) {
 
 	if (UI_STATE.text_editing_box_new == box->parent->key) {
 		UI_Selection sel = UI_STATE.edit_text_selection;
-		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->inner_padding), box->text, box->font, UI_COLOR{255, 255, 255, 50}, &box->computed_rect_clipped);
+		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->inner_padding), box->text, box->font, UI_COLOR{255, 255, 255, 50}, &box->computed_rect);
 
 		UI_Mark end = sel.range[sel.end];
-		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->inner_padding), box->text, box->font, UI_COLOR{255, 255, 255, 255}, &box->computed_rect_clipped);
+		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->inner_padding), box->text, box->font, UI_COLOR{255, 255, 255, 255}, &box->computed_rect);
 	}
 }
 
@@ -1536,16 +1518,15 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 		UI_Size size[2];
 		size[x] = UI_SizeFlex(1.f);
 		size[y] = UI_SizeFlex(1.f);
-		//size[x] = UI_SIZE{ 0.f, 1.f, 1.f, 1.f };
-		//size[y] = UI_SIZE{ 0.f, 1.f, 1.f, 1.f };
 		UI_Box* temp_box = UI_AddBox(temp_box_keys[y], size[0], size[1], 0/*UI_BoxFlag_NoScissor*/);
 		temp_boxes[y] = temp_box;
 
 		// Use the content size from the previous frame
 		float content_length_px = content_prev_frame ? content_prev_frame->computed_unexpanded_size._[y] : 0.f;
-		float visible_area_length_px = deepest_temp_box_prev_frame ? deepest_temp_box_prev_frame->computed_size._[y] : 0.f;
-		float rail_line_length_px = temp_box->prev_frame ? temp_box->prev_frame->computed_size._[y] : 0.f;
-
+		
+		float visible_area_length_px = deepest_temp_box_prev_frame ? deepest_temp_box_prev_frame->computed_expanded_size._[y] : 0.f;
+		float rail_line_length_px = temp_box->prev_frame ? temp_box->prev_frame->computed_expanded_size._[y] : 0.f;
+		
 		if (content_length_px > visible_area_length_px) {
 			size[x] = 18.f;
 			size[y] = UI_SizeFlex(1.f);
@@ -1706,13 +1687,13 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 
 	if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
 		const float shadow_distance = 10.f;
-		UI_Rect rect = box->computed_rect_clipped;
+		UI_Rect rect = box->computed_rect;
 		rect.min = UI_SubV2(rect.min, UI_VEC2{ 0.5f * shadow_distance, 0.5f * shadow_distance });
 		rect.max = UI_AddV2(rect.max, UI_VEC2{ shadow_distance, shadow_distance });
 		UI_DrawRectRounded2(rect, 2.f * shadow_distance, UI_COLOR{ 0, 0, 0, 50 }, UI_COLOR{ 0, 0, 0, 0 }, 2);
 	}
 
-	UI_Rect box_rect = box->computed_rect_clipped;
+	UI_Rect box_rect = box->computed_rect;
 
 	if (box->flags & UI_BoxFlag_DrawTransparentBackground) {
 		UI_DrawRectRounded(box_rect, 4.f, args->transparent_bg_color, 2);
@@ -1763,18 +1744,18 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	}
 
 	if (UI_IsSelected(box->key) && UI_STATE.selection_is_visible) {
-		//UI_Rect box_rect = box->computed_rect_clipped;
+		//UI_Rect box_rect = box->computed_rect;
 		UI_Color selection_color = UI_COLOR{ 250, 200, 85, 240 };
 		UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, selection_color);
+	}
+
+	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+		UI_DrawBox(child);
 	}
 
 	if (box->flags & UI_BoxFlag_HasText) {
 		UI_Vec2 text_pos = UI_AddV2(box->computed_position, box->inner_padding);
 		UI_DrawText(box->text, box->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, args->text_color, &box_rect);
-	}
-
-	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
-		UI_DrawBox(child);
 	}
 
 	UI_ProfExit();
@@ -1850,13 +1831,13 @@ UI_API bool UI_IsClickingDownAndHovered(UI_Key key) {
 
 UI_API bool UI_IsHovered(UI_Key key) {
 	UI_Box* box = UI_PrevFrameBoxFromKey(key);
-	bool result = box != NULL && !(box->flags & UI_BoxFlag_NoHover) && UI_PointIsInRect(box->computed_rect_clipped, UI_STATE.mouse_pos);
+	bool result = box != NULL && !(box->flags & UI_BoxFlag_NoHover) && UI_PointIsInRect(box->computed_rect, UI_STATE.mouse_pos);
 	return result;
 }
 
 UI_API bool UI_IsMouseInsideOf(UI_Key key) {
 	UI_Box* box = UI_PrevFrameBoxFromKey(key);
-	bool result = box != NULL && UI_PointIsInRect(box->computed_rect_clipped, UI_STATE.mouse_pos);
+	bool result = box != NULL && UI_PointIsInRect(box->computed_rect, UI_STATE.mouse_pos);
 	return result;
 }
 
@@ -1864,7 +1845,7 @@ static bool UI_HasAnyHoveredClickableChild_(UI_Box* box) {
 	UI_ProfEnter();
 	bool result = false;
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
-		if (UI_PointIsInRect(child->computed_rect_clipped, UI_STATE.mouse_pos)) {
+		if (UI_PointIsInRect(child->computed_rect, UI_STATE.mouse_pos)) {
 			if (child->flags & UI_BoxFlag_Clickable) {
 				result = true;
 				break;
@@ -1881,7 +1862,7 @@ static bool UI_HasAnyHoveredClickableChild_(UI_Box* box) {
 
 UI_API bool UI_IsHoveredIdle(UI_Key key) {
 	UI_Box* box = UI_PrevFrameBoxFromKey(key);
-	bool result = box != NULL && !(box->flags & UI_BoxFlag_NoHover) && UI_PointIsInRect(box->computed_rect_clipped, UI_STATE.mouse_pos);
+	bool result = box != NULL && !(box->flags & UI_BoxFlag_NoHover) && UI_PointIsInRect(box->computed_rect, UI_STATE.mouse_pos);
 	result = result && !UI_HasAnyHoveredClickableChild_(box);
 	return result;
 }
@@ -1912,20 +1893,20 @@ UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key) {
 }
 
 UI_API void UI_BoxAddVarData(UI_Box* box, UI_Key key, void* ptr, int size) {
-	UI_BoxCustomDataHeader* header = (UI_BoxCustomDataHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxCustomDataHeader) + size);
+	UI_BoxVariableHeader* header = (UI_BoxVariableHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxVariableHeader) + size);
 	header->key = key;
-	header->next = box->custom_data_list;
+	header->next = box->variables;
 	header->debug_size = size;
-	box->custom_data_list = header;
+	box->variables = header;
 	memcpy(header + 1, ptr, size);
 }
 
 UI_API bool UI_BoxGetRetainedVarData(UI_Box* box, UI_Key key, void** out_ptr, int size) {
-	UI_BoxCustomDataHeader* header = (UI_BoxCustomDataHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxCustomDataHeader) + size);
+	UI_BoxVariableHeader* header = (UI_BoxVariableHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxVariableHeader) + size);
 	header->key = key;
-	header->next = box->custom_data_list;
+	header->next = box->variables;
 	header->debug_size = size;
-	box->custom_data_list = header;
+	box->variables = header;
 	
 	bool had_variable = box->prev_frame && UI_BoxGetVarData(box->prev_frame, key, header + 1, size);
 	if (!had_variable) {
@@ -1938,7 +1919,7 @@ UI_API bool UI_BoxGetRetainedVarData(UI_Box* box, UI_Key key, void** out_ptr, in
 
 UI_API void UI_BoxGetVarPtrData(UI_Box* box, UI_Key key, void** out_ptr, int size) {
 	*out_ptr = NULL;
-	for (UI_BoxCustomDataHeader* it = box->custom_data_list; it; it = it->next) {
+	for (UI_BoxVariableHeader* it = box->variables; it; it = it->next) {
 		if (it->key == key) {
 			UI_ASSERT(size == it->debug_size);
 			*out_ptr = it + 1;
@@ -2061,7 +2042,8 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 	box->flags = flags;
 	box->draw = UI_DrawBoxDefault;
 	box->draw_args = UI_DrawBoxDefaultArgsConstDefaults();
-	
+	box->compute_unexpanded_size = UI_BoxComputeUnexpandedSizeDefault;
+
 	if (UI_STATE.mouse_clicking_down_box == key && UI_InputIsDown(UI_Input_MouseLeft)) {
 		UI_STATE.mouse_clicking_down_box_new = key;
 	}
@@ -2304,7 +2286,7 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 
 UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 	UI_ProfEnter();
-	box->computed_size._[axis] = size;
+	box->computed_expanded_size._[axis] = size;
 
 	float child_area_size = size;
 	child_area_size -= 2.f * box->inner_padding._[axis];
@@ -2326,9 +2308,6 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 			} else {
 				total_flex += child->size[axis] < 0.f && !(child->flags & no_flex_down_flag) ? child->size[axis] + 100.f : 0.f; // flex down
 			}
-			//float flex = total_leftover > 0 ?
-			//	child->size[axis].flex_up :
-			//	child->size[axis].flex_down;
 		}
 
 		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
@@ -2377,7 +2356,7 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 	box->computed_position._[axis] = position + box->offset._[axis];
 
 	float min = box->computed_position._[axis];
-	float max = min + box->computed_size._[axis];
+	float max = min + box->computed_expanded_size._[axis];
 	float min_clipped = min;
 	float max_clipped = max;
 
@@ -2386,8 +2365,8 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 		max_clipped = UI_Min(max, scissor->max._[axis]);
 	}
 
-	box->computed_rect_clipped.min._[axis] = min_clipped;
-	box->computed_rect_clipped.max._[axis] = max_clipped;
+	box->computed_rect.min._[axis] = min_clipped;
+	box->computed_rect.max._[axis] = max_clipped;
 
 	bool layout_from_end = axis == UI_Axis_X ? box->flags & UI_BoxFlag_ReverseLayoutX : box->flags & UI_BoxFlag_ReverseLayoutY;
 	float direction = layout_from_end ? -1.f : 1.f;
@@ -2395,44 +2374,28 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 	float cursor_base = layout_from_end ? max : min;
 	float cursor = cursor_base + direction * box->inner_padding._[axis];
 
-	UI_ScissorRect child_scissor = (box->flags & UI_BoxFlag_NoScissor) ? scissor : &box->computed_rect_clipped;
+	UI_ScissorRect child_scissor = (box->flags & UI_BoxFlag_NoScissor) ? scissor : &box->computed_rect;
 
 	UI_Axis layout_axis = box->flags & UI_BoxFlag_Horizontal ? UI_Axis_X : UI_Axis_Y;
 
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
 		float child_position = (child->flags & UI_BoxFlag_NoAutoOffset ? cursor_base : cursor);
-		if (layout_from_end) child_position -= child->computed_size._[axis];
+		if (layout_from_end) child_position -= child->computed_expanded_size._[axis];
 
 		UI_BoxComputeRectsStep(child, axis, child_position, child_scissor);
 
 		if (axis == layout_axis) {
-			cursor += direction * child->computed_size._[axis];
+			cursor += direction * child->computed_expanded_size._[axis];
 		}
 	}
 	UI_ProfExit();
 }
 
-UI_API void UI_BoxComputeUnexpandedSizes(UI_Box* box) {
+UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass) {
 	UI_ProfEnter();
-	UI_BoxComputeUnexpandedSize(box, UI_Axis_X);
-	UI_BoxComputeUnexpandedSize(box, UI_Axis_Y);
-	UI_ProfExit();
-}
-
-UI_API void UI_BoxComputeUnexpandedSize(UI_Box* box, UI_Axis axis) {
-	UI_ProfEnter();
-	if (box->compute_unexpanded_size_override) {
-		box->compute_unexpanded_size_override(box, axis);
-	} else {
-		UI_BoxComputeUnexpandedSizeDefault(box, axis);
-	}
-	UI_ProfExit();
-}
-
-UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis) {
-	UI_ProfEnter();
+	
 	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
-		UI_BoxComputeUnexpandedSize(child, axis);
+		child->compute_unexpanded_size(child, axis, pass, request_second_pass);
 	}
 
 	float fitting_size = 0.f;
@@ -2466,9 +2429,19 @@ UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis) {
 
 UI_API void UI_BoxComputeExpandedSizes(UI_Box* box) {
 	UI_ProfEnter();
-	UI_BoxComputeUnexpandedSizes(box);
-	UI_BoxComputeExpandedSize(box, UI_Axis_X, box->computed_unexpanded_size.x);
-	UI_BoxComputeExpandedSize(box, UI_Axis_Y, box->computed_unexpanded_size.y);
+
+	for (int pass = 0; pass < 2; pass++) {
+		bool request_second_pass = false;
+
+		box->compute_unexpanded_size(box, UI_Axis_X, pass, &request_second_pass);
+		UI_BoxComputeExpandedSize(box, UI_Axis_X, box->computed_unexpanded_size.x);
+	
+		box->compute_unexpanded_size(box, UI_Axis_Y, pass, &request_second_pass);
+		UI_BoxComputeExpandedSize(box, UI_Axis_Y, box->computed_unexpanded_size.y);
+		
+		if (!request_second_pass) break;
+	}
+
 	UI_ProfExit();
 }
 
@@ -3312,7 +3285,7 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 
 	UI_Box* dragging = arranger_set->dragging_elem; // may be NULL
 
-	// here we compute `computed_position` for each box using relative coordinates
+	// Compute position for each box using relative coordinates
 	UI_BoxComputeRects(box, UI_VEC2{ 0, 0 });
 
 	int dragging_index = 0;
@@ -3356,10 +3329,10 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 			}
 			else {
 				if (i >= target_index && i < dragging_index) {
-					offset += dragging->computed_size.y;
+					offset += dragging->computed_expanded_size.y;
 				}
 				if (i >= dragging_index && i < target_index) {
-					offset -= dragging->computed_size.y;
+					offset -= dragging->computed_expanded_size.y;
 				}
 			}
 		}

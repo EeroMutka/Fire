@@ -82,7 +82,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 	//// Main area /////////////////////////////////////////////
 
-	UI_Vec2 main_area_size = { window_size.x, window_size.y - top_bar_root->computed_size.y };
+	UI_Vec2 main_area_size = { window_size.x, window_size.y - top_bar_root->computed_expanded_size.y };
 	UI_Box* main_area = UI_MakeRootBox(UI_KEY(), main_area_size.x, main_area_size.y, UI_BoxFlag_DrawBorder);
 	main_area->inner_padding = area_child_padding;
 	if (UI_IsMouseInsideOf(main_area->key)) deepest_hovered_root = main_area->key;
@@ -99,8 +99,10 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
 	UI_Box* another_button = UI_AddButton(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Another button");
-	another_button->draw_args = UI_DrawBoxDefaultArgsInit();
-	another_button->draw_args->text_color = UI_GREEN;
+
+	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
+
+	UI_AddBoxWithTextWrapped(UI_KEY(), UI_SizeFlex(1.f), 20.f, 0, STR_("The quick brown fox jumped over the lazy dog. The quick brown fox jumped over the lazy dog. The quick brown fox jumped over the lazy dog."));
 
 	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
@@ -287,7 +289,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 	UI_PopScrollArea(main_scroll_area);
 	UI_PopBox(main_area);
-	UI_BoxComputeRects(main_area, UI_VEC2{ 0.f, top_bar_root->computed_size.y });
+	UI_BoxComputeRects(main_area, UI_VEC2{ 0.f, top_bar_root->computed_expanded_size.y });
 	UI_DrawBox(main_area);
 	
 	//// Dropdown menus ////////////////////////////////////////
@@ -349,7 +351,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 		UI_PopBox(dropdown);
 
-		UI_BoxComputeRects(dropdown, UI_VEC2{ file_button->computed_position.x, file_button->computed_rect_clipped.max.y });
+		UI_BoxComputeRects(dropdown, UI_VEC2{ file_button->computed_position.x, file_button->computed_rect.max.y });
 		UI_DrawBox(dropdown);
 
 		UI_Key nested_dropdown_key = UI_KEY();
@@ -374,8 +376,8 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 			UI_PopBox(nested_dropdown);
 
 			UI_Vec2 pos = {
-				nested_dropdown_button->computed_rect_clipped.max.x,
-				nested_dropdown_button->computed_rect_clipped.min.y,
+				nested_dropdown_button->computed_rect.max.x,
+				nested_dropdown_button->computed_rect.min.y,
 			};
 			UI_BoxComputeRects(nested_dropdown, pos);
 			UI_DrawBox(nested_dropdown);
