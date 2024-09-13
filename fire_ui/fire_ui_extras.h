@@ -53,9 +53,6 @@ static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis 
 
 UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify)
 {
-	UI_TODO();
-	/*
-	
 	UI_Box* root_box = UI_AddBox(key, UI_SizeFlex(1.f), UI_SizeFit(), 0);
 	UI_PushBox(root_box);
 
@@ -70,18 +67,18 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int arr
 	}
 
 	UI_Box* label = UI_AddBoxWithText(UI_KEY1(key), 20.f, UI_SizeFit(), 0, is_open ? "\x44" : "\x46");
-	label->style = UI_MakeStyle();
-	label->style->font.font = UI_STATE.icons_font;
+	label->font = UI_STATE.icons_font;
 
 	UI_AddBoxWithText(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0, name);
 	UI_Box* add_button = UI_AddButton(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x48");
+	add_button->font = UI_STATE.icons_font;
+	add_button->font.size = (UI_STATE.icons_font.size * 8) / 10;
+	add_button->inner_padding.y += 2.f;
 
 	UI_Box* clear_button = UI_AddButton(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x54");
-	clear_button->style = UI_MakeStyle();
-	clear_button->style->font.font = UI_STATE.icons_font;
-	clear_button->style->font.size *= 0.8f;
-	clear_button->style->text_padding.y += 2.f;
-	add_button->style = clear_button->style;
+	clear_button->font = UI_STATE.icons_font;
+	clear_button->font.size = (UI_STATE.icons_font.size * 8) / 10;
+	clear_button->inner_padding.y += 2.f;
 
 	UI_PopBox(header);
 
@@ -91,7 +88,7 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int arr
 
 	if (is_open) {
 		UI_Box* scroll_area = UI_PushScrollArea(child_box_key, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_DrawBorder, 0, 0);
-		scroll_area->compute_unexpanded_size_override = UI_ValEditArrayScrollAreaComputeUnexpandedSize;
+		scroll_area->compute_unexpanded_size = UI_ValEditArrayScrollAreaComputeUnexpandedSize;
 
 		UI_Box* source_files_arrangers = UI_PushArrangerSet(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit());
 
@@ -110,7 +107,10 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int arr
 			UI_PopBox(user_box);
 
 			UI_Box* remove_button = UI_AddButton(UI_KEY1(elem_key), UI_SizeFit(), UI_SizeFit(), 0, "\x4a");
-			remove_button->style = clear_button->style;
+			remove_button->font = UI_STATE.icons_font;
+			remove_button->font.size = (UI_STATE.icons_font.size * 8) / 10;
+			remove_button->inner_padding.y += 2.f;
+
 			if (UI_Clicked(remove_button->key)) should_remove_elem = i;
 
 			UI_PopBox(elem_box);
@@ -129,8 +129,7 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int arr
 	}
 
 	UI_PopBox(root_box);
-	return root_box;*/
-	return NULL;
+	return root_box;
 }
 
 // default_value may be NULL, in which case the element is zero-initialized
@@ -313,7 +312,7 @@ typedef struct UI_BoxWithTextWrappedData {
 
 static UI_Key UI_BoxWithTextWrappedDataKey() { return UI_KEY(); }
 
-static void UI_AddBoxWithTextWrappedComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass) {
+static void UI_AddBoxWithTextWrappedComputeUnexpandedSize(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass) {
 	box->computed_unexpanded_size._[axis] = 0.f;
 	if (axis == UI_Axis_Y) {
 		float line_width = box->computed_expanded_size.x - 2.f * box->inner_padding.x;
@@ -383,7 +382,7 @@ UI_API UI_Box* UI_AddBoxWithTextWrapped(UI_Key key, UI_Size w, UI_Size h, UI_Box
 	box->text = string;
 	box->font = UI_STATE.base_font;
 	box->inner_padding = UI_DEFAULT_TEXT_PADDING;
-	box->compute_unexpanded_size = UI_AddBoxWithTextWrappedComputeUnexpandedSizeDefault;
+	box->compute_unexpanded_size = UI_AddBoxWithTextWrappedComputeUnexpandedSize;
 	box->draw = UI_DrawBoxWithTextWrapped;
 	return box;
 }
