@@ -211,7 +211,7 @@ static void UI_DrawColorPickerBoxTransparent(UI_Box* box) {
 }
 
 UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* value, float* alpha) {
-	UI_Box* main_box = UI_AddBox(key, UI_SizeFit(), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+	UI_Box* main_box = UI_AddBox(key, UI_SizeFit(), UI_SizeFit(), UI_BoxFlag_Horizontal);
 	UI_PushBox(main_box);
 	UI_HueSaturationCircle(UI_KEY1(key), 200.f, hue, saturation);
 
@@ -233,7 +233,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 	UI_Box* color_box_1;
 	UI_Box* color_box_2;
 	{
-		UI_Box* row = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+		UI_Box* row = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 		UI_PushBox(row);
 
 		UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0); // pad
@@ -250,7 +250,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 	}
 
 	{
-		UI_Box* right_area_row = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+		UI_Box* right_area_row = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 		UI_PushBox(right_area_row);
 
 		{
@@ -264,7 +264,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 			bool edited_rgba = false;
 			for (int i = 0; i < 4; i++) {
 				UI_Key row_key = UI_HashInt(key, i);
-				UI_Box* row = UI_AddBox(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+				UI_Box* row = UI_AddBox(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 				UI_PushBox(row);
 				UI_AddBoxWithText(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
 
@@ -292,7 +292,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 			float* hsv[] = {hue, saturation, value};
 			for (int i = 0; i < 3; i++) {
 				UI_Key row_key = UI_HashInt(key, i);
-				UI_Box* row = UI_AddBox(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+				UI_Box* row = UI_AddBox(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 				UI_PushBox(row);
 				UI_AddBoxWithText(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
 

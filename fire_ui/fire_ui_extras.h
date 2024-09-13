@@ -58,7 +58,7 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int arr
 	UI_PushBox(root_box);
 
 	UI_Key child_box_key = UI_KEY1(key);
-	UI_BoxFlags flags = UI_BoxFlag_LayoutInX | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
+	UI_BoxFlags flags = UI_BoxFlag_Horizontal| UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
 	UI_Box* header = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), flags);
 	UI_PushBox(header);
 
@@ -96,7 +96,7 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int arr
 		UI_Key elems_key = UI_KEY1(key);
 		for (int i = 0; i < array_count; i++) {
 			UI_Key elem_key = UI_HashInt(elems_key, i);
-			UI_Box* elem_box = UI_AddBox(UI_KEY1(elem_key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawOpaqueBackground);
+			UI_Box* elem_box = UI_AddBox(UI_KEY1(elem_key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawOpaqueBackground);
 			UI_PushBox(elem_box);
 
 			UI_Box* arranger = UI_AddArranger(UI_KEY1(elem_key), UI_SizeFit(), UI_SizeFit());
@@ -164,7 +164,7 @@ static void UI_InfoFmtFinishCurrent_(UI_Key key, STR_Builder* current_string, in
 UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 	va_list args; va_start(args, fmt);
 
-	UI_Box* row = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_LayoutInX);
+	UI_Box* row = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 	UI_PushBox(row);
 
 	STR_Builder current_string = {UI_FrameArena()};

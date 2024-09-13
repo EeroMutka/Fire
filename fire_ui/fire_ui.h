@@ -77,7 +77,7 @@ typedef enum UI_BoxFlagBits {
 	UI_BoxFlag_NoFlexDownX = 1 << 11,
 	UI_BoxFlag_NoFlexDownY = 1 << 12,
 	
-	// Draw flags, applies to UI_DrawBoxDefault
+	// Draw flags, used in UI_DrawBoxDefault
 	UI_BoxFlag_DrawBorder = 1 << 13,
 	UI_BoxFlag_DrawTransparentBackground = 1 << 14,
 	UI_BoxFlag_DrawOpaqueBackground = 1 << 15,
@@ -718,7 +718,6 @@ UI_API UI_State UI_STATE;
 
 static const UI_Vec2 UI_WHITE_PIXEL_UV = { 0.5f / (float)UI_GLYPH_MAP_SIZE, 0.5f / (float)UI_GLYPH_MAP_SIZE };
 static const UI_Vec2 UI_DEFAULT_TEXT_PADDING = { 10.f, 5.f };
-static const UI_Vec2 UI_DEFAULT_CHILD_PADDING = { 12.f, 12.f };
 
 UI_API inline bool UI_MarkGreaterThan(UI_Mark a, UI_Mark b) { return a.line > b.line || (a.line == b.line && a.col > b.col); }
 UI_API inline bool UI_MarkLessThan(UI_Mark a, UI_Mark b) { return a.line < b.line || (a.line == b.line && a.col < b.col); }
@@ -1435,7 +1434,7 @@ UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
 
 	float h = UI_STATE.base_font.size + 2.f * UI_DEFAULT_TEXT_PADDING.y;
 
-	UI_Box* box = UI_AddBox(UI_KEY1(key), h, h, UI_BoxFlag_ChildPadding);
+	UI_Box* box = UI_AddBox(UI_KEY1(key), h, h, 0);
 	box->inner_padding = UI_VEC2{ 5.f, 5.f };
 	UI_PushBox(box);
 
@@ -1460,7 +1459,7 @@ UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
 
 UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
 	UI_ProfEnter();
-	UI_Box* box = UI_AddBox(key, w, h, flags | UI_BoxFlag_DrawText);
+	UI_Box* box = UI_AddBox(key, w, h, flags | UI_BoxFlag_HasText);
 	box->text = STR_InitV(string);
 	box->font = UI_STATE.base_font;
 	box->inner_padding = UI_DEFAULT_TEXT_PADDING;
@@ -1554,7 +1553,7 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 			UI_BoxFlags layout_dir_flag = y == UI_Axis_X ? UI_BoxFlag_Horizontal : 0;
 			UI_Box* rail_line_box = UI_AddBox(UI_KEY1(y_key), size[0], size[1], layout_dir_flag | UI_BoxFlag_DrawBorder);
 			if (anchors[y] == 1) {
-				rail_line_box->flags |= (y == 1 ? UI_BoxFlag_ReverseLayoutY : UI_BoxFlag_ReverseLayoutXX);
+				rail_line_box->flags |= (y == 1 ? UI_BoxFlag_ReverseLayoutY : UI_BoxFlag_ReverseLayoutX);
 			}
 
 			UI_PushBox(rail_line_box);
@@ -1627,7 +1626,7 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 	content->offset = offset;
 	UI_PushBox(content);
 
-	if (anchor_x == 1) temp_boxes[0]->flags |= UI_BoxFlag_ReverseLayoutXX;
+	if (anchor_x == 1) temp_boxes[0]->flags |= UI_BoxFlag_ReverseLayoutX;
 	if (anchor_y == 1) temp_boxes[0]->flags |= UI_BoxFlag_ReverseLayoutY;
 
 	UI_ProfExit();
@@ -1769,7 +1768,7 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 		UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, selection_color);
 	}
 
-	if (box->flags & UI_BoxFlag_DrawText) {
+	if (box->flags & UI_BoxFlag_HasText) {
 		UI_Vec2 text_pos = UI_AddV2(box->computed_position, box->inner_padding);
 		UI_DrawText(box->text, box->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, args->text_color, &box_rect);
 	}
@@ -2062,7 +2061,7 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 	box->flags = flags;
 	box->draw = UI_DrawBoxDefault;
 	box->draw_args = UI_DrawBoxDefaultArgsConstDefaults();
-
+	
 	if (UI_STATE.mouse_clicking_down_box == key && UI_InputIsDown(UI_Input_MouseLeft)) {
 		UI_STATE.mouse_clicking_down_box_new = key;
 	}
@@ -2308,7 +2307,7 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 	box->computed_size._[axis] = size;
 
 	float child_area_size = size;
-	if (box->flags & UI_BoxFlag_ChildPadding) child_area_size -= 2.f * box->inner_padding._[axis];
+	child_area_size -= 2.f * box->inner_padding._[axis];
 
 	UI_Axis layout_axis = box->flags & UI_BoxFlag_Horizontal ? UI_Axis_X : UI_Axis_Y;
 	UI_BoxFlags no_flex_down_flag = axis == UI_Axis_X ? UI_BoxFlag_NoFlexDownX : UI_BoxFlag_NoFlexDownY;
@@ -2394,8 +2393,7 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 	float direction = layout_from_end ? -1.f : 1.f;
 
 	float cursor_base = layout_from_end ? max : min;
-	float cursor = cursor_base;
-	if (box->flags & UI_BoxFlag_ChildPadding) cursor += direction * box->inner_padding._[axis];
+	float cursor = cursor_base + direction * box->inner_padding._[axis];
 
 	UI_ScissorRect child_scissor = (box->flags & UI_BoxFlag_NoScissor) ? scissor : &box->computed_rect_clipped;
 
@@ -2439,8 +2437,8 @@ UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis) {
 
 	float fitting_size = 0.f;
 
-	if (box->flags & UI_BoxFlag_DrawText) {
-		UI_ASSERT(box->first_child[0] == NULL); // DrawText may only be used on leaf boxes
+	if (box->flags & UI_BoxFlag_HasText) {
+		UI_ASSERT(box->first_child[0] == NULL); // A box which has text must not have children
 
 		float text_size = axis == 0 ? UI_TextWidth(box->text, box->font) : (float)box->font.size;
 		fitting_size = (float)(int)(text_size + 0.5f) + 2.f * box->inner_padding._[axis];
@@ -2458,7 +2456,7 @@ UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis) {
 			}
 		}
 
-		if (box->flags & UI_BoxFlag_ChildPadding) fitting_size += 2 * box->inner_padding._[axis];
+		fitting_size += 2 * box->inner_padding._[axis];
 	}
 
 	float unexpanded_size = box->size[axis] < 0.f ? fitting_size : box->size[axis];
