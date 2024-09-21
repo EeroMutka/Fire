@@ -300,8 +300,8 @@ typedef struct UI_Backend {
 	void (*destroy_atlas)(int atlas_id);
 
 	// From these functions, the returned pointer must stay valid until UI_EndFrame or destroy_buffer/destroy_atlas is called.
-	void* (*buffer_map_until_frame_end)(int buffer_id);
-	void* (*atlas_map_until_frame_end)(int atlas_id);
+	void* (*buffer_map_until_draw)(int buffer_id);
+	void* (*atlas_map_until_draw)(int atlas_id);
 } UI_Backend;
 
 typedef struct UI_Inputs {
@@ -2133,8 +2133,8 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size, UI_FontV
 
 	UI_STATE.draw_next_vertex = 0;
 	UI_STATE.draw_next_index = 0;
-	UI_STATE.draw_vertices = (UI_DrawVertex*)UI_STATE.backend.buffer_map_until_frame_end(0);
-	UI_STATE.draw_indices = (uint32_t*)UI_STATE.backend.buffer_map_until_frame_end(1);
+	UI_STATE.draw_vertices = (UI_DrawVertex*)UI_STATE.backend.buffer_map_until_draw(0);
+	UI_STATE.draw_indices = (uint32_t*)UI_STATE.backend.buffer_map_until_draw(1);
 	UI_STATE.draw_active_texture = UI_STATE.atlases[0];
 	UI_ASSERT(UI_STATE.draw_active_texture != UI_TEXTURE_ID_NIL);
 	UI_ASSERT(UI_STATE.draw_vertices != NULL);
@@ -2245,7 +2245,7 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 		UI_ASSERT(rect.was_packed);
 		UI_ASSERT(rect.x == 0 && rect.y == 0);
 
-		uint32_t* data = (uint32_t*)backend->atlas_map_until_frame_end(0);
+		uint32_t* data = (uint32_t*)backend->atlas_map_until_draw(0);
 		data[0] = 0xFFFFFFFF;
 	}
 
@@ -2687,7 +2687,7 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontView font, in
 
 		// The glyph will be now rasterized into UI_.atlas_buffer_grayscale. Let's convert it into RGBA8.
 
-		uint32_t* atlas_data = (uint32_t*)UI_STATE.backend.atlas_map_until_frame_end(0);
+		uint32_t* atlas_data = (uint32_t*)UI_STATE.backend.atlas_map_until_draw(0);
 		UI_ASSERT(atlas_data);
 
 		for (int y = packed_char.y0; y < packed_char.y1; y++) {

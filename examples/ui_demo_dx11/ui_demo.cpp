@@ -78,7 +78,6 @@ static STR ReadEntireFile(DS_Arena* arena, const char* file) {
 }
 
 static void UpdateAndRender() {
-	UI_DX11_BeginFrame();
 	UI_BeginFrame(&g_ui_inputs, g_window_size, {g_base_font, 18}, {g_icons_font, 18});
 
 	UIDemoBuild(&g_demo_state, g_window_size);
@@ -89,7 +88,7 @@ static void UpdateAndRender() {
 	FLOAT clearcolor[4] = { 0.15f, 0.15f, 0.15f, 1.f };
 	g_d3d11_device_context->ClearRenderTargetView(g_d3d11_framebuffer_rtv, clearcolor);
 
-	UI_DX11_EndFrame(&ui_outputs, g_d3d11_framebuffer_rtv);
+	UI_DX11_Draw(&ui_outputs, g_d3d11_framebuffer_rtv);
 	UI_OS_ApplyOutputs(&g_window, &ui_outputs);
 	
 	g_d3d11_swapchain->Present(1, 0);
