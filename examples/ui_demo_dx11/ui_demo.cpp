@@ -61,7 +61,7 @@ static UIDemoState g_demo_state;
 
 ////////////////////////////////////////////////////////////
 
-static STR ReadEntireFile(DS_Arena* arena, const char* file) {
+static STR_View ReadEntireFile(DS_Arena* arena, const char* file) {
 	FILE* f = fopen(file, "rb");
 	assert(f);
 
@@ -73,7 +73,7 @@ static STR ReadEntireFile(DS_Arena* arena, const char* file) {
 	fread(data, fsize, 1, f);
 
 	fclose(f);
-	STR result = {data, fsize};
+	STR_View result = {data, fsize};
 	return result;
 }
 
@@ -165,8 +165,8 @@ static void AppInit() {
 	UI_Init(DS_HEAP, &ui_backend);
 
 	// NOTE: the font data must remain alive across the whole program lifetime!
-	STR roboto_mono_ttf = ReadEntireFile(&g_persist, "../../fire_ui/resources/roboto_mono.ttf");
-	STR icons_ttf = ReadEntireFile(&g_persist, "../../fire_ui/resources/fontello/font/fontello.ttf");
+	STR_View roboto_mono_ttf = ReadEntireFile(&g_persist, "../../fire_ui/resources/roboto_mono.ttf");
+	STR_View icons_ttf = ReadEntireFile(&g_persist, "../../fire_ui/resources/fontello/font/fontello.ttf");
 
 	g_base_font = UI_FontInit(roboto_mono_ttf.data, -4.f);
 	g_icons_font = UI_FontInit(icons_ttf.data, -2.f);

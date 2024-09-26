@@ -266,7 +266,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 				UI_Key row_key = UI_HashInt(key, i);
 				UI_Box* row = UI_AddBox(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 				UI_PushBox(row);
-				UI_AddBoxWithText(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
+				UI_AddBoxWithTextC(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
 
 				float value_before = rgba[i];
 				UI_AddValFloat(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), &rgba[i]);
@@ -294,7 +294,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 				UI_Key row_key = UI_HashInt(key, i);
 				UI_Box* row = UI_AddBox(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 				UI_PushBox(row);
-				UI_AddBoxWithText(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
+				UI_AddBoxWithTextC(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
 
 				UI_AddValFloat(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), hsv[i]);
 

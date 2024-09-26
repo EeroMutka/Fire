@@ -22,12 +22,12 @@ static void UIDemoAddTreeSpecie(UIDemoState* state, UI_Key key, const char* name
 	tree.name = name;
 	tree.show = false;
 	tree.key = key;
-	UI_TextInit(state->persist, &tree.text, information);
+	UI_TextInitC(state->persist, &tree.text, information);
 	DS_ArrPush(&state->trees, tree);
 }
 
 static UI_Box* UIDemoTopBarButton(UI_Key key, UI_Size w, UI_Size h, const char* string) {
-	return UI_AddBoxWithText(key, w, h, UI_BoxFlag_Clickable | UI_BoxFlag_Selectable, string);
+	return UI_AddBoxWithTextC(key, w, h, UI_BoxFlag_Clickable | UI_BoxFlag_Selectable, string);
 }
 
 static void UIDemoInit(UIDemoState* state, DS_Arena* persist) {
@@ -41,7 +41,7 @@ static void UIDemoInit(UIDemoState* state, DS_Arena* persist) {
 	UIDemoAddTreeSpecie(state, UI_KEY(), "Birch", "Birch is most commonly found in the Northern hemisphere.");
 	UIDemoAddTreeSpecie(state, UI_KEY(), "Cedar", "Cedar wood is a natural repellent to moths.");
 
-	UI_TextInit(persist, &state->dummy_text, "Strawberry");
+	UI_TextInitC(persist, &state->dummy_text, "Strawberry");
 }
 
 static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
@@ -91,18 +91,18 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	UI_PushBox(main_area);
 	UI_Box* main_scroll_area = UI_PushScrollArea(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFlex(1.f), 0, 0, 0);
 
-	UI_Box* click_me = UI_AddButton(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Click me!");
+	UI_Box* click_me = UI_AddButtonC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Click me!");
 	if (UI_Clicked(click_me->key)) {
 		printf("Button says thanks you!\n");
 	}
 
 	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
-	UI_Box* another_button = UI_AddButton(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Another button");
+	UI_Box* another_button = UI_AddButtonC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Another button");
 
 	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
-	UI_AddBoxWithTextWrapped(UI_KEY(), UI_SizeFlex(1.f), 20.f, 0, STR_("The quick brown fox jumped over the lazy dog. The quick brown fox jumped over the lazy dog. The quick brown fox jumped over the lazy dog."));
+	UI_AddBoxWithTextWrapped(UI_KEY(), UI_SizeFlex(1.f), 20.f, 0, STR_V("The quick brown fox jumped over the lazy dog. The quick brown fox jumped over the lazy dog. The quick brown fox jumped over the lazy dog."));
 
 	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
@@ -110,7 +110,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 		UI_PushBox(row);
 		static int my_int = 8281;
-		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Edit int: ");
+		UI_AddBoxWithTextC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Edit int: ");
 		UI_AddValInt(UI_KEY(), UI_SizeFit(), UI_SizeFit(), &my_int);
 		UI_PopBox(row);
 	}
@@ -121,7 +121,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 		UI_PushBox(row);
 		static float my_float = 320.5f;
-		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Edit float: ");
+		UI_AddBoxWithTextC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Edit float: ");
 		UI_AddValFloat(UI_KEY(), UI_SizeFit(), UI_SizeFit(), &my_float);
 		UI_PopBox(row);
 	}
@@ -131,7 +131,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 		UI_PushBox(row);
-		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Enter text: ");
+		UI_AddBoxWithTextC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Enter text: ");
 		UI_AddValText(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text, NULL);
 		UI_PopBox(row);
 	}
@@ -141,7 +141,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 		UI_PushBox(row);
-		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "A bunch of checkboxes:");
+		UI_AddBoxWithTextC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "A bunch of checkboxes:");
 
 		static bool checkboxes[5];
 		for (int i = 0; i < 5; i++) UI_AddCheckbox(UI_KEY1(i), &checkboxes[i]);
@@ -154,16 +154,16 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal | UI_BoxFlag_DrawBorder);
 		UI_PushBox(row);
-		if (UI_Clicked(UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Flex button")->key))          printf("Pressed flexible button!\n");
-		if (UI_Clicked(UI_AddButton(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Fit button")->key))               printf("Pressed fitting button!\n");
-		if (UI_Clicked(UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Another flex button")->key))  printf("Pressed another flexible button!\n");
-		if (UI_Clicked(UI_AddButton(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Another fit button")->key))       printf("Pressed another fitting button!\n");
+		if (UI_Clicked(UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Flex button")->key))          printf("Pressed flexible button!\n");
+		if (UI_Clicked(UI_AddButtonC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Fit button")->key))               printf("Pressed fitting button!\n");
+		if (UI_Clicked(UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Another flex button")->key))  printf("Pressed another flexible button!\n");
+		if (UI_Clicked(UI_AddButtonC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Another fit button")->key))       printf("Pressed another fitting button!\n");
 		UI_PopBox(row);
 	}
 
 	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
-	UI_Box* color_picker_section = UI_PushCollapsing(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0.f, UI_BoxFlag_DrawBorder, "Color editing");
+	UI_Box* color_picker_section = UI_PushCollapsingC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0.f, UI_BoxFlag_DrawBorder, "Color editing");
 	if (color_picker_section) {
 		color_picker_section->inner_padding = area_child_padding;
 
@@ -172,7 +172,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 		UI_AddBox(UI_KEY(), 0.f, 20.f, 0); // padding
 
-		UI_Box* colorful_text = UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "This text is very colorful!");
+		UI_Box* colorful_text = UI_AddBoxWithTextC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "This text is very colorful!");
 		colorful_text->draw_args = UI_DrawBoxDefaultArgsInit();
 		colorful_text->draw_args->text_color = UI_HSVToColor(hue, saturation, value, alpha);
 
@@ -181,11 +181,11 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
-	UI_Box* arrangers_section = UI_PushCollapsing(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0.f, UI_BoxFlag_DrawBorder, "Rearrangeable elements");
+	UI_Box* arrangers_section = UI_PushCollapsingC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0.f, UI_BoxFlag_DrawBorder, "Rearrangeable elements");
 	if (arrangers_section) {
 		arrangers_section->inner_padding = area_child_padding;
 
-		UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "And here we have some useful tree facts.");
+		UI_AddBoxWithTextC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "And here we have some useful tree facts.");
 
 		UI_Box* arrangers = UI_PushArrangerSet(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit());
 
@@ -199,14 +199,14 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 			UI_AddArranger(UI_KEY1(tree->key), UI_SizeFit(), UI_SizeFit());
 
 			UI_AddCheckbox(UI_KEY1(tree->key), &tree->show);
-			UI_AddBoxWithText(UI_KEY1(tree->key), UI_SizeFit(), UI_SizeFit(), 0, tree->name);
+			UI_AddBoxWithTextC(UI_KEY1(tree->key), UI_SizeFit(), UI_SizeFit(), 0, tree->name);
 
 			if (tree->show) {
 				UI_Box* box = UI_AddBox(UI_KEY1(tree->key),
 					UI_SizeFit(), UI_SizeFit(), UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawOpaqueBackground);
 				UI_PushBox(box);
 
-				UI_AddBoxWithText(UI_KEY1(tree->key), UI_SizeFit(), UI_SizeFit(), 0, "Tree fact:");
+				UI_AddBoxWithTextC(UI_KEY1(tree->key), UI_SizeFit(), UI_SizeFit(), 0, "Tree fact:");
 
 				//static UI_Key editing_text = UI_INVALID_KEY;
 				//static UI_Selection edit_text_selection;
@@ -242,7 +242,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
-	UI_Box* scrollable_section = UI_PushCollapsing(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0.f, UI_BoxFlag_DrawBorder, "Scrollable areas");
+	UI_Box* scrollable_section = UI_PushCollapsingC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0.f, UI_BoxFlag_DrawBorder, "Scrollable areas");
 	if (scrollable_section) {
 		scrollable_section->inner_padding = area_child_padding;
 
@@ -268,7 +268,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		//};
 
 		for (int i = 0; i < button_count; i++) {
-			const char* button_text = STR_Form(UI_FrameArena(), "Button %d", i);
+			STR_View button_text = STR_Form(UI_FrameArena(), "Button %d", i);
 			UI_Box* button = UI_AddButton(UI_KEY1(i), UI_SizeFit(), UI_SizeFit(), 0, button_text);
 			if (UI_Clicked(button->key)) {
 				printf("Button %d was clicked!\n", i);
@@ -281,11 +281,11 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 	UI_AddBox(UI_KEY(), 0.f, 5.f, 0); // padding
 
-	UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Some more text.");
+	UI_AddBoxWithTextC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Some more text.");
 
 	UI_AddBox(UI_KEY(), 0.f, UI_SizeFlex(1.f), 0); // padding
 
-	UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Above this text is some flexy padding. Try resizing the window!");
+	UI_AddBoxWithTextC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Above this text is some flexy padding. Try resizing the window!");
 
 	UI_PopScrollArea(main_scroll_area);
 	UI_PopBox(main_area);
@@ -313,7 +313,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		if (deepest_hovered_root_prev != dropdown->key) dropdown->flags |= UI_BoxFlag_NoHover;
 		UI_PushBox(dropdown);
 
-		if (UI_Clicked(UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Say Hello!")->key)) {
+		if (UI_Clicked(UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Say Hello!")->key)) {
 			printf("Hello!\n");
 		}
 
@@ -324,7 +324,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		{
 			UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 			UI_PushBox(row);
-			UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Curious checkbox");
+			UI_AddBoxWithTextC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Curious checkbox");
 
 			UI_AddCheckbox(UI_KEY(), &curious_checkbox_active);
 
@@ -334,18 +334,18 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		if (curious_checkbox_active) {
 			const char* states[] = { ":|", ":)", ":|", ":(" };
 
-			UI_AddBoxWithText(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, states[curious_checkbox_state]);
+			UI_AddBoxWithTextC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, states[curious_checkbox_state]);
 			if (!curious_checkbox_active_before) {
-				curious_checkbox_state = (curious_checkbox_state + 1) % UI_ArrayCount(states);
+				curious_checkbox_state = (curious_checkbox_state + 1) % DS_ArrayCount(states);
 			}
 		}
 
-		UI_Box* nested_dropdown_button = UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Open nested dropdown:");
+		UI_Box* nested_dropdown_button = UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Open nested dropdown:");
 		if (UI_Pressed(nested_dropdown_button->key)) {
 			nested_dropdown_is_open = true;
 		}
 
-		if (UI_Clicked(UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFlex(1.f), 0, "Exit Program")->key)) {
+		if (UI_Clicked(UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFlex(1.f), 0, "Exit Program")->key)) {
 			exit(0);
 		}
 
@@ -370,9 +370,9 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 			if (UI_IsMouseInsideOf(nested_dropdown->key)) deepest_hovered_root = nested_dropdown->key;
 			if (deepest_hovered_root_prev != nested_dropdown->key) nested_dropdown->flags |= UI_BoxFlag_NoHover;
 			UI_PushBox(nested_dropdown);
-			UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Do nothing (1)");
-			UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Do nothing (2)");
-			UI_AddButton(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Do nothing (3)");
+			UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Do nothing (1)");
+			UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Do nothing (2)");
+			UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Do nothing (3)");
 			UI_PopBox(nested_dropdown);
 
 			UI_Vec2 pos = {

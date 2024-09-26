@@ -4,14 +4,14 @@ static void* UI_OS_GetClipboardAlloc(int size, void* alloc_data) {
 	return DS_ArenaPush(UI_FrameArena(), size);
 }
 
-static STR UI_OS_GetClipboardString(void* user_data) {
+static STR_View UI_OS_GetClipboardString(void* user_data) {
 	char* data; int size;
 	OS_CLIPBOARD_GetText(&data, &size, UI_OS_GetClipboardAlloc, NULL);
-	STR string = {data, size};
+	STR_View string = {data, size};
 	return string;
 }
 
-static void UI_OS_SetClipboardText(STR string, void* user_data) {
+static void UI_OS_SetClipboardText(STR_View string, void* user_data) {
 	OS_CLIPBOARD_SetText(string.data, string.size);
 }
 
@@ -76,7 +76,7 @@ static void UI_OS_RegisterInputEvent(UI_Inputs* ui_inputs, const OS_WINDOW_Event
 		ui_inputs->mouse_raw_delta.y += event->raw_mouse_input[1];
 	}
 	if (event->kind == OS_WINDOW_EventKind_TextCharacter) {
-		if (ui_inputs->text_input_utf32_length < UI_ArrayCount(ui_inputs->text_input_utf32)) {
+		if (ui_inputs->text_input_utf32_length < DS_ArrayCount(ui_inputs->text_input_utf32)) {
 			ui_inputs->text_input_utf32[ui_inputs->text_input_utf32_length] = event->text_character;
 			ui_inputs->text_input_utf32_length++;
 		}

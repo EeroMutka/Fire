@@ -39,17 +39,18 @@
 #define UI_KEY1(A)    UI_HashKey(UI_KEY(), (A))
 #define UI_KEY2(A, B) UI_HashKey(UI_KEY1(A), (B))
 
-#define UI_ArrayCount(X) (sizeof(X) / sizeof(X[0]))
 #define UI_Max(A, B) ((A) > (B) ? (A) : (B))
 #define UI_Min(A, B) ((A) < (B) ? (A) : (B))
 #define UI_Abs(X) ((X) < 0 ? -(X) : (X))
 
 #define UI_INFINITE 10000000.f
 
-typedef union {
+#ifndef UI_CUSTOM_VEC2
+typedef union UI_Vec2 {
 	struct { float x, y; };
 	float _[2];
 } UI_Vec2;
+#endif
 #define UI_VEC2  UI_LangAgnosticLiteral(UI_Vec2)
 
 // -100 to -99 is unexpanded size fit, take as much parent space as the ratio
@@ -61,10 +62,11 @@ typedef float UI_Size;
 typedef uint64_t UI_Key; // 0 is invalid value
 #define UI_INVALID_KEY (UI_Key)0
 
-typedef enum UI_Axis {
+typedef int UI_Axis;
+enum {
 	UI_Axis_X,
 	UI_Axis_Y,
-} UI_Axis;
+};
 
 typedef int UI_BoxFlags;
 typedef enum UI_BoxFlagBits {
@@ -105,7 +107,7 @@ typedef struct UI_Text {
 	DS_DynArray(int) line_offsets;
 } UI_Text;
 
-#define UI_TextToStr(TEXT) UI_LangAgnosticLiteral(STR){(const char*)(TEXT).text.data, (TEXT).text.length}
+#define UI_TextToStr(TEXT) UI_LangAgnosticLiteral(STR_View){(const char*)(TEXT).text.data, (TEXT).text.length}
 
 typedef struct UI_CachedGlyphKey {
 	// !!! memcmp is used on this struct, so it must be manually padded for 0-initialized padding.
@@ -179,7 +181,7 @@ struct UI_Box {
 	UI_Vec2 offset; // this is used for scroll-bars. Maybe I could refactor this into a function pointer or something.
 	UI_Vec2 inner_padding; // applied to text or children
 
-	STR text;
+	STR_View text;
 	UI_FontView font;
 
 	void (*compute_unexpanded_size)(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass);
@@ -315,8 +317,8 @@ typedef struct UI_Inputs {
 	int text_input_utf32_length;
 
 	// @todo: get rid of these two
-	STR (*get_clipboard_string_fn)(void* user_data); // The returned string must stay valid for the rest of the frame
-	void (*set_clipboard_string_fn)(STR string, void* user_data);
+	STR_View (*get_clipboard_string_fn)(void* user_data); // The returned string must stay valid for the rest of the frame
+	void (*set_clipboard_string_fn)(STR_View string, void* user_data);
 
 	float frame_delta_time;
 
@@ -346,7 +348,7 @@ typedef struct UI_EditTextModify {
 	UI_Box* box_with_text;
 	UI_Mark replace_from; // TODO: add byteoffsets to these for maximum information to the user
 	UI_Mark replace_to;
-	STR replace_with;
+	STR_View replace_with;
 } UI_EditTextModify;
 
 typedef DS_Map(UI_Key, UI_Box*) UI_BoxFromKeyMap;
@@ -503,7 +505,7 @@ UI_API void UI_RectPad(UI_Rect* rect, float pad);
 UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend);
 UI_API void UI_Deinit(void);
 
-UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size);
+UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size, UI_FontView base_font, UI_FontView icons_font);
 UI_API void UI_EndFrame(UI_Outputs* outputs/*, GPU_Graph *graph, GPU_DescriptorArena *descriptor_arena*/);
 
 /*
@@ -532,10 +534,15 @@ UI_API void UI_PopBox(UI_Box* box);
 UI_API void UI_PopBoxN(UI_Box* box, int n);
 
 UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags);
-UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
 
-UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
-UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
+UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
+UI_API UI_Box* UI_AddBoxWithTextC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
+
+UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
+UI_API UI_Box* UI_AddButtonC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
+
+UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
+UI_API UI_Box* UI_AddDropdownButtonC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
 
 UI_API void UI_AddCheckbox(UI_Key key, bool* value);
 
@@ -552,12 +559,15 @@ UI_API UI_Box* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value)
 UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float);
 
 // * Returns NULL if the collapsable header is closed.
-UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, const char* text);
+UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, STR_View text);
+UI_API UI_Box* UI_PushCollapsingC(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, const char* text);
 UI_API void UI_PopCollapsing(UI_Box* box);
 
-UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, const char* initial_value);
+UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, STR_View initial_value);
+UI_API void UI_TextInitC(DS_Allocator* allocator, UI_Text* text, const char* initial_value);
 UI_API void UI_TextDeinit(UI_Text* text);
-UI_API void UI_TextSet(UI_Text* text, const char* value);
+UI_API void UI_TextSet(UI_Text* text, STR_View value);
+UI_API void UI_TextSetC(UI_Text* text, const char* value);
 
 // * `anchor_x` / `anchor_y` can be 0 or 1: A value of 0 means anchoring the scrollbar to left / top, 1 means anchoring it to right / bottom.
 UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y);
@@ -636,7 +646,7 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 UI_API bool UI_SplittersGetHoldingIndex(UI_Key key, int* out_index);
 
 UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontView font);
-UI_API float UI_TextWidth(STR text, UI_FontView font);
+UI_API float UI_TextWidth(STR_View text, UI_FontView font);
 
 // Returns true when newly added, false when existing
 // ... do we have the ability to upload new data to a texture? That would need to inform the graphics backend.
@@ -668,7 +678,7 @@ UI_API void UI_DrawRectLinesEx(UI_Rect rect, const UI_DrawRectCorners* corners, 
 UI_API void UI_DrawTriangle(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Color color);
 UI_API void UI_DrawQuad(UI_Vec2 a, UI_Vec2 b, UI_Vec2 c, UI_Vec2 d, UI_Color color);
 
-UI_API UI_Vec2 UI_DrawText(STR text, UI_FontView font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor);
+UI_API UI_Vec2 UI_DrawText(STR_View text, UI_FontView font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor);
 
 UI_API void UI_DrawSprite(UI_Rect rect, UI_Color color, UI_Rect uv_rect, UI_TextureID texture, UI_ScissorRect scissor);
 
@@ -704,7 +714,11 @@ static const UI_Vec2 UI_DEFAULT_TEXT_PADDING = { 10.f, 5.f };
 UI_API inline bool UI_MarkGreaterThan(UI_Mark a, UI_Mark b) { return a.line > b.line || (a.line == b.line && a.col > b.col); }
 UI_API inline bool UI_MarkLessThan(UI_Mark a, UI_Mark b) { return a.line < b.line || (a.line == b.line && a.col < b.col); }
 
-UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
+UI_API UI_Box* UI_AddButtonC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
+	return UI_AddButton(key, w, h, flags, STR_ToV(string));
+}
+
+UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
 	UI_ProfEnter();
 	flags |= UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
 	UI_Box* box = UI_AddBoxWithText(key, w, h, flags, string);
@@ -712,7 +726,11 @@ UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags,
 	return box;
 }
 
-UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
+UI_API UI_Box* UI_AddDropdownButtonC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
+	return UI_AddDropdownButton(key, w, h, flags, STR_ToV(string));
+}
+
+UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
 	UI_ProfEnter();
 	flags |= UI_BoxFlag_Horizontal | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder |UI_BoxFlag_DrawTransparentBackground;
 	UI_Box* box = UI_AddBox(key, w, h, flags);
@@ -720,7 +738,7 @@ UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlag
 
 	UI_AddBoxWithText(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0, string);
 
-	UI_Box* icon_box = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, "\x44");
+	UI_Box* icon_box = UI_AddBoxWithTextC(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, "\x44");
 	icon_box->font = UI_STATE.icons_font;
 	
 	UI_PopBox(box);
@@ -728,7 +746,7 @@ UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlag
 	return box;
 }
 
-static int UI_ColumnFromXOffset(float x, STR line, UI_FontView font) {
+static int UI_ColumnFromXOffset(float x, STR_View line, UI_FontView font) {
 	UI_ProfEnter();
 	int column = 0;
 	float start_x = 0.f;
@@ -742,7 +760,7 @@ static int UI_ColumnFromXOffset(float x, STR line, UI_FontView font) {
 	return column;
 }
 
-static float UI_XOffsetFromColumn(int col, STR line, UI_FontView font) {
+static float UI_XOffsetFromColumn(int col, STR_View line, UI_FontView font) {
 	UI_ProfEnter();
 	float x = 0.f;
 	int i = 0;
@@ -755,11 +773,11 @@ static float UI_XOffsetFromColumn(int col, STR line, UI_FontView font) {
 	return x;
 }
 
-static STR UI_GetLineString(int line, const UI_Text* text) {
+static STR_View UI_GetLineString(int line, const UI_Text* text) {
 	UI_ProfEnter();
 	int lo = line == 0 ? 0 : DS_ArrGet(text->line_offsets, line - 1);
 	int hi = line == text->line_offsets.length ? text->text.length : DS_ArrGet(text->line_offsets, line);
-	STR result = { text->text.data, hi - lo };
+	STR_View result = { text->text.data, hi - lo };
 	UI_ProfExit();
 	return result;
 }
@@ -768,7 +786,7 @@ static bool UI_MarkIsValid(UI_Mark mark, const UI_Text* text) {
 	UI_ProfEnter();
 	bool result = false;
 	if (mark.line > 0 && mark.line < text->line_offsets.length) {
-		STR line_str = UI_GetLineString(mark.line, text);
+		STR_View line_str = UI_GetLineString(mark.line, text);
 		result = mark.col >= 0 && mark.col <= STR_CodepointCount(line_str);
 	}
 	UI_ProfExit();
@@ -778,7 +796,7 @@ static bool UI_MarkIsValid(UI_Mark mark, const UI_Text* text) {
 static int UI_MarkToByteOffset(UI_Mark mark, const UI_Text* text) {
 	UI_ProfEnter();
 	int line_start = mark.line > 0 ? DS_ArrGet(text->line_offsets, mark.line - 1) : 0;
-	STR after = STR_SliceAfter(UI_TextToStr(*text), line_start);
+	STR_View after = STR_SliceAfter(UI_TextToStr(*text), line_start);
 
 	int i = 0;
 	int result = text->text.length;
@@ -802,7 +820,7 @@ static UI_Vec2 UI_XYOffsetFromMark(const UI_Text* text, UI_Mark mark, UI_FontVie
 	return result;
 }
 
-static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_origin, STR text, UI_FontView font, UI_Color color, UI_ScissorRect scissor) {
+static void UI_DrawTextRangeHighlight(UI_Mark min, UI_Mark max, UI_Vec2 text_origin, STR_View text, UI_FontView font, UI_Color color, UI_ScissorRect scissor) {
 	UI_ProfEnter();
 	float min_pos_x = UI_XOffsetFromColumn(min.col, text, font);
 	float max_pos_x = UI_XOffsetFromColumn(max.col, text, font); // this is not OK with multiline!
@@ -902,7 +920,7 @@ static void UI_MoveMarkByWord(UI_Mark* mark, const UI_Text* text, int dir) {
 	int i = 0;
 	uint32_t r;
 
-	uint32_t (*next_codepoint_fn)(STR, int*) = dir > 0 ? STR_NextCodepoint : STR_PrevCodepoint;
+	uint32_t (*next_codepoint_fn)(STR_View, int*) = dir > 0 ? STR_NextCodepoint : STR_PrevCodepoint;
 
 	for (; r = next_codepoint_fn(UI_TextToStr(*text), &byteoffset); i++) {
 		bool whitespace = r == ' ' || r == '\t';
@@ -1003,15 +1021,15 @@ UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* reque
 		}
 
 		{ // Then insert the text
-			STR insertion = request->replace_with;
+			STR_View insertion = request->replace_with;
 			UI_Mark mark = request->replace_from;
 			int byteoffset = UI_MarkToByteOffset(mark, text);
 
 			DS_ArrInsertN(&text->text, byteoffset, insertion.data, insertion.size);
 
 			int lines_count = 0;
-			for (STR remaining = insertion;;) {
-				STR line_str = STR_ParseUntilAndSkip(&remaining, '\n');
+			for (STR_View remaining = insertion;;) {
+				STR_View line_str = STR_ParseUntilAndSkip(&remaining, '\n');
 				lines_count++;
 				if (remaining.size == 0) break;
 			}
@@ -1070,7 +1088,7 @@ UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64
 	bool dragging = UI_IsClickingDown(key) && UI_InputIsDown(UI_Input_MouseLeft);
 	bool has_moved_mouse_after_press = UI_Abs(UI_STATE.mouse_travel_distance_after_press.x) >= 2.f;
 
-	STR value_str;
+	STR_View value_str;
 	if (is_float) {
 		value_str = STR_FloatToStr(UI_FrameArena(), *(double*)value_64_bit, 1 /*dragging && has_moved_mouse_after_press ? 1 : 1*/);
 	} else {
@@ -1088,7 +1106,7 @@ UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64
 	if (text_edit_was_activated) {
 		UI_STATE.edit_text_should_refresh = true;
 		UI_STATE.selected_box_new = key;
-		UI_TextSet(&UI_STATE.edit_number_text, STR_Init(UI_FrameArena(), value_str));
+		UI_TextSet(&UI_STATE.edit_number_text, value_str);
 	}
 
 	bool text_editing_this = UI_STATE.text_editing_box == key && UI_STATE.selected_box_new == UI_INVALID_KEY; // The `selected_box_new` check is here as keyboard navigation could have already selected a different box
@@ -1105,8 +1123,7 @@ UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64
 	}
 	else {
 		box = UI_AddBoxWithText(key, w, h,
-			UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_PressingStaysWithoutHover, "");
-		box->text = value_str;
+			UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_PressingStaysWithoutHover, value_str);
 
 		if (UI_Pressed(box->key)) {
 			UI_STATE.outputs.lock_and_hide_cursor = true;
@@ -1177,12 +1194,12 @@ UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* file
 	UI_Key edit_text_key = UI_KEY1(key);
 	UI_AddValText(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath, out_modify);
 
-	UI_Box* button = UI_AddButton(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x42");
+	UI_Box* button = UI_AddButtonC(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x42");
 	button->font = UI_STATE.icons_font;
 
 	if (UI_Clicked(button->key)) {
 		UI_TODO();
-		// STR pick_result;
+		// STR_View pick_result;
 		// if (OS_FilePicker(UI_FrameArena(), &pick_result)) {
 		// 	UI_TODO();
 		// 	// UI_Selection selection;
@@ -1204,7 +1221,7 @@ UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* file
 	return box;
 }
 
-static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from, UI_Mark to, STR with, UI_EditTextModify* out_edit_request) {
+static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from, UI_Mark to, STR_View with, UI_EditTextModify* out_edit_request) {
 	UI_ProfEnter();
 	UI_ASSERT(!out_edit_request->has_edit);
 	out_edit_request->has_edit = true;
@@ -1216,8 +1233,8 @@ static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from,
 	UI_Mark mark = selection->range[0];
 
 	int lines_count = 0;
-	STR last_line_str = {0};
-	for (STR remaining = with;;) {
+	STR_View last_line_str = {0};
+	for (STR_View remaining = with;;) {
 		last_line_str = STR_ParseUntilAndSkip(&remaining, '\n');
 		lines_count++;
 		if (remaining.size == 0) break;
@@ -1232,7 +1249,11 @@ static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from,
 	UI_ProfExit();
 }
 
-UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, const char* initial_value) {
+UI_API void UI_TextInitC(DS_Allocator* allocator, UI_Text* text, const char* initial_value) {
+	UI_TextInit(allocator, text, STR_ToV(initial_value));
+}
+
+UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, STR_View initial_value) {
 	UI_ProfEnter();
 	memset(text, 0, sizeof(*text));
 	DS_ArrInit(&text->text, allocator);
@@ -1248,10 +1269,14 @@ UI_API void UI_TextDeinit(UI_Text* text) {
 	UI_ProfExit();
 }
 
-UI_API void UI_TextSet(UI_Text* text, const char* value) {
+UI_API void UI_TextSetC(UI_Text* text, const char* value) {
+	UI_TextSet(text, STR_ToV(value));
+}
+
+UI_API void UI_TextSet(UI_Text* text, STR_View value) {
 	UI_ProfEnter();
 	DS_ArrClear(&text->text);
-	DS_ArrPushN(&text->text, value, (int)strlen(value));
+	DS_ArrPushN(&text->text, value.data, value.size);
 	UI_ProfExit();
 }
 
@@ -1279,8 +1304,7 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 	UI_Box* outer = UI_AddBox(key, w, h, UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_Clickable);
 	UI_PushBox(outer);
 
-	UI_Box* inner = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, "");
-	inner->text = UI_TextToStr(*text);
+	UI_Box* inner = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, UI_TextToStr(*text));
 	inner->draw = UI_DrawValTextInnerBox;
 	modify->box_with_text = inner;
 
@@ -1334,7 +1358,7 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 		if (UI_STATE.inputs.text_input_utf32_length > 0) {
 			STR_Builder text_input = { UI_FrameArena() };
 			for (int i = 0; i < UI_STATE.inputs.text_input_utf32_length; i++) {
-				STR_PrintC(&text_input, UI_STATE.inputs.text_input_utf32[i]);
+				STR_PrintU(&text_input, UI_STATE.inputs.text_input_utf32[i]);
 			}
 			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], text_input.str, modify);
 		}
@@ -1364,7 +1388,7 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 				int max = UI_MarkToByteOffset(selection->range[1], text);
 				UI_STATE.inputs.set_clipboard_string_fn(STR_Slice(UI_TextToStr(*text), min, max), UI_STATE.inputs.user_data);
 			}
-			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], STR_(""), modify);
+			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], STR_V(""), modify);
 		}
 		
 		// Ctrl C
@@ -1379,7 +1403,7 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 		// Ctrl V
 		if (UI_InputWasPressedOrRepeated(UI_Input_V) && UI_InputIsDown(UI_Input_Control)) {
 			if (UI_STATE.inputs.get_clipboard_string_fn) {
-				STR str = UI_STATE.inputs.get_clipboard_string_fn(UI_STATE.inputs.user_data);
+				STR_View str = UI_STATE.inputs.get_clipboard_string_fn(UI_STATE.inputs.user_data);
 				UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], str, modify);
 			}
 		}
@@ -1388,7 +1412,7 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 			if (UI_MarkEquals(selection->range[0], selection->range[1])) {
 				UI_MoveMarkH(&selection->range[0], text, -1, UI_InputIsDown(UI_Input_Control));
 			}
-			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], STR_(""), modify);
+			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], STR_V(""), modify);
 		}
 
 		// UI_STATE.edit_text.draw_selection_from_box = inner;
@@ -1424,7 +1448,7 @@ UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
 	UI_BoxFlags inner_flags = UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder;
 	UI_Key inner_key = UI_KEY1(key);
 	if (*value) {
-		inner = UI_AddBoxWithText(inner_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), inner_flags, "A");
+		inner = UI_AddBoxWithTextC(inner_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), inner_flags, "A");
 	}
 	else {
 		inner = UI_AddBox(inner_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), inner_flags);
@@ -1439,17 +1463,25 @@ UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
 	UI_ProfExit();
 }
 
-UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
+UI_API UI_Box* UI_AddBoxWithTextC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
+	return UI_AddBoxWithText(key, w, h, flags, STR_ToV(string));
+}
+
+UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
 	UI_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, flags | UI_BoxFlag_HasText);
-	box->text = STR_InitV(string);
+	box->text = string;
 	box->font = UI_STATE.base_font;
 	box->inner_padding = UI_DEFAULT_TEXT_PADDING;
 	UI_ProfExit();
 	return box;
 }
 
-UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, const char* text) {
+UI_API UI_Box* UI_PushCollapsingC(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, const char* text) {
+	return UI_PushCollapsing(key, w, h, indent, flags, STR_ToV(text));
+}
+
+UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, STR_View text) {
 	UI_ProfEnter();
 	UI_Key child_box_key = UI_KEY1(key);
 	UI_BoxFlags box_flags = UI_BoxFlag_Horizontal | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
@@ -1461,7 +1493,7 @@ UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size inden
 		is_open = !is_open;
 	}
 
-	UI_Box* label = UI_AddBoxWithText(UI_KEY1(key), 20.f, h, 0, is_open ? "\x44" : "\x46");
+	UI_Box* label = UI_AddBoxWithTextC(UI_KEY1(key), 20.f, h, 0, is_open ? "\x44" : "\x46");
 	label->font = UI_STATE.icons_font;
 
 	UI_AddBoxWithText(UI_KEY1(key), w, h, 0, text);
@@ -2266,10 +2298,10 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 
 		// UI_.atlas = UI_InitFontAtlas(persistent_arena);
 
-		STR roboto_mono_ttf, icons_ttf;
+		STR_View roboto_mono_ttf, icons_ttf;
 		// UI_TODO();
-		// UI_ASSERT(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_("/roboto_mono.ttf")), &roboto_mono_ttf));
-		// UI_ASSERT(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_("/fontello/font/fontello.ttf")), &icons_ttf));
+		// UI_ASSERT(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_V("/roboto_mono.ttf")), &roboto_mono_ttf));
+		// UI_ASSERT(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_V("/fontello/font/fontello.ttf")), &icons_ttf));
 
 		// UI_FontInit(&UI_.base_font, roboto_mono_ttf.data, -4.f);
 		// UI_FontInit(&UI_.icons_font, icons_ttf.data, -2.f);
@@ -2279,7 +2311,7 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 	DS_ArrInit(&UI_STATE.box_stack, &UI_STATE.persistent_arena);
 	DS_ArrPush(&UI_STATE.box_stack, NULL);
 
-	UI_TextInit(allocator, &UI_STATE.edit_number_text, "");
+	UI_TextInitC(allocator, &UI_STATE.edit_number_text, "");
 
 	UI_ProfExit();
 }
@@ -2474,7 +2506,7 @@ static void UI_FinalizeDrawBatch() {
 	UI_ProfExit();
 }
 
-UI_API void UI_EndFrame(UI_Outputs* outputs/*, GPU_Graph *graph, GPU_DescriptorArena *descriptor_arena*/) {
+UI_API void UI_EndFrame(UI_Outputs* outputs) {
 	UI_ProfEnter();
 
 	// We reset these at the end of the frame so that we can still check for `was_key_released` and have these not be reset yet
@@ -2735,7 +2767,7 @@ UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontView font) {
 	//return val.advance;
 }
 
-UI_API float UI_TextWidth(STR text, UI_FontView font) {
+UI_API float UI_TextWidth(STR_View text, UI_FontView font) {
 	UI_ProfEnter();
 	float w = 0.f;
 	for STR_Each(text, r, i) {
@@ -3213,7 +3245,7 @@ UI_API void UI_DrawPolylineLoop(const UI_Vec2* points, const UI_Color* colors, i
 	UI_DrawPolylineEx(points, colors, points_count, thickness, true, 0.7f);
 }
 
-UI_API UI_Vec2 UI_DrawText(STR text, UI_FontView font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {
+UI_API UI_Vec2 UI_DrawText(STR_View text, UI_FontView font, UI_Vec2 origin, UI_AlignH align_h, UI_AlignV align_v, UI_Color color, UI_ScissorRect scissor) {
 	UI_ProfEnter();
 	UI_Vec2 s = { UI_TextWidth(text, font), (float)font.size };
 
@@ -3356,7 +3388,7 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 
 UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 	UI_ProfEnter();
-	UI_Box* box = UI_AddBoxWithText(key, w, h, UI_BoxFlag_Clickable, ":");
+	UI_Box* box = UI_AddBoxWithTextC(key, w, h, UI_BoxFlag_Clickable, ":");
 
 	bool holding_down = UI_IsClickingDown(box->key);
 	if (holding_down || UI_IsHovered(box->key)) {
