@@ -108,8 +108,10 @@ struct DS_Arena {
 
 #ifdef __cplusplus
 #define DS_LangAgnosticLiteral(T) T   // in C++, struct and union literals are of the form MyStructType{...}
+#define DS_LangAgnosticZero(T) T{}
 #else
 #define DS_LangAgnosticLiteral(T) (T) // in C, struct and union literals are of the form (MyStructType){...}
+#define DS_LangAgnosticZero(T) (T){0}
 #endif
 
 static const DS_AllocatorBase DS_HEAP_ = DS_AllocatorBase_Init(DS_AllocatorType_Heap);
@@ -212,7 +214,8 @@ Remove the first node of a singly linked list, e.g.
 #define DS_ListPushFront(list, elem, next_name) {(elem)->next_name = *(list); *(list) = (elem);}
 
 #define DS_Clone(T, ARENA, VALUE) DS_Clone_(T, ARENA, VALUE)
-#define DS_New(T, ARENA) (T*)DS_Clone(T, (ARENA), DS_LangAgnosticLiteral(T){0})
+
+#define DS_New(T, ARENA) (T*)DS_Clone(T, (ARENA), DS_LangAgnosticZero(T))
 
 #ifndef DS_DebugFillGarbage
 #define DS_DebugFillGarbage(ptr, size) memset(ptr, 0xCC, size)

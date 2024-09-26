@@ -12,6 +12,9 @@ typedef struct {
 typedef struct UIDemoState {
 	DS_Arena* persist;
 
+	UI_Key deepest_hovered_root;
+	UI_Key deepest_hovered_root_new;
+
 	UI_Text dummy_text;
 
 	DS_DynArray(UIDemoTreeSpecie) trees;
@@ -44,6 +47,25 @@ static void UIDemoInit(UIDemoState* state, DS_Arena* persist) {
 	UI_TextInitC(persist, &state->dummy_text, "Strawberry");
 }
 
+static bool UIDemoOrderedDropdownShouldClose(UIDemoState* state, UI_Key dropdown_key) {
+	if (UI_PrevFrameBoxFromKey(dropdown_key) != NULL) {
+		// If we click anywhere in the UI that has been created already during this frame, we want to close this dropdown.
+		if (UI_InputWasPressed(UI_Input_MouseLeft) && UI_BoxFromKey(state->deepest_hovered_root) != NULL) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void UIDemoRegisterOrderedRoot(UIDemoState* state, UI_Box* dropdown) {
+	if (UI_IsMouseInsideOf(dropdown->key)) {
+		state->deepest_hovered_root_new = dropdown->key;
+	}
+	if (state->deepest_hovered_root != dropdown->key) {
+		dropdown->flags |= UI_BoxFlag_NoHover;
+	}
+}
+
 static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	const UI_Vec2 area_child_padding = {12.f, 12.f};
 
@@ -51,13 +73,14 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	UI_Box* file_button = NULL;
 	static bool file_dropdown_is_open = false;
 
-	static UI_Key deepest_hovered_root_prev = UI_INVALID_KEY;
-	UI_Key deepest_hovered_root = UI_INVALID_KEY;
+	state->deepest_hovered_root = state->deepest_hovered_root_new;
+	state->deepest_hovered_root_new = UI_INVALID_KEY;
 
 	//// Top bar ///////////////////////////////////////////////
 
 	UI_Box* top_bar_root = UI_MakeRootBox(UI_KEY(), window_size.x, UI_SizeFit(), 0);
-	if (UI_IsMouseInsideOf(top_bar_root->key)) deepest_hovered_root = top_bar_root->key;
+	UIDemoRegisterOrderedRoot(state, top_bar_root);
+	
 	UI_PushBox(top_bar_root);
 
 	{
@@ -85,8 +108,9 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	UI_Vec2 main_area_size = { window_size.x, window_size.y - top_bar_root->computed_expanded_size.y };
 	UI_Box* main_area = UI_MakeRootBox(UI_KEY(), main_area_size.x, main_area_size.y, UI_BoxFlag_DrawBorder);
 	main_area->inner_padding = area_child_padding;
-	if (UI_IsMouseInsideOf(main_area->key)) deepest_hovered_root = main_area->key;
-	if (deepest_hovered_root_prev != main_area->key) main_area->flags |= UI_BoxFlag_NoHover;
+	
+	if (UI_IsMouseInsideOf(main_area->key)) state->deepest_hovered_root_new = main_area->key;
+	if (state->deepest_hovered_root != main_area->key) main_area->flags |= UI_BoxFlag_NoHover;
 	
 	UI_PushBox(main_area);
 	UI_Box* main_scroll_area = UI_PushScrollArea(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFlex(1.f), 0, 0, 0);
@@ -295,13 +319,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	//// Dropdown menus ////////////////////////////////////////
 
 	UI_Key file_dropdown_key = UI_KEY();
-
-	if (UI_PrevFrameBoxFromKey(file_dropdown_key) != NULL) {
-		// If we click anywhere in higher-up code that has been created already during this frame, we want to close this dropdown.
-		if (UI_InputWasPressed(UI_Input_MouseLeft) && UI_BoxFromKey(deepest_hovered_root_prev) != NULL) {
-			file_dropdown_is_open = false;
-		}
-	}
+	file_dropdown_is_open = file_dropdown_is_open && !UIDemoOrderedDropdownShouldClose(state, file_dropdown_key);
 
 	if (file_dropdown_is_open) {
 		static bool nested_dropdown_is_open = false;
@@ -309,8 +327,8 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_BoxFlags dropdown_window_flags = UI_BoxFlag_DrawOpaqueBackground | UI_BoxFlag_DrawBorder;
 
 		UI_Box* dropdown = UI_MakeRootBox(file_dropdown_key, UI_SizeFit(), UI_SizeFit(), dropdown_window_flags);
-		if (UI_IsMouseInsideOf(dropdown->key)) deepest_hovered_root = dropdown->key;
-		if (deepest_hovered_root_prev != dropdown->key) dropdown->flags |= UI_BoxFlag_NoHover;
+		UIDemoRegisterOrderedRoot(state, dropdown);
+		
 		UI_PushBox(dropdown);
 
 		if (UI_Clicked(UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Say Hello!")->key)) {
@@ -355,20 +373,12 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_DrawBox(dropdown);
 
 		UI_Key nested_dropdown_key = UI_KEY();
-
-		if (UI_PrevFrameBoxFromKey(nested_dropdown_key) != NULL) {
-			// If we click anywhere in higher-up code that has been created already during this frame, we want to close this dropdown.
-			if (UI_InputWasPressed(UI_Input_MouseLeft) && UI_BoxFromKey(deepest_hovered_root_prev) != NULL) {
-				nested_dropdown_is_open = false;
-			}
-		}
-
+		nested_dropdown_is_open = nested_dropdown_is_open && !UIDemoOrderedDropdownShouldClose(state, nested_dropdown_key);
+		
 		if (nested_dropdown_is_open) {
-			// nested_dropdown_is_open = UI_DropdownShouldKeepOpen(nested_dropdown_key);
-
 			UI_Box* nested_dropdown = UI_MakeRootBox(nested_dropdown_key, UI_SizeFit(), UI_SizeFit(), dropdown_window_flags);
-			if (UI_IsMouseInsideOf(nested_dropdown->key)) deepest_hovered_root = nested_dropdown->key;
-			if (deepest_hovered_root_prev != nested_dropdown->key) nested_dropdown->flags |= UI_BoxFlag_NoHover;
+			UIDemoRegisterOrderedRoot(state, nested_dropdown);
+
 			UI_PushBox(nested_dropdown);
 			UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Do nothing (1)");
 			UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Do nothing (2)");
@@ -383,6 +393,4 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 			UI_DrawBox(nested_dropdown);
 		}
 	}
-
-	deepest_hovered_root_prev = deepest_hovered_root;
 }
