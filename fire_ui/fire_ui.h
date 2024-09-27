@@ -105,6 +105,7 @@ typedef struct UI_Color {
 typedef struct UI_Text {
 	DS_DynArray(char) text;
 	DS_DynArray(int) line_offsets;
+	// TODO: we could add function pointers here to let you use your own text data-structure instead of this.
 } UI_Text;
 
 #define UI_TextToStr(TEXT) UI_LangAgnosticLiteral(STR_View){(const char*)(TEXT).text.data, (TEXT).text.length}
@@ -165,9 +166,16 @@ typedef struct UI_DrawBoxDefaultArgs {
 
 typedef struct UI_Box UI_Box;
 
-struct UI_Box {
-	UI_Key key;
+typedef struct UI_VarHolderBox {
+	UI_BoxVariableHeader* variables; // linked list of variables
 	UI_Box* prev_frame; // NULL if a box with the same key didn't exist (wasn't added to the tree) during the previous frame
+} UI_VarHolderBox;
+
+struct UI_Box {
+	UI_BoxVariableHeader* variables; // linked list of variables
+	UI_Box* prev_frame; // NULL if a box with the same key didn't exist (wasn't added to the tree) during the previous frame
+
+	UI_Key key;
 	UI_Box* parent;
 	UI_Box* next[2]; // prev and next pointers
 	UI_Box* first_child[2]; // first and last child
@@ -185,8 +193,6 @@ struct UI_Box {
 	UI_FontView font;
 
 	void (*compute_unexpanded_size)(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass);
-
-	UI_BoxVariableHeader* variables; // linked list of variables
 
 	// These will be computed in UI_ComputeBox
 	UI_Vec2 computed_position;
@@ -206,8 +212,8 @@ typedef struct UI_Mark {
 #define UI_MARK  UI_LangAgnosticLiteral(UI_Mark)
 
 typedef struct UI_Selection {
-	UI_Mark range[2]; // These must be sorted so that range[0] represents a mark before range[1]. You can sort them using `UI_SelectionFixOrder`.
-	uint32_t end;
+	UI_Mark _[2]; // These must be sorted so that range[0] represents a mark before range[1]. You can sort them using `UI_SelectionFixOrder`.
+	uint32_t cursor;
 	float cursor_x;
 } UI_Selection;
 
@@ -283,14 +289,6 @@ typedef enum UI_InputEvent {
 	UI_InputEvent_Release = 1 << 2,
 } UI_InputEvent;
 
-//typedef uint8_t UI_InputStates;
-//typedef enum UI_InputState {
-//	UI_InputState_IsDown = 1 << 0,
-//	UI_InputState_WasPressed = 1 << 1,
-//	UI_InputState_WasPressedOrRepeated = 1 << 2,
-//	UI_InputState_WasReleased = 1 << 3,
-//} UI_InputState;
-
 typedef struct UI_Backend {
 	// `buffer_id` is a value between 0 and UI_MAX_BACKEND_BUFFERS - 1
 	void (*create_vertex_buffer)(int buffer_id, uint32_t size_in_bytes);
@@ -316,7 +314,7 @@ typedef struct UI_Inputs {
 	uint32_t text_input_utf32[16];
 	int text_input_utf32_length;
 
-	// @todo: get rid of these two
+	// TODO: get rid of these two
 	STR_View (*get_clipboard_string_fn)(void* user_data); // The returned string must stay valid for the rest of the frame
 	void (*set_clipboard_string_fn)(STR_View string, void* user_data);
 
@@ -338,18 +336,7 @@ typedef struct UI_Outputs {
 
 	UI_DrawCall* draw_calls;
 	int draw_calls_count;
-
-	// what if we need to update two atlases in one frame?
-	// bool texture_atlas_was_updated; // new data was written into texture_atlas_cpu_local_data
 } UI_Outputs;
-
-typedef struct UI_EditTextModify {
-	bool has_edit;
-	UI_Box* box_with_text;
-	UI_Mark replace_from; // TODO: add byteoffsets to these for maximum information to the user
-	UI_Mark replace_to;
-	STR_View replace_with;
-} UI_EditTextModify;
 
 typedef DS_Map(UI_Key, UI_Box*) UI_BoxFromKeyMap;
 
@@ -364,10 +351,7 @@ typedef struct UI_State {
 	UI_BoxFromKeyMap prev_frame_box_from_key;
 	UI_BoxFromKeyMap box_from_key;
 
-	uint64_t frame_idx;
-
-	// The selected box can be hidden, i.e. when clicking a button with your mouse. Then, when pressing an arrow key, it becomes visible again.
-	bool selection_is_visible;
+	bool selection_is_visible; // The selected box can be hidden, i.e. when clicking a button with your mouse. Then, when pressing an arrow key, it becomes visible again.
 
 	UI_Inputs inputs;
 	UI_Outputs outputs;
@@ -382,7 +366,7 @@ typedef struct UI_State {
 	stbtt_pack_context pack_context;
 	//bool atlas_needs_reupload;
 	UI_TextureID atlases[2]; // 0 is the current atlas, 1 is NULL or the old atlas
-	uint8_t* atlas_buffer_grayscale; // stb rect pack works with grayscale, while we want to convert to RGBA8 on the fly.
+	uint8_t* atlas_buffer_grayscale; // stb rect pack works with grayscale, but we want to convert to RGBA8 on the fly.
 
 	// Mouse position in screen space coordinates, snapped to the pixel center. Placing it at the pixel center means we don't
 	// need to worry about dUI_enerate cases where the mouse is exactly at the edge of one or many rectangles when testing for overlap.
@@ -406,7 +390,6 @@ typedef struct UI_State {
 	UI_FontView base_font;
 	UI_FontView icons_font;
 	DS_DynArray(UI_Box*) box_stack;
-	//DS_DynArray(UI_Style*) style_stack;
 
 	// -- Draw state --
 	uint32_t* draw_indices; // NULL by default
@@ -415,16 +398,6 @@ typedef struct UI_State {
 	uint32_t draw_next_index;
 	UI_TextureID draw_active_texture;
 	DS_DynArray(UI_DrawCall) draw_calls;
-
-	// -- Edit number state --
-	double edit_number_value_before_press;
-	UI_Text edit_number_text;
-
-	// -- Text editing state --
-	UI_Key text_editing_box;
-	UI_Key text_editing_box_new;
-	bool edit_text_should_refresh; // implicit parameter to the next call to UI_AddValText
-	UI_Selection edit_text_selection;
 } UI_State;
 
 // The color palette here is the same as in Raylib
@@ -461,10 +434,23 @@ typedef struct UI_State {
 
 typedef const UI_Rect* UI_ScissorRect; // may be NULL for no scissor
 
-typedef struct UI_SplittersData {
+typedef struct UI_ValTextState {
+	bool is_editing;
+	UI_Selection selection;
+} UI_ValTextState;
+
+typedef struct UI_ValNumericState {
+	UI_Box* box;
+	double value_before_press;
+	bool is_dragging;
+	bool is_editing_text;
+	STR_View text;
+} UI_ValNumericState;
+
+typedef struct UI_SplittersState {
 	int holding_splitter;  // one-based index
 	int hovering_splitter; // one-based index
-} UI_SplittersData;
+} UI_SplittersState;
 
 // -- Global state -------
 extern UI_State UI_STATE;
@@ -529,6 +515,8 @@ UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis, int pa
 UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size);
 UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI_ScissorRect scissor);
 
+UI_API UI_Box* UI_MakeVarHolderBox(UI_Key key); // Make a box which can only store variables and which can't be used as part of a box tree structure.
+
 UI_API UI_Box* UI_MakeRootBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags);
 UI_API void UI_PushBox(UI_Box* box);
 UI_API void UI_PopBox(UI_Box* box);
@@ -547,17 +535,15 @@ UI_API UI_Box* UI_AddDropdownButtonC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFla
 
 UI_API void UI_AddCheckbox(UI_Key key, bool* value);
 
-// You may pass NULL to `out_modify`, in which case the modification will be done automatically
-UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
-UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify);
-UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* modify);
+UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* text);
+UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text);
 
-UI_API UI_Box* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int* value);
-UI_API UI_Box* UI_AddValInt64(UI_Key key, UI_Size w, UI_Size h, int64_t* value);
-UI_API UI_Box* UI_AddValUInt64(UI_Key key, UI_Size w, UI_Size h, uint64_t* value);
-UI_API UI_Box* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value);
-UI_API UI_Box* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value);
-UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float);
+UI_API UI_ValNumericState* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int* value);
+UI_API UI_ValNumericState* UI_AddValInt64(UI_Key key, UI_Size w, UI_Size h, int64_t* value);
+UI_API UI_ValNumericState* UI_AddValUInt64(UI_Key key, UI_Size w, UI_Size h, uint64_t* value);
+UI_API UI_ValNumericState* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value);
+UI_API UI_ValNumericState* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value);
+UI_API UI_ValNumericState* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float);
 
 // * Returns NULL if the collapsable header is closed.
 UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, STR_View text);
@@ -579,11 +565,6 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h);
 
 // --------------------------------------
-
-//UI_API UI_Style* UI_PushStyle(void);
-//UI_API UI_Style* UI_MakeStyle(void);
-//UI_API void UI_PopStyle(UI_Style* style);
-//UI_API UI_Style* UI_PeekStyle(void);
 
 UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key); // Returns NULL if a box with this key did not exist
 UI_API UI_Box* UI_BoxFromKey(UI_Key key); // Returns NULL if a box with this key has not been created this frame so far
@@ -636,14 +617,7 @@ UI_API bool UI_IsClickingDownAndHovered(UI_Key key);
 
 UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection);
 
-// Input-only / does not create any drawn elements
-// `holding_splitter` is -1 when not holding anything, 0 when the first splitter, and so on.
-UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
-	float* panel_end_offsets, float panel_min_size);
-
-// UI_Splitters must have been called this frame before calling UI_SplittersGetHoveredIndex or UI_SplittersGetHoldingIndex
-UI_API int UI_SplittersGetHoveredIndex(UI_Key key); // returns one-based index, or zero if nothing is hovered.
-UI_API int UI_SplittersGetHoldingIndex(UI_Key key); // returns one-based index, or zero if nothing is held.
+UI_API UI_SplittersState* UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count, float* panel_end_offsets, float panel_min_size);
 
 UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontView font);
 UI_API float UI_TextWidth(STR_View text, UI_FontView font);
@@ -886,11 +860,11 @@ UI_API UI_Key UI_HashInt(UI_Key a, int b) {
 
 UI_API void UI_SelectionFixOrder(UI_Selection* sel) {
 	UI_ProfEnter();
-	if (UI_MarkGreaterThan(sel->range[0], sel->range[1])) {
-		UI_Mark tmp = sel->range[1];
-		sel->range[1] = sel->range[0];
-		sel->range[0] = tmp;
-		sel->end = 1 - sel->end;
+	if (UI_MarkGreaterThan(sel->_[0], sel->_[1])) {
+		UI_Mark tmp = sel->_[1];
+		sel->_[1] = sel->_[0];
+		sel->_[0] = tmp;
+		sel->cursor = 1 - sel->cursor;
 	}
 	UI_ProfExit();
 }
@@ -976,22 +950,22 @@ static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection
 	UI_ProfEnter();
 
 	bool shift = UI_InputIsDown(UI_Input_Shift);
-	if (!shift && !UI_MarkEquals(selection->range[0], selection->range[1])) {
+	if (!shift && !UI_MarkEquals(selection->_[0], selection->_[1])) {
 		if (dir > 0) {
-			selection->range[0] = selection->range[1];
+			selection->_[0] = selection->_[1];
 		}
 		else {
-			selection->range[1] = selection->range[0];
+			selection->_[1] = selection->_[0];
 		}
 	}
 	else {
-		UI_Mark* end = &selection->range[selection->end];
-		UI_MoveMarkH(end, text, dir, UI_InputIsDown(UI_Input_Control));
+		UI_Mark* cursor = &selection->_[selection->cursor];
+		UI_MoveMarkH(cursor, text, dir, UI_InputIsDown(UI_Input_Control));
 
-		selection->cursor_x = UI_XYOffsetFromMark(text, *end, font).x;
+		selection->cursor_x = UI_XYOffsetFromMark(text, *cursor, font).x;
 
 		if (!shift) {
-			selection->range[1 - selection->end] = *end;
+			selection->_[1 - selection->cursor] = *cursor;
 		}
 
 		UI_SelectionFixOrder(selection);
@@ -1000,151 +974,149 @@ static void UI_EditTextArrowKeyInputX(int dir, const UI_Text* text, UI_Selection
 	UI_ProfExit();
 }
 
-UI_API void UI_ApplyEditTextModify(UI_Text* text, const UI_EditTextModify* request) {
+UI_API UI_Selection UI_TextReplaceRange(UI_Text* text, UI_Mark from, UI_Mark to, STR_View replace_with) {
 	UI_ProfEnter();
 
-	if (request->has_edit) {
-		// @speed: I think we could optimize this function by combining the erase and insert steps
+	UI_Selection result = {0};
+	result._[0] = from;
+	result._[1] = from;
+	result.cursor = 1;
+	
+	// I think this function could be optimized by combining the erase and insert steps
 
-		{ // First erase selected range
-			int start_byteoffset = UI_MarkToByteOffset(request->replace_from, text);
-			int end_byteoffset = UI_MarkToByteOffset(request->replace_to, text);
+	{ // First erase selected range
+		int start_byteoffset = UI_MarkToByteOffset(from, text);
+		int end_byteoffset = UI_MarkToByteOffset(to, text);
 
-			int remove_n = end_byteoffset - start_byteoffset;
-			DS_ArrRemoveN(&text->text, start_byteoffset, remove_n);
+		int remove_n = end_byteoffset - start_byteoffset;
+		DS_ArrRemoveN(&text->text, start_byteoffset, remove_n);
 
-			DS_ArrRemoveN(&text->line_offsets, request->replace_from.line, request->replace_to.line - request->replace_from.line);
+		DS_ArrRemoveN(&text->line_offsets, from.line, to.line - from.line);
 
-			DS_ForArrEach(int, &text->line_offsets, it) {
-				*it.ptr -= remove_n;
-			}
+		DS_ForArrEach(int, &text->line_offsets, it) {
+			*it.ptr -= remove_n;
+		}
+	}
+
+	{ // Then insert the text
+		STR_View insertion = replace_with;
+		UI_Mark mark = from;
+		int byteoffset = UI_MarkToByteOffset(mark, text);
+
+		DS_ArrInsertN(&text->text, byteoffset, insertion.data, insertion.size);
+
+		int lines_count = 0;
+		for (STR_View remaining = insertion;;) {
+			STR_View line_str = STR_ParseUntilAndSkip(&remaining, '\n');
+			lines_count++;
+			if (remaining.size == 0) break;
 		}
 
-		{ // Then insert the text
-			STR_View insertion = request->replace_with;
-			UI_Mark mark = request->replace_from;
-			int byteoffset = UI_MarkToByteOffset(mark, text);
-
-			DS_ArrInsertN(&text->text, byteoffset, insertion.data, insertion.size);
-
-			int lines_count = 0;
-			for (STR_View remaining = insertion;;) {
-				STR_View line_str = STR_ParseUntilAndSkip(&remaining, '\n');
-				lines_count++;
-				if (remaining.size == 0) break;
-			}
-
-			// Should we try to do a new kind of text editing - optionally without storing line offsets?
-			if (lines_count > 1) UI_TODO();
-			mark.col += STR_CodepointCount(insertion);
-
-			/*
-			StrRangeArray line_ranges = StrSplit(UI_FrameArena(), insertion, '\n');
-
-			if (line_ranges.length > 1) {
-				int inserted_lines = line_ranges.length - 1;
-				DS_ArrResizeUndef(&text->line_offsets, text->line_offsets.length + inserted_lines);
-
-				for (int i = 0; i < line_ranges.length; i++) {
-					DS_ArrSet(text->line_offsets, mark.line + i + inserted_lines, DS_ArrGet(text->line_offsets, mark.line + 1));
-					DS_ArrSet(text->line_offsets, mark.line + i, byteoffset + DS_ArrGet(line_ranges, i).min);
-				}
-
-				mark.col = 0;
-				mark.line += inserted_lines;
-			}
-
-			StrRange last_line_range = DS_ArrGet(line_ranges, line_ranges.length - 1);
-			mark.col += StrRuneCount(StrSlice(insertion, last_line_range.min, last_line_range.max));
-
-			for (int i = mark.line; i < text->line_offsets.length; i++) {
-				int *line_offset = DS_ArrGetPtr(text->line_offsets, i);
-				*line_offset += insertion.length;
-			}*/
-		}
-
-		// Update text for the box, otherwise we get 1-frame delay
-		request->box_with_text->text = STR_Clone(UI_FrameArena(), UI_TextToStr(*text));
+		if (lines_count > 1) UI_TODO();
+		mark.col += STR_CodepointCount(insertion);
+		result._[1] = mark;
 	}
 
 	UI_ProfExit();
+	return result;
 }
 
 UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection) {
 	UI_ProfEnter();
-	selection->range[0] = UI_MARK{0};
-	selection->range[1] = UI_MARK{
+	selection->_[0] = UI_MARK{0};
+	selection->_[1] = UI_MARK{
 		text->line_offsets.length,
 		STR_CodepointCount(UI_GetLineString(text->line_offsets.length, text)),
 	};
-	selection->end = 1;
+	selection->cursor = 1;
 	UI_ProfExit();
 }
 
-UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float) {
+UI_API UI_ValNumericState* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float) {
 	UI_ProfEnter();
-
-	UI_Box* box = NULL;
-	bool dragging = UI_IsClickingDown(key) && UI_InputIsDown(UI_Input_MouseLeft);
-	bool has_moved_mouse_after_press = UI_Abs(UI_STATE.mouse_travel_distance_after_press.x) >= 2.f;
+	
+	UI_Box* box_prev_frame = UI_PrevFrameBoxFromKey(key);
+	UI_ValNumericState data = {0};
+	UI_Key data_key = UI_KEY();
+	if (box_prev_frame) UI_BoxGetVar(box_prev_frame, data_key, &data);
 
 	STR_View value_str;
 	if (is_float) {
-		value_str = STR_FloatToStr(UI_FrameArena(), *(double*)value_64_bit, 1 /*dragging && has_moved_mouse_after_press ? 1 : 1*/);
+		value_str = STR_FloatToStr(UI_FrameArena(), *(double*)value_64_bit, 1);
 	} else {
 		value_str = STR_IntToStrEx(UI_FrameArena(), *(uint64_t*)value_64_bit, is_signed, 10);
 	}
 
-	bool activate_by_enter = UI_Pressed(key) && UI_InputWasPressed(UI_Input_Enter);
-	bool activate_by_click = UI_Clicked(key) && !has_moved_mouse_after_press && UI_InputWasReleased(UI_Input_MouseLeft);
-	bool did_begin_selection = UI_STATE.selected_box_new == key && UI_STATE.selected_box != key;
-	bool activate_by_keyboard_navigation = did_begin_selection && !UI_InputIsDown(UI_Input_MouseLeft); // this UI_InputIsDown for mouse is a bit of a dumb hack
-	bool activate = activate_by_enter || activate_by_click || activate_by_keyboard_navigation;
+	bool should_enable_text_edit = UI_STATE.selected_box_new == key && UI_STATE.selected_box != key;
 
-	bool text_edit_was_activated = activate && UI_STATE.text_editing_box != key;
-
-	if (text_edit_was_activated) {
-		UI_STATE.edit_text_should_refresh = true;
-		UI_STATE.selected_box_new = key;
-		UI_TextSet(&UI_STATE.edit_number_text, value_str);
+	if (data.is_dragging && !UI_InputIsDown(UI_Input_MouseLeft)) {
+		data.is_dragging = false;
+		if (UI_Abs(UI_STATE.mouse_travel_distance_after_press.x) <= 2.f) {
+			should_enable_text_edit = true;
+		}
 	}
 
-	bool text_editing_this = UI_STATE.text_editing_box == key && UI_STATE.selected_box_new == UI_INVALID_KEY; // The `selected_box_new` check is here as keyboard navigation could have already selected a different box
-	if (text_editing_this || text_edit_was_activated) {
-		box = UI_AddValText(key, w, h, &UI_STATE.edit_number_text, NULL);
+	if (should_enable_text_edit) {
+		data.text = STR_Clone(UI_FrameArena(), value_str);
+		data.is_editing_text = true;
+	}
+	
+	UI_Box* box = NULL;
+
+	if (data.is_editing_text) {
+		UI_Text new_text;
+		UI_TextInit(UI_FrameArena(), &new_text, data.text);
+		
+		box = UI_AddValText(key, w, h, &new_text);
+
+		data.text = UI_TextToStr(new_text);
 
 		if (is_float) {
-			STR_ParseFloat(UI_TextToStr(UI_STATE.edit_number_text), (double*)value_64_bit);
+			STR_ParseFloat(data.text, (double*)value_64_bit);
 		} else if (is_signed) {
-			STR_ParseI64(UI_TextToStr(UI_STATE.edit_number_text), (int64_t*)value_64_bit);
+			STR_ParseI64(data.text, (int64_t*)value_64_bit);
 		} else {
-			STR_ParseU64Ex(UI_TextToStr(UI_STATE.edit_number_text), 10, (uint64_t*)value_64_bit);
+			STR_ParseU64Ex(data.text, 10, (uint64_t*)value_64_bit);
+		}
+
+		if (!should_enable_text_edit) {
+			if (UI_STATE.selected_box != key) {
+				data.is_editing_text = false;
+			}
+			if (UI_InputWasPressed(UI_Input_MouseLeft) && !UI_Pressed(key)) {
+				data.is_editing_text = false;
+			}
+			if (UI_InputWasPressed(UI_Input_Enter) || UI_InputWasPressed(UI_Input_Escape)) {
+				data.is_editing_text = false;
+			}
 		}
 	}
 	else {
 		box = UI_AddBoxWithText(key, w, h,
 			UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_PressingStaysWithoutHover, value_str);
 
-		if (UI_Pressed(box->key)) {
+		if (UI_Pressed(key)) {
 			UI_STATE.outputs.lock_and_hide_cursor = true;
-			
+
 			if (is_float) {
-				UI_STATE.edit_number_value_before_press = *(double*)value_64_bit;
+				data.value_before_press = *(double*)value_64_bit;
 			} else if (is_signed) {
-				UI_STATE.edit_number_value_before_press = (double)*(int64_t*)value_64_bit;
+				data.value_before_press = (double)*(int64_t*)value_64_bit;
 			} else {
-				UI_STATE.edit_number_value_before_press = (double)*(uint64_t*)value_64_bit;
+				data.value_before_press = (double)*(uint64_t*)value_64_bit;
 			}
+
+			data.is_dragging = true;
 		}
 
 		if (UI_IsHovered(box->key)) {
 			UI_STATE.outputs.cursor = UI_MouseCursor_ResizeH;
 		}
 
-		if (dragging) {
+		if (data.is_dragging) {
 			UI_STATE.outputs.lock_and_hide_cursor = true;
 
-			double new_value = UI_STATE.edit_number_value_before_press + UI_STATE.mouse_travel_distance_after_press.x * 0.05f;
+			double new_value = data.value_before_press + UI_STATE.mouse_travel_distance_after_press.x * 0.05f;
 
 			if (is_float) {
 				*(double*)value_64_bit = new_value;
@@ -1155,44 +1127,49 @@ UI_API UI_Box* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64
 			}
 		}
 	}
+	
+	UI_ValNumericState* new_data;
+	UI_BoxGetRetainedVar(box, data_key, &new_data);
+	data.box = box;
+	*new_data = data;
 
 	UI_ProfExit();
-	return box;
+	return new_data;
 }
 
-UI_API UI_Box* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int* value) {
+UI_API UI_ValNumericState* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int* value) {
 	int64_t value_i64 = *value;
-	UI_Box* box = UI_AddValNumeric(key, w, h, &value_i64, true, false);
+	UI_ValNumericState* data = UI_AddValNumeric(key, w, h, &value_i64, true, false);
 	*value = (int)value_i64;
-	return box;
+	return data;
 }
 
-UI_API UI_Box* UI_AddValInt64(UI_Key key, UI_Size w, UI_Size h, int64_t* value) {
+UI_API UI_ValNumericState* UI_AddValInt64(UI_Key key, UI_Size w, UI_Size h, int64_t* value) {
 	return UI_AddValNumeric(key, w, h, value, true, false);
 }
 
-UI_API UI_Box* UI_AddValUInt64(UI_Key key, UI_Size w, UI_Size h, uint64_t* value) {
+UI_API UI_ValNumericState* UI_AddValUInt64(UI_Key key, UI_Size w, UI_Size h, uint64_t* value) {
 	return UI_AddValNumeric(key, w, h, value, false, false);
 }
 
-UI_API UI_Box* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value) {
+UI_API UI_ValNumericState* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value) {
 	double value_f64 = (double)*value;
-	UI_Box* box = UI_AddValNumeric(key, w, h, &value_f64, false, true);
+	UI_ValNumericState* data = UI_AddValNumeric(key, w, h, &value_f64, false, true);
 	*value = (float)value_f64;
-	return box;
+	return data;
 }
 
-UI_API UI_Box* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value) {
+UI_API UI_ValNumericState* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value) {
 	return UI_AddValNumeric(key, w, h, value, false, true);
 }
 
-UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* filepath, UI_EditTextModify* out_modify) {
+UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* filepath) {
 	UI_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, UI_BoxFlag_Horizontal);
 	UI_PushBox(box);
 
 	UI_Key edit_text_key = UI_KEY1(key);
-	UI_AddValText(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath, out_modify);
+	UI_AddValText(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath);
 
 	UI_Box* button = UI_AddButtonC(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x42");
 	button->font = UI_STATE.icons_font;
@@ -1219,34 +1196,6 @@ UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* file
 	UI_PopBox(box);
 	UI_ProfExit();
 	return box;
-}
-
-static void UI_EditTextModifyReplaceRange(UI_Selection* selection, UI_Mark from, UI_Mark to, STR_View with, UI_EditTextModify* out_edit_request) {
-	UI_ProfEnter();
-	UI_ASSERT(!out_edit_request->has_edit);
-	out_edit_request->has_edit = true;
-	out_edit_request->replace_from = selection->range[0];
-	out_edit_request->replace_to = selection->range[1];
-	out_edit_request->replace_with = with;
-
-	// Move the selection
-	UI_Mark mark = selection->range[0];
-
-	int lines_count = 0;
-	STR_View last_line_str = {0};
-	for (STR_View remaining = with;;) {
-		last_line_str = STR_ParseUntilAndSkip(&remaining, '\n');
-		lines_count++;
-		if (remaining.size == 0) break;
-	}
-
-	mark.line += lines_count - 1;
-	if (lines_count > 1) mark.col = 0;
-
-	mark.col += STR_CodepointCount(last_line_str);
-	selection->range[0] = mark;
-	selection->range[1] = mark;
-	UI_ProfExit();
 }
 
 UI_API void UI_TextInitC(DS_Allocator* allocator, UI_Text* text, const char* initial_value) {
@@ -1280,59 +1229,60 @@ UI_API void UI_TextSet(UI_Text* text, STR_View value) {
 	UI_ProfExit();
 }
 
+static UI_Key UI_AddValTextDataKey() { return UI_KEY(); }
+
 static void UI_DrawValTextInnerBox(UI_Box* box) {
 	UI_DrawBoxDefault(box);
 
-	if (UI_STATE.text_editing_box_new == box->parent->key) {
-		UI_Selection sel = UI_STATE.edit_text_selection;
-		UI_DrawTextRangeHighlight(sel.range[0], sel.range[1], UI_AddV2(box->computed_position, box->inner_padding), box->text, box->font, UI_COLOR{255, 255, 255, 50}, &box->computed_rect);
+	UI_ValTextState* state;
+	UI_BoxGetRetainedVar(box->parent, UI_AddValTextDataKey(), &state);
 
-		UI_Mark end = sel.range[sel.end];
-		UI_DrawTextRangeHighlight(end, end, UI_AddV2(box->computed_position, box->inner_padding), box->text, box->font, UI_COLOR{255, 255, 255, 255}, &box->computed_rect);
+	if (state->is_editing) {
+		UI_Selection sel = state->selection;
+		UI_DrawTextRangeHighlight(sel._[0], sel._[1], UI_AddV2(box->computed_position, box->inner_padding), box->text, box->font, UI_COLOR{255, 255, 255, 50}, &box->computed_rect);
+	
+		UI_Mark cursor = sel._[sel.cursor];
+		UI_DrawTextRangeHighlight(cursor, cursor, UI_AddV2(box->computed_position, box->inner_padding), box->text, box->font, UI_COLOR{255, 255, 255, 255}, &box->computed_rect);
 	}
 }
 
-UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI_EditTextModify* out_modify) {
+UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text) {
 	UI_ProfEnter();
 
 	UI_FontView font = UI_STATE.base_font;
 
-	UI_EditTextModify default_modify;
-	UI_EditTextModify* modify = out_modify ? out_modify : &default_modify;
-	memset(modify, 0, sizeof(*modify));
-
 	UI_Box* outer = UI_AddBox(key, w, h, UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_Clickable);
 	UI_PushBox(outer);
 
-	UI_Box* inner = UI_AddBoxWithText(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, UI_TextToStr(*text));
+	UI_Box* inner = UI_AddBoxWithTextC(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, "");
 	inner->draw = UI_DrawValTextInnerBox;
-	modify->box_with_text = inner;
 
-	bool editing = UI_STATE.text_editing_box == key;
+	UI_ValTextState* state;
+	bool had_text_edit_state = UI_BoxGetRetainedVar(outer, UI_AddValTextDataKey(), &state);
+
 	bool pressed_this = UI_Pressed(key);
-	bool activate_by_becoming_selected = UI_STATE.selected_box_new == key && UI_STATE.selected_box != key || UI_STATE.edit_text_should_refresh;
-	
-	if (pressed_this || activate_by_becoming_selected) {
-		editing = true;
+
+	if (state->is_editing) {
+		if (UI_InputWasPressed(UI_Input_MouseLeft) && !pressed_this) state->is_editing = false;
+		if (UI_InputWasPressed(UI_Input_Enter))   state->is_editing = false;
+		if (UI_InputWasPressed(UI_Input_Escape))  state->is_editing = false;
+		if (UI_STATE.selected_box_new != key)     state->is_editing = false;
+	}
+	else {
+		bool became_selected =
+			(UI_STATE.selected_box_new == key && UI_STATE.selected_box != key) ||
+			(UI_STATE.selected_box_new == key && !had_text_edit_state);
+
+		if (pressed_this || became_selected) {
+			state->is_editing = true;
+			UI_EditTextSelectAll(text, &state->selection);
+		}
 	}
 
-	if ((UI_InputWasPressed(UI_Input_MouseLeft) && !pressed_this) ||
-		(UI_STATE.text_editing_box == key && UI_InputWasPressed(UI_Input_Enter)) ||
-		UI_InputWasPressed(UI_Input_Escape) ||
-		UI_STATE.selected_box_new != key)
-	{
-		editing = false;
-	}
+	if (state->is_editing) {
+		UI_Selection* selection = &state->selection;
 
-	if (editing) {
-		UI_STATE.text_editing_box_new = key;
-
-		UI_Selection* selection = &UI_STATE.edit_text_selection;
-
-		if (activate_by_becoming_selected ||
-			UI_STATE.edit_text_should_refresh ||
-			(UI_InputWasPressedOrRepeated(UI_Input_A) && UI_InputIsDown(UI_Input_Control)))
-		{
+		if (UI_InputWasPressedOrRepeated(UI_Input_A) && UI_InputIsDown(UI_Input_Control)) {
 			UI_EditTextSelectAll(text, selection);
 		}
 
@@ -1344,13 +1294,14 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 			UI_EditTextArrowKeyInputX(-1, text, selection, font);
 		}
 
-		if (pressed_this || UI_STATE.mouse_clicking_down_box == key) {
+		bool pressed_with_mouse = UI_InputWasPressed(UI_Input_MouseLeft) && UI_IsHovered(key);
+		if (pressed_with_mouse || UI_STATE.mouse_clicking_down_box == key) {
 			if (inner->prev_frame) {
 				float origin = inner->prev_frame->computed_position.x + inner->prev_frame->inner_padding.x;
 			
 				int col = UI_ColumnFromXOffset(UI_STATE.mouse_pos.x - origin, UI_GetLineString(0, text), font);
-				selection->range[selection->end].col = col;
-				if (pressed_this) selection->range[1 - selection->end].col = col;
+				selection->_[selection->cursor].col = col;
+				if (pressed_this) selection->_[1 - selection->cursor].col = col;
 				UI_SelectionFixOrder(selection);
 			}
 		}
@@ -1360,23 +1311,25 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 			for (int i = 0; i < UI_STATE.inputs.text_input_utf32_length; i++) {
 				STR_PrintU(&text_input, UI_STATE.inputs.text_input_utf32[i]);
 			}
-			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], text_input.str, modify);
+			UI_Selection inserted_sel = UI_TextReplaceRange(text, selection->_[0], selection->_[1], text_input.str);
+			selection->_[0] = inserted_sel._[1];
+			selection->_[1] = inserted_sel._[1];
 		}
 
 		//if (UI_InputWasPressedOrRepeated(UI_Input_Home)) {
-		//	UI_Mark* end = &selection->range[selection->end];
+		//	UI_Mark* end = &selection->_[selection->end];
 		//	end->col = 0;
 		//	if (!UI_InputIsDown(UI_Input_Shift)) {
-		//		selection->range[1 - selection->end] = *end;
+		//		selection->_[1 - selection->end] = *end;
 		//	}
 		//	UI_SelectionFixOrder(selection);
 		//}
 
 		//if (UI_InputWasPressedOrRepeated(UI_Input_End)) {
-		//	UI_TODO(); // UI_Mark *end = &selection->range[selection->end];
+		//	UI_TODO(); // UI_Mark *end = &selection->_[selection->end];
 		//	// end->col = StrRuneCount(UI_GetLineString(end->line, text));
 		//	// if (!UI_InputIsDown(UI_Input_Shift)) {
-		//	// 	selection->range[1 - selection->end] = *end;
+		//	// 	selection->_[1 - selection->end] = *end;
 		//	// }
 		//	// UI_SelectionFixOrder(selection);
 		//}
@@ -1384,18 +1337,18 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 		// Ctrl X
 		if (UI_InputWasPressedOrRepeated(UI_Input_X) && UI_InputIsDown(UI_Input_Control)) {
 			if (UI_STATE.inputs.set_clipboard_string_fn) {
-				int min = UI_MarkToByteOffset(selection->range[0], text);
-				int max = UI_MarkToByteOffset(selection->range[1], text);
+				int min = UI_MarkToByteOffset(selection->_[0], text);
+				int max = UI_MarkToByteOffset(selection->_[1], text);
 				UI_STATE.inputs.set_clipboard_string_fn(STR_Slice(UI_TextToStr(*text), min, max), UI_STATE.inputs.user_data);
 			}
-			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], STR_V(""), modify);
+			*selection = UI_TextReplaceRange(text, selection->_[0], selection->_[1], STR_V(""));
 		}
 		
 		// Ctrl C
 		if ((UI_InputWasPressedOrRepeated(UI_Input_C) && UI_InputIsDown(UI_Input_Control))) {
 			if (UI_STATE.inputs.set_clipboard_string_fn) {
-				int min = UI_MarkToByteOffset(selection->range[0], text);
-				int max = UI_MarkToByteOffset(selection->range[1], text);
+				int min = UI_MarkToByteOffset(selection->_[0], text);
+				int max = UI_MarkToByteOffset(selection->_[1], text);
 				UI_STATE.inputs.set_clipboard_string_fn(STR_Slice(UI_TextToStr(*text), min, max), UI_STATE.inputs.user_data);
 			}
 		}
@@ -1404,31 +1357,24 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text, UI
 		if (UI_InputWasPressedOrRepeated(UI_Input_V) && UI_InputIsDown(UI_Input_Control)) {
 			if (UI_STATE.inputs.get_clipboard_string_fn) {
 				STR_View str = UI_STATE.inputs.get_clipboard_string_fn(UI_STATE.inputs.user_data);
-				UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], str, modify);
+				*selection = UI_TextReplaceRange(text, selection->_[0], selection->_[1], str);
 			}
 		}
 
 		if (UI_InputWasPressedOrRepeated(UI_Input_Backspace)) {
-			if (UI_MarkEquals(selection->range[0], selection->range[1])) {
-				UI_MoveMarkH(&selection->range[0], text, -1, UI_InputIsDown(UI_Input_Control));
+			if (UI_MarkEquals(selection->_[0], selection->_[1])) {
+				UI_MoveMarkH(&selection->_[0], text, -1, UI_InputIsDown(UI_Input_Control));
 			}
-			UI_EditTextModifyReplaceRange(selection, selection->range[0], selection->range[1], STR_V(""), modify);
+			*selection = UI_TextReplaceRange(text, selection->_[0], selection->_[1], STR_V(""));
 		}
-
-		// UI_STATE.edit_text.draw_selection_from_box = inner;
-		// UI_STATE.edit_text.draw_selection_from_box_sel = *selection;
 	}
-
-	UI_STATE.edit_text_should_refresh = false;
 
 	UI_PopBox(outer);
 
+	inner->text = STR_Clone(&UI_STATE.frame_arena, UI_TextToStr(*text)); // set text after possibile modifications
+
 	if (UI_IsHovered(outer->key)) {
 		UI_STATE.outputs.cursor = UI_MouseCursor_I_beam;
-	}
-
-	if (out_modify == NULL) {
-		UI_ApplyEditTextModify(text, modify);
 	}
 
 	UI_ProfExit();
@@ -2069,14 +2015,20 @@ end:;
 	return result;
 }
 
+UI_API UI_Box* UI_MakeVarHolderBox(UI_Key key) {
+	UI_Box* box = (UI_Box*)DS_New(UI_VarHolderBox, UI_FrameArena()); // NOTE: UI_VarHolderBox must have the member layout as UI_Box for this to work!
+	bool newly_added = DS_MapInsert(&UI_STATE.box_from_key, key, box);
+	UI_ASSERT(newly_added); // If this fails, then a box with the same key has already been added during this frame!
+	box->prev_frame = UI_PrevFrameBoxFromKey(key);
+	return box;
+}
+
 UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, bool is_a_root) {
 	UI_ProfEnter();
-	UI_ASSERT(w >= 0.f || (w >= -100.f && w <= -99.f));
-	UI_ASSERT(h >= 0.f || (h >= -100.f && h <= -99.f));
-
+	
 	UI_Box* box = DS_New(UI_Box, UI_FrameArena());
 	bool newly_added = DS_MapInsert(&UI_STATE.box_from_key, key, box);
-	DS_CHECK(newly_added); // If this fails, then a box with the same key has already been added during this frame!
+	UI_ASSERT(newly_added); // If this fails, then a box with the same key has already been added during this frame!
 
 	box->key = key;
 	box->prev_frame = UI_PrevFrameBoxFromKey(key);
@@ -2206,10 +2158,6 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size, UI_FontV
 	UI_STATE.keyboard_clicking_down_box_new = UI_INVALID_KEY;
 	UI_STATE.selected_box = UI_STATE.selected_box_new;
 	UI_STATE.selected_box_new = UI_INVALID_KEY;
-	UI_STATE.text_editing_box = UI_STATE.text_editing_box_new;
-	UI_STATE.text_editing_box_new = UI_INVALID_KEY;
-
-	UI_STATE.frame_idx += 1;
 
 	DS_ArrInit(&UI_STATE.draw_calls, &UI_STATE.frame_arena);
 
@@ -2226,18 +2174,6 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size, UI_FontV
 			UI_STATE.input_is_down[i] = false;
 		}
 	}
-
-	// Push default style
-	// UI_Style style = {0};
-	// style.font.font = UI_STATE.base_font;
-	// style.font.size = 18.f;
-	// style.border_color = UI_COLOR{ 0, 0, 0, 128 };
-	// style.opaque_bg_color = UI_COLOR{ 50, 50, 50, 255 };
-	// style.transparent_bg_color = UI_COLOR{ 255, 255, 255, 50 };
-	// style.text_padding = UI_VEC2{ 10.f, 5.f };
-	// style.child_padding = UI_VEC2{ 12.f, 12.f };
-	// style.text_color = UI_COLOR{ 255, 255, 255, 255 };
-	//DS_ArrPush(&UI_STATE.style_stack, DS_Clone(UI_Style, &UI_STATE.persistent_arena, style));
 
 	UI_ProfExit();
 }
@@ -2256,7 +2192,6 @@ UI_API void UI_Deinit(void) {
 
 	DS_MemFree(UI_STATE.allocator, UI_STATE.atlas_buffer_grayscale);
 
-	UI_TextDeinit(&UI_STATE.edit_number_text);
 	UI_ProfExit();
 }
 
@@ -2295,34 +2230,12 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 	backend->create_vertex_buffer(0, sizeof(UI_DrawVertex) * UI_MAX_VERTEX_COUNT);
 	backend->create_index_buffer(1, sizeof(uint32_t) * UI_MAX_INDEX_COUNT);
 
-	//UI_.atlases[0] = GPU_MakeTexture(GPU_Format_RGBA8UN, UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE, 1, 0, NULL);
-	//UI_.atlas_staging_buffer = GPU_MakeBuffer(sizeof(uint32_t)*UI_GLYPH_MAP_SIZE*UI_GLYPH_MAP_SIZE, GPU_BufferFlag_CPU, NULL);
-	//memset(UI_.atlas_staging_buffer->data, 0, UI_.atlas_staging_buffer->size);
-
 	UI_STATE.atlas_buffer_grayscale = (uint8_t*)DS_MemAlloc(UI_STATE.allocator, sizeof(uint8_t) * UI_GLYPH_MAP_SIZE * UI_GLYPH_MAP_SIZE);
 	memset(UI_STATE.atlas_buffer_grayscale, 0, UI_GLYPH_MAP_SIZE * UI_GLYPH_MAP_SIZE);
 	UI_STATE.pack_context.pixels = UI_STATE.atlas_buffer_grayscale;
 
-	{
-		// What if I as the user want to use a default emgui font + some own font? I guess for now, let's
-		// split this so that the EMGUI default fonts go into one atlas, and the user can create their own atlases as needed.
-
-		// UI_.atlas = UI_InitFontAtlas(persistent_arena);
-
-		STR_View roboto_mono_ttf, icons_ttf;
-		// UI_TODO();
-		// UI_ASSERT(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_V("/roboto_mono.ttf")), &roboto_mono_ttf));
-		// UI_ASSERT(OS_ReadEntireFile(UI_.persistent_arena, OS_CWD, StrJoin(UI_FrameArena(), resources_directory, STR_V("/fontello/font/fontello.ttf")), &icons_ttf));
-
-		// UI_FontInit(&UI_.base_font, roboto_mono_ttf.data, -4.f);
-		// UI_FontInit(&UI_.icons_font, icons_ttf.data, -2.f);
-	}
-
-	//DS_ArrInit(&UI_STATE.style_stack, &UI_STATE.persistent_arena);
 	DS_ArrInit(&UI_STATE.box_stack, &UI_STATE.persistent_arena);
 	DS_ArrPush(&UI_STATE.box_stack, NULL);
-
-	UI_TextInitC(allocator, &UI_STATE.edit_number_text, "");
 
 	UI_ProfExit();
 }
@@ -2541,9 +2454,6 @@ UI_API void UI_EndFrame(UI_Outputs* outputs) {
 
 	UI_FinalizeDrawBatch();
 
-	//UI_ASSERT(UI_STATE.style_stack.length == 1);
-	//DS_ArrPop(&UI_STATE.style_stack);
-
 	UI_STATE.outputs.draw_calls = UI_STATE.draw_calls.data;
 	UI_STATE.outputs.draw_calls_count = UI_STATE.draw_calls.length;
 	*outputs = UI_STATE.outputs;
@@ -2551,11 +2461,14 @@ UI_API void UI_EndFrame(UI_Outputs* outputs) {
 	UI_ProfExit();
 }
 
-UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
+UI_API UI_SplittersState* UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 	float* panel_end_offsets, float panel_min_width)
 {
 	UI_ProfEnter();
 	UI_ASSERT(panel_count > 0);
+
+	UI_SplittersState* data;
+	UI_BoxGetRetainedVar(UI_MakeVarHolderBox(key), 0, &data);
 
 	// Sanitize positions
 	float offset = 0.f;
@@ -2572,10 +2485,6 @@ UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 		// as the width of the area rectangle.
 		panel_end_offsets[i] = panel_end_offsets[i] * normalize_factor;
 	}
-
-	UI_Box* variable_lookup = UI_MakeRootBox(key, 0, 0, 0); // Right now there's no way to attach variables to keys directly, so make a dummy box. TODO: clean this up!
-	UI_SplittersData* data;
-	UI_BoxGetRetainedVar(variable_lookup, 0, &data);
 
 	if (data->holding_splitter && !UI_InputIsDown(UI_Input_MouseLeft)) {
 		data->holding_splitter = 0;
@@ -2637,22 +2546,7 @@ UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 	}
 
 	UI_ProfExit();
-}
-
-UI_API int UI_SplittersGetHoldingIndex(UI_Key key) {
-	UI_Box* variable_lookup = UI_BoxFromKey(key);
-	if (variable_lookup == NULL) return 0;
-	UI_SplittersData* data;
-	UI_BoxGetRetainedVar(variable_lookup, 0, &data);
-	return data->holding_splitter;
-}
-
-UI_API int UI_SplittersGetHoveredIndex(UI_Key key) {
-	UI_Box* variable_lookup = UI_BoxFromKey(key);
-	if (variable_lookup == NULL) return 0;
-	UI_SplittersData* data;
-	UI_BoxGetRetainedVar(variable_lookup, 0, &data);
-	return data->holding_splitter;
+	return data;
 }
 
 //  --------------------------------------------------------------------------------------------------
@@ -2705,14 +2599,6 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontView font, in
 
 	UI_CachedGlyph* glyph = NULL;
 	if (DS_MapGetOrAddPtr(&font_data->glyph_map, key, &glyph)) {
-		// if (UI_.frame_has_split_atlas) {
-		// 
-		// }
-		UI_CachedGlyph glyph_obsolete;
-		// if (DS_MapFind(&font.font->glyph_map_obsolete, &key, &glyph_obsolete)) {
-		// 	// TODO: we could copy the pixels from the old glyph map instead of rendering
-		// }
-
 		stbrp_rect rect = {0};
 		stbtt_packedchar packed_char;
 		stbtt_pack_range pack_range = {0};

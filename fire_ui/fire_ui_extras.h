@@ -203,11 +203,12 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 				UI_Key val_key = UI_HashInt(key, section_index);
 				if (editable) {
 					UI_Text* val = va_arg(args, UI_Text*);
-					UI_AddValText(val_key, UI_SizeFlex(1.f), UI_SizeFit(), val, NULL);
+					UI_AddValText(val_key, UI_SizeFlex(1.f), UI_SizeFit(), val);
 				} else {
 					UI_Text val = va_arg(args, UI_Text);
-					UI_EditTextModify modify;
-					UI_AddValText(val_key, UI_SizeFlex(1.f), UI_SizeFit(), &val, &modify);
+					__debugbreak(); // TODO: read-only text
+					//UI_EditTextModify modify;
+					//UI_AddValText(val_key, UI_SizeFlex(1.f), UI_SizeFit(), &val);
 				}
 
 				section_index++;
