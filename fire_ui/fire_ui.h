@@ -416,10 +416,6 @@ typedef struct UI_State {
 	UI_TextureID draw_active_texture;
 	DS_DynArray(UI_DrawCall) draw_calls;
 
-	// -- Splitters state --
-	UI_Key holding_splitter_key; // UI_INVALID_KEY when not holding anything
-	int holding_splitter_index;
-
 	// -- Edit number state --
 	double edit_number_value_before_press;
 	UI_Text edit_number_text;
@@ -464,6 +460,11 @@ typedef struct UI_State {
 #endif
 
 typedef const UI_Rect* UI_ScissorRect; // may be NULL for no scissor
+
+typedef struct UI_SplittersData {
+	int holding_splitter;  // one-based index
+	int hovering_splitter; // one-based index
+} UI_SplittersData;
 
 // -- Global state -------
 extern UI_State UI_STATE;
@@ -587,13 +588,13 @@ UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h);
 UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key); // Returns NULL if a box with this key did not exist
 UI_API UI_Box* UI_BoxFromKey(UI_Key key); // Returns NULL if a box with this key has not been created this frame so far
 
-#define UI_BoxAddVar(BOX, KEY, VALUE)    UI_BoxAddVarData(BOX, KEY, VALUE, sizeof(*VALUE))
+#define UI_BoxAddVar(BOX, KEY, VALUE)            UI_BoxAddVarData(BOX, KEY, VALUE, sizeof(*VALUE))
 
 // Returns true if the variable already existed. Otherwise the OUT_VALUE is not touched.
-#define UI_BoxGetVar(BOX, KEY, OUT_VALUE)   UI_BoxGetVarData(BOX, KEY, OUT_VALUE, sizeof(*OUT_VALUE))
+#define UI_BoxGetVar(BOX, KEY, OUT_VALUE)        UI_BoxGetVarData(BOX, KEY, OUT_VALUE, sizeof(*OUT_VALUE))
 
 // If the variable doesn't exist, OUT_PTR will be set to NULL.
-#define UI_BoxGetVarPtr(BOX, KEY, OUT_PTR)   UI_BoxGetVarPtrData(BOX, KEY, (void**)(OUT_PTR), sizeof(**(OUT_PTR)))
+#define UI_BoxGetVarPtr(BOX, KEY, OUT_PTR)       UI_BoxGetVarPtrData(BOX, KEY, (void**)(OUT_PTR), sizeof(**(OUT_PTR)))
 
 // Returns true if the variable already existed. New variables get zero-initialized.
 #define UI_BoxGetRetainedVar(BOX, KEY, OUT_PTR)  UI_BoxGetRetainedVarData(BOX, KEY, (void**)(OUT_PTR), sizeof(**(OUT_PTR)))
@@ -640,10 +641,9 @@ UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection);
 UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 	float* panel_end_offsets, float panel_min_size);
 
-UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_count, float* panel_end_offsets, int* out_index);
-
-// UI_Splitters must be called before calling UI_SplittersGetHoldingIndex
-UI_API bool UI_SplittersGetHoldingIndex(UI_Key key, int* out_index);
+// UI_Splitters must have been called this frame before calling UI_SplittersGetHoveredIndex or UI_SplittersGetHoldingIndex
+UI_API int UI_SplittersGetHoveredIndex(UI_Key key); // returns one-based index, or zero if nothing is hovered.
+UI_API int UI_SplittersGetHoldingIndex(UI_Key key); // returns one-based index, or zero if nothing is held.
 
 UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontView font);
 UI_API float UI_TextWidth(STR_View text, UI_FontView font);
@@ -1470,7 +1470,7 @@ UI_API UI_Box* UI_AddBoxWithTextC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags 
 UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
 	UI_ProfEnter();
 	UI_Box* box = UI_AddBox(key, w, h, flags | UI_BoxFlag_HasText);
-	box->text = string;
+	box->text = STR_Clone(&UI_STATE.frame_arena, string);
 	box->font = UI_STATE.base_font;
 	box->inner_padding = UI_DEFAULT_TEXT_PADDING;
 	UI_ProfExit();
@@ -1934,19 +1934,30 @@ UI_API void UI_BoxAddVarData(UI_Box* box, UI_Key key, void* ptr, int size) {
 }
 
 UI_API bool UI_BoxGetRetainedVarData(UI_Box* box, UI_Key key, void** out_ptr, int size) {
-	UI_BoxVariableHeader* header = (UI_BoxVariableHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxVariableHeader) + size);
-	header->key = key;
-	header->next = box->variables;
-	header->debug_size = size;
-	box->variables = header;
-	
-	bool had_variable = box->prev_frame && UI_BoxGetVarData(box->prev_frame, key, header + 1, size);
-	if (!had_variable) {
-		memset(header + 1, 0, size);
+	void* existing_this_frame = NULL;
+	UI_BoxGetVarPtrData(box, key, &existing_this_frame, size);
+	if (existing_this_frame) {
+		*out_ptr = existing_this_frame;
+		return true;
 	}
+	else {
+		// Keep the variable alive by adding it to this frame's box
+		UI_BoxVariableHeader* header = (UI_BoxVariableHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxVariableHeader) + size);
+		header->key = key;
+		header->next = box->variables;
+		header->debug_size = size;
+		box->variables = header;
+		
+		void* existing = NULL;
+		if (box->prev_frame) {
+			UI_BoxGetVarPtrData(box->prev_frame, key, &existing, size);
+		}
+		if (existing) memcpy(header + 1, existing, size);
+		else memset(header + 1, 0, size);
 
-	*out_ptr = header + 1;
-	return had_variable;
+		*out_ptr = header + 1;
+		return existing != NULL;
+	}
 }
 
 UI_API void UI_BoxGetVarPtrData(UI_Box* box, UI_Key key, void** out_ptr, int size) {
@@ -2562,8 +2573,16 @@ UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 		panel_end_offsets[i] = panel_end_offsets[i] * normalize_factor;
 	}
 
-	if (UI_STATE.holding_splitter_key == key) {
-		int holding_splitter = UI_STATE.holding_splitter_index;
+	UI_Box* variable_lookup = UI_MakeRootBox(key, 0, 0, 0); // Right now there's no way to attach variables to keys directly, so make a dummy box. TODO: clean this up!
+	UI_SplittersData* data;
+	UI_BoxGetRetainedVar(variable_lookup, 0, &data);
+
+	if (data->holding_splitter && !UI_InputIsDown(UI_Input_MouseLeft)) {
+		data->holding_splitter = 0;
+	}
+
+	if (data->holding_splitter) {
+		int holding_splitter = data->holding_splitter - 1; // zero-based index
 		float split_position = UI_STATE.mouse_pos._[X] - area.min._[X];
 
 		if (UI_InputIsDown(UI_Input_Alt)) {
@@ -2595,31 +2614,7 @@ UI_API void UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
 		}
 	}
 
-	if (!UI_InputIsDown(UI_Input_MouseLeft)) {
-		UI_STATE.holding_splitter_key = UI_INVALID_KEY;
-	}
-
-	int hovering_splitter_index;
-	if (UI_SplittersFindHoveredIndex(area, X, panel_count, panel_end_offsets, &hovering_splitter_index)) {
-		UI_STATE.outputs.cursor = X == UI_Axis_X ? UI_MouseCursor_ResizeH : UI_MouseCursor_ResizeV;
-
-		if (UI_InputWasPressed(UI_Input_MouseLeft)) {
-			UI_STATE.holding_splitter_key = key;
-			UI_STATE.holding_splitter_index = hovering_splitter_index;
-		}
-	}
-
-	UI_ProfExit();
-}
-
-UI_API bool UI_SplittersGetHoldingIndex(UI_Key key, int* out_index) {
-	*out_index = UI_STATE.holding_splitter_index;
-	return UI_STATE.holding_splitter_key == key;
-}
-
-UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_count, float* panel_end_offsets, int* out_splitter_index) {
-	UI_ProfEnter();
-	bool hovering = false;
+	data->hovering_splitter = 0;
 	for (int i = 0; i < panel_count - 1; i++) {
 		const float SPLITTER_HALF_WIDTH = 2.f; // this could use the current DPI
 		float end_x = area.min._[X] + panel_end_offsets[i];
@@ -2628,13 +2623,36 @@ UI_API bool UI_SplittersFindHoveredIndex(UI_Rect area, UI_Axis X, int panel_coun
 		end_splitter_rect.max._[X] = end_x + SPLITTER_HALF_WIDTH;
 
 		if (UI_PointIsInRect(end_splitter_rect, UI_STATE.mouse_pos)) {
-			*out_splitter_index = i;
-			hovering = true;
+			data->hovering_splitter = i + 1;
 			break;
 		}
 	}
+	
+	if (data->hovering_splitter) {
+		UI_STATE.outputs.cursor = X == UI_Axis_X ? UI_MouseCursor_ResizeH : UI_MouseCursor_ResizeV;
+
+		if (UI_InputWasPressed(UI_Input_MouseLeft)) {
+			data->holding_splitter = data->hovering_splitter;
+		}
+	}
+
 	UI_ProfExit();
-	return hovering;
+}
+
+UI_API int UI_SplittersGetHoldingIndex(UI_Key key) {
+	UI_Box* variable_lookup = UI_BoxFromKey(key);
+	if (variable_lookup == NULL) return 0;
+	UI_SplittersData* data;
+	UI_BoxGetRetainedVar(variable_lookup, 0, &data);
+	return data->holding_splitter;
+}
+
+UI_API int UI_SplittersGetHoveredIndex(UI_Key key) {
+	UI_Box* variable_lookup = UI_BoxFromKey(key);
+	if (variable_lookup == NULL) return 0;
+	UI_SplittersData* data;
+	UI_BoxGetRetainedVar(variable_lookup, 0, &data);
+	return data->holding_splitter;
 }
 
 //  --------------------------------------------------------------------------------------------------
