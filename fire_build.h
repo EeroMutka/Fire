@@ -971,7 +971,7 @@ static bool BUILD_GenerateVisualStudioProject(BUILD_Arena* arena, const BUILD_Pr
 
 	for (int i = 0; i < project->natvis_files.length; i++) {
 		BUILD_Print1(&s, "<ItemGroup>\n");
-		BUILD_Print3(&s, "  <Natvis Include=\"", project->natvis_files.data[i], "\" />\n");
+		BUILD_Print3(&s, "  <None Include=\"", project->natvis_files.data[i], "\" />\n");
 		BUILD_Print1(&s, "</ItemGroup>\n");
 	}
 	

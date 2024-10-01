@@ -24,9 +24,9 @@
 #define DS_ProfExit()
 #endif
 
-#ifndef DS_CHECK_OVERRIDE
+#ifndef DS_ASSERT_OVERRIDE
 #include <assert.h>
-#define DS_CHECK(x) assert(x)
+#define DS_ASSERT(x) assert(x)
 #endif
 
 #ifndef DS_API
@@ -153,8 +153,8 @@ template<typename T> static inline T* DS_Clone__(DS_Arena* a, const T& v) { T* x
 #define DS_AlignDownPow2(x, p) ((x) & ~((p) - 1)) // e.g. (x=30, p=16) -> 16
 
 #ifdef DS_MODE_DEBUG
-static inline void DS_ArrBoundsCheck_(bool x) { DS_CHECK(x); }
-#define DS_ArrBoundsCheck(ARR, INDEX) DS_ArrBoundsCheck_((size_t)(INDEX) < (size_t)(ARR).length)
+static inline void DS_ArrBoundsCheck_(bool x) { DS_ASSERT(x); }
+#define DS_ArrBoundsCheck(ARR, INDEX) DS_ArrBoundsCheck_((size_t)(INDEX) < (size_t)(ARR).count)
 #else
 #define DS_ArrBoundsCheck(ARR, INDEX) (void)0
 #endif
@@ -274,7 +274,7 @@ DS_API uint64_t DS_MurmurHash64A(const void* key, int len, uint64_t seed);
 #define DS_NoteAboutKeyTypePadding
 
 #define DS_Map(K, V) \
-	struct { DS_Allocator* allocator; struct{ uint32_t hash; K key; V value; }* data; int count; int capacity; }
+	struct { DS_Allocator* allocator; struct{ uint32_t hash; K key; V value; }* data; int32_t count; int32_t capacity; }
 typedef DS_Map(char, char) DS_MapRaw;
 
 #define DS_MapInit(MAP, ALLOCATOR)            DS_MapInitRaw((DS_MapRaw*)(MAP), (ALLOCATOR))
@@ -352,7 +352,7 @@ typedef DS_Map(char, char) DS_MapRaw;
 //
 
 #define DS_Set(K) \
-	struct { DS_Allocator* allocator; struct{ uint32_t hash; K key; } *data; int length; int capacity; }
+	struct { DS_Allocator* allocator; struct{ uint32_t hash; K key; } *data; int32_t count; int32_t capacity; }
 typedef DS_Set(char) DS_SetRaw;
 
 #define DS_SetInit(SET, ALLOCATOR)        DS_MapInitRaw((DS_MapRaw*)(SET), (ALLOCATOR))
@@ -377,7 +377,7 @@ typedef DS_Set(char) DS_SetRaw;
 
 #define DS_ForSetEach(K, SET, IT) /* (type K, DS_Set(K) *SET, name IT) */ \
 	struct DS_Concat(_dummy_, __LINE__) { int i_next; K *elem; }; \
-	if ((SET)->length > 0) for (struct DS_Concat(_dummy_, __LINE__) IT = {0}; \
+	if ((SET)->count > 0) for (struct DS_Concat(_dummy_, __LINE__) IT = {0}; \
 		DS_MapIter((DS_MapRaw*)(SET), &IT.i_next, (void**)&IT.elem, NULL, DS_MapKOffset(SET), 0, DS_MapElemSize(SET)); )
 
 #define DS_SetClear(SET) \
@@ -460,7 +460,7 @@ static char* DS_AllocatorFn_Default(DS_AllocatorBase_Default* allocator, char* o
 // - To free an existing allocation (i.e. free/realloc), pass it into `old_ptr` and its size into `old_size, otherwise pass NULL and 0.
 static inline char* DS_AllocatorFn(DS_Allocator* allocator, const void* old_ptr, int old_size, int new_size, int new_alignment) {
 	char* result = DS_AllocatorFn_Impl((DS_AllocatorBase*)allocator, (char*)old_ptr, old_size, new_size, new_alignment);
-	DS_CHECK(((uintptr_t)result & (new_alignment - 1)) == 0); // check that the alignment is correct
+	DS_ASSERT(((uintptr_t)result & (new_alignment - 1)) == 0); // check that the alignment is correct
 	return result;
 }
 
@@ -473,15 +473,24 @@ static inline void* DS_CloneSizeA(DS_Arena* arena, const void* value, int size, 
 
 // -- Dynamic array --------------------------------
 
-#define DS_DynArray(T) struct { DS_Allocator* allocator; T *data; int length; int capacity; }
+#ifdef __cplusplus
+template<class T> struct DS_DynArray_ {
+	DS_Allocator* allocator; T* data; int32_t count; int32_t capacity;
+	inline T& operator [](int i) { return (DS_ArrBoundsCheck((*this), i), data[i]); }
+};
+#define DS_DynArray(T) DS_DynArray_<T>
+typedef struct { DS_Allocator* allocator; void* data; int32_t count; int32_t capacity; } DS_DynArrayRaw;
+#else
+#define DS_DynArray(T) struct { DS_Allocator* allocator; T* data; int32_t count; int32_t capacity; }
 typedef DS_DynArray(void) DS_DynArrayRaw;
+#endif
 
 #define DS_ArrGet(ARR, INDEX)          (DS_ArrBoundsCheck(ARR, INDEX), ((ARR).data)[INDEX])
 #define DS_ArrGetPtr(ARR, INDEX)       (DS_ArrBoundsCheck(ARR, INDEX), &((ARR).data)[INDEX])
 #define DS_ArrSet(ARR, INDEX, VALUE)   (DS_ArrBoundsCheck(ARR, INDEX), ((ARR).data)[INDEX] = VALUE)
 #define DS_ArrElemSize(ARR)            sizeof(*(ARR).data)
-#define DS_ArrPeek(ARR)                (DS_ArrBoundsCheck(ARR, (ARR).length - 1), (ARR).data[(ARR).length - 1])
-#define DS_ArrPeekPtr(ARR)             (DS_ArrBoundsCheck(ARR, (ARR).length - 1), &(ARR).data[(ARR).length - 1])
+#define DS_ArrPeek(ARR)                (DS_ArrBoundsCheck(ARR, (ARR).count - 1), (ARR).data[(ARR).count - 1])
+#define DS_ArrPeekPtr(ARR)             (DS_ArrBoundsCheck(ARR, (ARR).count - 1), &(ARR).data[(ARR).count - 1])
 
 #define DS_ArrClone(ARENA, ARR)        DS_ArrCloneRaw(ARENA, (DS_DynArrayRaw*)(ARR), DS_ArrElemSize(*ARR))
 
@@ -490,30 +499,30 @@ typedef DS_DynArray(void) DS_DynArrayRaw;
 #define DS_ArrInit(ARR, ALLOCATOR)     DS_ArrInitRaw((DS_DynArrayRaw*)(ARR), (ALLOCATOR))
 
 #define DS_ArrPush(ARR, ...) do { \
-	DS_ArrReserveRaw((DS_DynArrayRaw*)(ARR), (ARR)->length + 1, DS_ArrElemSize(*(ARR))); \
-	(ARR)->data[(ARR)->length++] = __VA_ARGS__; } while (0)
+	DS_ArrReserveRaw((DS_DynArrayRaw*)(ARR), (ARR)->count + 1, DS_ArrElemSize(*(ARR))); \
+	(ARR)->data[(ARR)->count++] = __VA_ARGS__; } while (0)
 
-#define DS_ArrPushN(ARR, ELEMS_DATA, ELEMS_LENGTH) (DS_ArrTypecheck(ARR, ELEMS_DATA), DS_ArrPushNRaw((DS_DynArrayRaw*)(ARR), ELEMS_DATA, ELEMS_LENGTH, DS_ArrElemSize(*ARR)))
+#define DS_ArrPushN(ARR, ELEMS_DATA, ELEMS_COUNT) (DS_ArrTypecheck(ARR, ELEMS_DATA), DS_ArrPushNRaw((DS_DynArrayRaw*)(ARR), ELEMS_DATA, ELEMS_COUNT, DS_ArrElemSize(*ARR)))
 
-#define DS_ArrPushArr(ARR, ELEMS)       (DS_ArrTypecheck(ARR, ELEMS.data), DS_ArrPushNRaw((DS_DynArrayRaw*)(ARR), ELEMS.data, ELEMS.length, DS_ArrElemSize(*ARR)))
+#define DS_ArrPushArr(ARR, ELEMS)       (DS_ArrTypecheck(ARR, ELEMS.data), DS_ArrPushNRaw((DS_DynArrayRaw*)(ARR), ELEMS.data, ELEMS.count, DS_ArrElemSize(*ARR)))
 
 #define DS_ArrInsert(ARR, AT, ELEM)     (DS_ArrTypecheck(ARR, &(ELEM)), DS_ArrInsertRaw((DS_DynArrayRaw*)(ARR), AT, &(ELEM), DS_ArrElemSize(*ARR)))
 
-#define DS_ArrInsertN(ARR, AT, ELEMS_DATA, ELEMS_LENGTH) (DS_ArrTypecheck(ARR, ELEMS_DATA), DS_ArrInsertNRaw((DS_DynArrayRaw*)(ARR), AT, ELEMS_DATA, ELEMS_LENGTH, DS_ArrElemSize(*ARR)))
+#define DS_ArrInsertN(ARR, AT, ELEMS_DATA, ELEMS_COUNT) (DS_ArrTypecheck(ARR, ELEMS_DATA), DS_ArrInsertNRaw((DS_DynArrayRaw*)(ARR), AT, ELEMS_DATA, ELEMS_COUNT, DS_ArrElemSize(*ARR)))
 
 #define DS_ArrRemove(ARR, INDEX)       DS_ArrRemoveRaw((DS_DynArrayRaw*)(ARR), INDEX, DS_ArrElemSize(*ARR))
 
-#define DS_ArrReverseOrder(ARR)        DS_GeneralArrayReverseOrder((ARR)->data, (ARR)->length, DS_ArrElemSize(*ARR))
+#define DS_ArrReverseOrder(ARR)        DS_GeneralArrayReverseOrder((ARR)->data, (ARR)->count, DS_ArrElemSize(*ARR))
 
 #define DS_ArrRemoveN(ARR, INDEX, N)   DS_ArrRemoveNRaw((DS_DynArrayRaw*)(ARR), INDEX, N, DS_ArrElemSize(*ARR))
 
-#define DS_ArrPop(ARR)                 (ARR)->data[--(ARR)->length]
+#define DS_ArrPop(ARR)                 (ARR)->data[--(ARR)->count]
 
 #define DS_ArrResize(ARR, ELEM, LEN)   (DS_ArrTypecheck(ARR, &(ELEM)), DS_ArrResizeRaw((DS_DynArrayRaw*)(ARR), LEN, &(ELEM), DS_ArrElemSize(*ARR)))
 
 #define DS_ArrResizeUndef(ARR, LEN)    DS_ArrResizeRaw((DS_DynArrayRaw*)(ARR), LEN, NULL, DS_ArrElemSize(*ARR))
 
-#define DS_ArrClear(ARR)               (ARR)->length = 0
+#define DS_ArrClear(ARR)               (ARR)->count = 0
 
 // Reset the array to a default state and free its memory if using the heap allocator.
 #define DS_ArrDeinit(ARR)             DS_ArrDeinitRaw((DS_DynArrayRaw*)(ARR), DS_ArrElemSize(*ARR))
@@ -527,9 +536,9 @@ typedef DS_DynArray(void) DS_DynArrayRaw;
 #define DS_ForArrEach(T, ARR, IT) \
 	(void)((T*)0 == (ARR)->data); /* Trick the compiler into checking that T is the same as the elem type of ARR */ \
 	struct DS_Concat(_dummy_, __LINE__) {int i; T *ptr;}; /* Declaring new struct types in for-loop initializers is not standard C */ \
-	for (struct DS_Concat(_dummy_, __LINE__) IT = {0, (ARR)->data}; IT.i < (ARR)->length; IT.i++, IT.ptr++)
+	for (struct DS_Concat(_dummy_, __LINE__) IT = {0, (ARR)->data}; IT.i < (ARR)->count; IT.i++, IT.ptr++)
 
-DS_API void DS_GeneralArrayReverseOrder(void* data, int length, int elem_size);
+DS_API void DS_GeneralArrayReverseOrder(void* data, int count, int elem_size);
 
 DS_API int DS_ArrPushRaw(DS_DynArrayRaw* array, const void* elem, int elem_size);
 DS_API int DS_ArrPushNRaw(DS_DynArrayRaw* array, const void* elems, int n, int elem_size);
@@ -540,7 +549,7 @@ DS_API void DS_ArrRemoveNRaw(DS_DynArrayRaw* array, int i, int n, int elem_size)
 DS_API void DS_ArrPopRaw(DS_DynArrayRaw* array, DS_OUT void* out_elem, int elem_size);
 DS_API void DS_ArrReserveRaw(DS_DynArrayRaw* array, int capacity, int elem_size);
 DS_API void DS_ArrCloneRaw(DS_Arena* arena, DS_DynArrayRaw* array, int elem_size);
-DS_API void DS_ArrResizeRaw(DS_DynArrayRaw* array, int length, const void* value, int elem_size); // set value to NULL to not initialize the memory
+DS_API void DS_ArrResizeRaw(DS_DynArrayRaw* array, int count, const void* value, int elem_size); // set value to NULL to not initialize the memory
 
 // -- Slot Allocator --------------------------------------------------------------------
 
@@ -675,7 +684,7 @@ static inline void DS_SlotAllocatorInitRaw(SlotAllocatorRaw* allocator,
 static inline void* DS_TakeSlotRaw(SlotAllocatorRaw* allocator) {
 	DS_ProfEnter();
 	void* result = NULL;
-	DS_CHECK(allocator->allocator != NULL); // Did you forget to call DS_SlotAllocatorInit?
+	DS_ASSERT(allocator->allocator != NULL); // Did you forget to call DS_SlotAllocatorInit?
 
 	if (allocator->first_free_elem) {
 		// Take an existing slot
@@ -716,7 +725,7 @@ static inline void* DS_TakeSlotRaw(SlotAllocatorRaw* allocator) {
 
 static inline void DS_FreeSlotRaw(SlotAllocatorRaw* allocator, void* slot) {
 	// It'd be nice to provide some debug checking thing to detect double frees
-	DS_CHECK(allocator->first_free_elem != (char*)slot);
+	DS_ASSERT(allocator->first_free_elem != (char*)slot);
 
 	*(char**)((char*)slot) = allocator->first_free_elem;
 	allocator->first_free_elem = (char*)slot;
@@ -758,7 +767,7 @@ static inline void DS_BucketArrayInitRaw(DS_BucketArrayRaw* array, DS_Allocator*
 	*array = result;
 }
 //static inline void BucketArrayInitUsingSlotAllocatorRaw(DS_BucketArrayRaw *list, SlotAllocatorRaw *slot_allocator, uint32_t elem_size) {
-//	DS_CHECK(slot_allocator->slot_next_ptr_offset > elem_size); // The slot allocator slot size must be >= bucket list element size
+//	DS_ASSERT(slot_allocator->slot_next_ptr_offset > elem_size); // The slot allocator slot size must be >= bucket list element size
 //
 //	DS_BucketArrayRaw result = {0};
 //	result.slot_allocator = slot_allocator;
@@ -800,7 +809,7 @@ static void* DS_BucketArrayGetNextBucket(DS_BucketArrayRaw* array, void* bucket,
 	if (new_bucket == NULL) {
 		int bucket_size = next_bucket_ptr_offset + sizeof(void*);
 		if (array->slot_allocator) {
-			DS_CHECK(array->slot_allocator->slot_size >= (uint32_t)bucket_size);
+			DS_ASSERT(array->slot_allocator->slot_size >= (uint32_t)bucket_size);
 			new_bucket = DS_TakeSlotRaw(array->slot_allocator);
 		}
 		else {
@@ -898,13 +907,13 @@ static inline void* DS_BucketArrayPushRaw(DS_BucketArrayRaw* array, uint32_t ele
 }
 
 DS_API void DS_ArrCloneRaw(DS_Arena* arena, DS_DynArrayRaw* array, int elem_size) {
-	array->data = DS_CloneSize(arena, array->data, array->length * elem_size);
+	array->data = DS_CloneSize(arena, array->data, array->count * elem_size);
 }
 
 DS_API void DS_ArrReserveRaw(DS_DynArrayRaw* array, int capacity, int elem_size) {
 	DS_ProfEnter();
 
-	DS_CHECK(array->allocator != NULL); // Have you called DS_ArrInit?
+	DS_ASSERT(array->allocator != NULL); // Have you called DS_ArrInit?
 
 	int new_capacity = array->capacity;
 	while (capacity > new_capacity) {
@@ -912,7 +921,7 @@ DS_API void DS_ArrReserveRaw(DS_DynArrayRaw* array, int capacity, int elem_size)
 	}
 
 	if (new_capacity != array->capacity) {
-		array->data = DS_AllocatorFn(array->allocator, array->data, array->length * elem_size, new_capacity * elem_size, DS_DEFAULT_ALIGNMENT);
+		array->data = DS_AllocatorFn(array->allocator, array->data, array->count * elem_size, new_capacity * elem_size, DS_DEFAULT_ALIGNMENT);
 		array->capacity = new_capacity;
 	}
 
@@ -923,13 +932,13 @@ DS_API void DS_ArrRemoveRaw(DS_DynArrayRaw* array, int i, int elem_size) { DS_Ar
 
 DS_API void DS_ArrRemoveNRaw(DS_DynArrayRaw* array, int i, int n, int elem_size) {
 	DS_ProfEnter();
-	DS_CHECK(i + n <= array->length);
+	DS_ASSERT(i + n <= array->count);
 
 	char* dst = (char*)array->data + i * elem_size;
 	char* src = dst + elem_size * n;
-	memmove(dst, src, ((char*)array->data + array->length * elem_size) - src);
+	memmove(dst, src, ((char*)array->data + array->count * elem_size) - src);
 
-	array->length -= n;
+	array->count -= n;
 	DS_ProfExit();
 }
 
@@ -941,41 +950,41 @@ DS_API void DS_ArrInsertRaw(DS_DynArrayRaw* array, int at, const void* elem, int
 
 DS_API void DS_ArrInsertNRaw(DS_DynArrayRaw* array, int at, const void* elems, int n, int elem_size) {
 	DS_ProfEnter();
-	DS_CHECK(at <= array->length);
-	DS_ArrReserveRaw(array, array->length + n, elem_size);
+	DS_ASSERT(at <= array->count);
+	DS_ArrReserveRaw(array, array->count + n, elem_size);
 
 	// Move existing elements forward
 	char* offset = (char*)array->data + at * elem_size;
-	memmove(offset + n * elem_size, offset, (array->length - at) * elem_size);
+	memmove(offset + n * elem_size, offset, (array->count - at) * elem_size);
 
 	memcpy(offset, elems, n * elem_size);
-	array->length += n;
+	array->count += n;
 	DS_ProfExit();
 }
 
 DS_API int DS_ArrPushNRaw(DS_DynArrayRaw* array, const void* elems, int n, int elem_size) {
 	DS_ProfEnter();
-	DS_ArrReserveRaw(array, array->length + n, elem_size);
+	DS_ArrReserveRaw(array, array->count + n, elem_size);
 
-	memcpy((char*)array->data + elem_size * array->length, elems, elem_size * n);
+	memcpy((char*)array->data + elem_size * array->count, elems, elem_size * n);
 
-	int result = array->length;
-	array->length += n;
+	int result = array->count;
+	array->count += n;
 	DS_ProfExit();
 	return result;
 }
 
-DS_API void DS_ArrResizeRaw(DS_DynArrayRaw* array, int length, DS_OUT const void* value, int elem_size) {
+DS_API void DS_ArrResizeRaw(DS_DynArrayRaw* array, int count, DS_OUT const void* value, int elem_size) {
 	DS_ProfEnter();
-	DS_ArrReserveRaw(array, length, elem_size);
+	DS_ArrReserveRaw(array, count, elem_size);
 
 	if (value) {
-		for (int i = array->length; i < length; i++) {
+		for (int i = array->count; i < count; i++) {
 			memcpy((char*)array->data + i * elem_size, value, elem_size);
 		}
 	}
 
-	array->length = length;
+	array->count = count;
 	DS_ProfExit();
 }
 
@@ -996,19 +1005,19 @@ DS_API void DS_ArrDeinitRaw(DS_DynArrayRaw* array, int elem_size) {
 
 DS_API int DS_ArrPushRaw(DS_DynArrayRaw* array, const void* elem, int elem_size) {
 	DS_ProfEnter();
-	DS_ArrReserveRaw(array, array->length + 1, elem_size);
+	DS_ArrReserveRaw(array, array->count + 1, elem_size);
 
-	memcpy((char*)array->data + array->length * elem_size, elem, elem_size);
+	memcpy((char*)array->data + array->count * elem_size, elem, elem_size);
 	DS_ProfExit();
-	return array->length++;
+	return array->count++;
 }
 
-DS_API void DS_GeneralArrayReverseOrder(void* data, int length, int elem_size) {
+DS_API void DS_GeneralArrayReverseOrder(void* data, int count, int elem_size) {
 	int i = 0;
-	int j = (length - 1) * elem_size;
+	int j = (count - 1) * elem_size;
 
 	char temp[DS_MAX_ELEM_SIZE];
-	DS_CHECK(DS_MAX_ELEM_SIZE >= elem_size);
+	DS_ASSERT(DS_MAX_ELEM_SIZE >= elem_size);
 
 	while (i < j) {
 		memcpy(temp, (char*)data + i, elem_size);
@@ -1021,18 +1030,17 @@ DS_API void DS_GeneralArrayReverseOrder(void* data, int length, int elem_size) {
 
 DS_API void DS_ArrPopRaw(DS_DynArrayRaw* array, DS_OUT void* out_elem, int elem_size) {
 	DS_ProfEnter();
-	DS_CHECK(array->length >= 1);
-	array->length--;
+	DS_ASSERT(array->count >= 1);
+	array->count--;
 	if (out_elem) {
-		memcpy(out_elem, (char*)array->data + array->length * elem_size, elem_size);
+		memcpy(out_elem, (char*)array->data + array->count * elem_size, elem_size);
 	}
 	DS_ProfExit();
 }
 
 static inline void DS_MapInitRaw(DS_MapRaw* map, DS_Allocator* allocator) {
-	DS_MapRaw empty = {0};
-	*map = empty;
-	map->allocator = allocator;
+	DS_MapRaw result = {allocator};
+	*map = result;
 }
 
 static inline void DS_MapClearRaw(DS_MapRaw* map, int elem_size) {
@@ -1196,7 +1204,7 @@ static inline bool DS_MapGetOrAddRaw(DS_MapRaw* map, const void* key, DS_OUT voi
 
 static bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** out_val_ptr, int K_size, int V_size, int elem_size, int key_offset, int val_offset, uint32_t hash) {
 	DS_ProfEnter();
-	DS_CHECK(map->allocator != NULL); // Have you called DS_MapInit?
+	DS_ASSERT(map->allocator != NULL); // Have you called DS_MapInit?
 
 	if (100 * (map->count + 1) > 70 * map->capacity) {
 		// Grow the map
@@ -1278,7 +1286,7 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw* map, const void* key, int K_size, 
 	bool ok = true;
 
 	char temp[DS_MAX_ELEM_SIZE];
-	DS_CHECK(DS_MAX_ELEM_SIZE >= elem_size);
+	DS_ASSERT(DS_MAX_ELEM_SIZE >= elem_size);
 
 	for (;;) {
 		char* elem_base = (char*)map->data + index * elem_size;
@@ -1371,8 +1379,8 @@ DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment) {
 	DS_ProfEnter();
 
 	bool alignment_is_power_of_2 = ((alignment) & ((alignment)-1)) == 0;
-	DS_CHECK(alignment != 0 && alignment_is_power_of_2);
-	DS_CHECK(alignment <= DS_ARENA_BLOCK_ALIGNMENT);
+	DS_ASSERT(alignment != 0 && alignment_is_power_of_2);
+	DS_ASSERT(alignment <= DS_ARENA_BLOCK_ALIGNMENT);
 
 	DS_ArenaBlockHeader* curr_block = arena->mark.block; // may be NULL
 	void* curr_ptr = arena->mark.ptr;
@@ -1473,7 +1481,7 @@ void* DS_Realloc_Impl(void* old_ptr, int new_size, int new_alignment) {
 	//	inside_allocation_validation = true;
 	//
 	//	bool was_alive = DS_SetRemove(&DS_alive_allocations, &old_ptr);
-	//	DS_CHECK(was_alive);
+	//	DS_ASSERT(was_alive);
 	//	
 	//	inside_allocation_validation = false;
 	//}
@@ -1513,11 +1521,11 @@ void* DS_Realloc_Impl(void* old_ptr, int new_size, int new_alignment) {
 	void* result = _aligned_realloc(old_ptr, new_size, new_alignment);
 
 	//if (result != NULL && !inside_allocation_validation) {
-	//	DS_CHECK(result != NULL);
+	//	DS_ASSERT(result != NULL);
 	//	inside_allocation_validation = true;
 	//
 	//	bool newly_added = DS_SetAdd(&DS_alive_allocations, &result);
-	//	DS_CHECK(newly_added);
+	//	DS_ASSERT(newly_added);
 	//
 	//	inside_allocation_validation = false;
 	//}

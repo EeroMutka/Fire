@@ -32,6 +32,11 @@
 typedef struct STR_View {
 	const char* data;
 	int size;
+#ifdef __cplusplus
+	STR_View() : data(0), size(0) {}
+	STR_View(const char* _data, int _size) : data(_data), size(_size) {}
+	STR_View(const char* c_string) : data(c_string), size((int)strlen(c_string)) {}
+#endif
 } STR_View;
 
 #ifndef STR_API
@@ -116,10 +121,6 @@ STR_API void STR_PrintF(STR_Builder* s, const char* fmt, ...);
 STR_API void STR_PrintVA(STR_Builder* s, const char* fmt, va_list args);
 STR_API void STR_PrintU(STR_Builder* s, uint32_t codepoint); // Print unicode codepoint
 
-// STR_API STR_RangeArray STR_Split(STR_ARENA *arena, STR_View str, char character);
-//#define STR_Join(arena, ...) STR_JoinN(arena, (STR_Array){(STR_View[]){__VA_ARGS__}, sizeof((STR_View[]){__VA_ARGS__}) / sizeof(STR_View)})
-//STR_API STR_View STR_JoinN(STR_ARENA *arena, STR_Array args);
-
 // * Underscores are allowed and skipped
 // * Works with any base up to 16 (i.e. binary, base-10, hex)
 STR_API bool STR_ParseU64Ex(STR_View s, int base, uint64_t* out_value);
@@ -171,7 +172,7 @@ STR_API bool STR_FindLast(STR_View str, uint32_t codepoint, int* out_offset);
 STR_API bool STR_LastIdxOfAnyChar(STR_View str, STR_View chars, int* out_index);
 STR_API bool STR_Contains(STR_View str, STR_View substr);
 STR_API bool STR_ContainsC(STR_View str, const char* substr);
-STR_API bool STR_ContainsCodepoint(STR_View str, uint32_t codepoint);
+STR_API bool STR_ContainsU(STR_View str, uint32_t codepoint);
 
 STR_API STR_View STR_Replace(STR_ARENA* arena, STR_View str, STR_View search_for, STR_View replace_with);
 STR_API STR_View STR_ReplaceMulti(STR_ARENA* arena, STR_View str, STR_Array search_for, STR_Array replace_with);
@@ -381,7 +382,7 @@ STR_API bool STR_FindC(STR_View str, const char* substr, int* out_offset) {
 	return STR_Find(str, substr_v, out_offset);
 };
 
-STR_API bool STR_ContainsCodepoint(STR_View str, uint32_t codepoint) {
+STR_API bool STR_ContainsU(STR_View str, uint32_t codepoint) {
 	for STR_Each(str, r, i) {
 		if (r == codepoint) return true;
 	}

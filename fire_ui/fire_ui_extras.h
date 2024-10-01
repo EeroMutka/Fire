@@ -137,17 +137,17 @@ static void UI_AddValDSArray_(UI_Key key, const char* name, DS_DynArrayRaw* arra
 	const void* default_value, UI_ArrayEditElemFn edit_elem, void* user_data)
 {
 	UI_ValueEditArrayModify modify;
-	UI_AddValArray(key, name, array->data, array->length, elem_size, edit_elem, user_data, &modify);
+	UI_AddValArray(key, name, array->data, array->count, elem_size, edit_elem, user_data, &modify);
 	
 	if (modify.append_to_end) {
-		DS_ArrResizeRaw(array, array->length + 1, NULL, elem_size);
+		DS_ArrResizeRaw(array, array->count + 1, NULL, elem_size);
 		if (default_value) {
-			memcpy((char*)array->data + (array->length-1) * elem_size, default_value, elem_size);
+			memcpy((char*)array->data + (array->count-1) * elem_size, default_value, elem_size);
 		} else {
-			memset((char*)array->data + (array->length-1) * elem_size, 0, elem_size);
+			memset((char*)array->data + (array->count-1) * elem_size, 0, elem_size);
 		}
 	}
-	if (modify.clear) array->length = 0;
+	if (modify.clear) array->count = 0;
 	if (modify.remove_elem != -1) {
 		DS_ArrRemoveRaw(array, modify.remove_elem, elem_size);
 	}
@@ -356,7 +356,7 @@ static void UI_AddBoxWithTextWrappedComputeUnexpandedSize(UI_Box* box, UI_Axis a
 
 		UI_BoxAddVar(box, UI_BoxWithTextWrappedDataKey(), &data);
 
-		box->computed_unexpanded_size.y = data.line_height * (float)data.line_strings.length + 2.f * box->inner_padding.y;
+		box->computed_unexpanded_size.y = data.line_height * (float)data.line_strings.count + 2.f * box->inner_padding.y;
 	}
 }
 
@@ -366,7 +366,7 @@ static void UI_DrawBoxWithTextWrapped(UI_Box* box) {
 	UI_BoxWithTextWrappedData* data;
 	UI_BoxGetVarPtr(box, UI_BoxWithTextWrappedDataKey(), &data);
 
-	for (int i = 0; i < data->line_strings.length; i++) {
+	for (int i = 0; i < data->line_strings.count; i++) {
 		STR_View line_string = data->line_strings.data[i];
 
 		UI_Vec2 text_pos = {

@@ -108,7 +108,7 @@ typedef struct UI_Text {
 	// TODO: we could add function pointers here to let you use your own text data-structure instead of this.
 } UI_Text;
 
-#define UI_TextToStr(TEXT) UI_LangAgnosticLiteral(STR_View){(const char*)(TEXT).text.data, (TEXT).text.length}
+#define UI_TextToStr(TEXT) UI_LangAgnosticLiteral(STR_View){(const char*)(TEXT).text.data, (TEXT).text.count}
 
 typedef struct UI_CachedGlyphKey {
 	// !!! memcmp is used on this struct, so it must be manually padded for 0-initialized padding.
@@ -450,6 +450,8 @@ typedef struct UI_ValNumericState {
 typedef struct UI_SplittersState {
 	int holding_splitter;  // one-based index
 	int hovering_splitter; // one-based index
+	float* panel_end_offsets;
+	int panel_count;
 } UI_SplittersState;
 
 // -- Global state -------
@@ -617,7 +619,7 @@ UI_API bool UI_IsClickingDownAndHovered(UI_Key key);
 
 UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection);
 
-UI_API UI_SplittersState* UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count, float* panel_end_offsets, float panel_min_size);
+UI_API UI_SplittersState* UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count, float panel_min_size);
 
 UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontView font);
 UI_API float UI_TextWidth(STR_View text, UI_FontView font);
@@ -750,7 +752,7 @@ static float UI_XOffsetFromColumn(int col, STR_View line, UI_FontView font) {
 static STR_View UI_GetLineString(int line, const UI_Text* text) {
 	UI_ProfEnter();
 	int lo = line == 0 ? 0 : DS_ArrGet(text->line_offsets, line - 1);
-	int hi = line == text->line_offsets.length ? text->text.length : DS_ArrGet(text->line_offsets, line);
+	int hi = line == text->line_offsets.count ? text->text.count : DS_ArrGet(text->line_offsets, line);
 	STR_View result = { text->text.data, hi - lo };
 	UI_ProfExit();
 	return result;
@@ -759,7 +761,7 @@ static STR_View UI_GetLineString(int line, const UI_Text* text) {
 static bool UI_MarkIsValid(UI_Mark mark, const UI_Text* text) {
 	UI_ProfEnter();
 	bool result = false;
-	if (mark.line > 0 && mark.line < text->line_offsets.length) {
+	if (mark.line > 0 && mark.line < text->line_offsets.count) {
 		STR_View line_str = UI_GetLineString(mark.line, text);
 		result = mark.col >= 0 && mark.col <= STR_CodepointCount(line_str);
 	}
@@ -773,7 +775,7 @@ static int UI_MarkToByteOffset(UI_Mark mark, const UI_Text* text) {
 	STR_View after = STR_SliceAfter(UI_TextToStr(*text), line_start);
 
 	int i = 0;
-	int result = text->text.length;
+	int result = text->text.count;
 	for STR_Each(after, r, offset) {
 		if (i == mark.col) {
 			result = line_start + offset;
@@ -934,7 +936,7 @@ static void UI_MoveMarkH(UI_Mark* mark, const UI_Text* text, int dir, bool ctrl)
 		int end_col = STR_CodepointCount(UI_GetLineString(mark->line, text));
 
 		if (mark->col + dir > end_col) {
-			if (mark->line < text->line_offsets.length) {
+			if (mark->line < text->line_offsets.count) {
 				mark->line += 1;
 				mark->col = 0;
 			}
@@ -1025,8 +1027,8 @@ UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection) {
 	UI_ProfEnter();
 	selection->_[0] = UI_MARK{0};
 	selection->_[1] = UI_MARK{
-		text->line_offsets.length,
-		STR_CodepointCount(UI_GetLineString(text->line_offsets.length, text)),
+		text->line_offsets.count,
+		STR_CodepointCount(UI_GetLineString(text->line_offsets.count, text)),
 	};
 	selection->cursor = 1;
 	UI_ProfExit();
@@ -1186,7 +1188,7 @@ UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* file
 		// }
 
 		//OS_FilePicker(
-		//if (file.length) {
+		//if (file.count) {
 		//	// reset scroll
 		//	(*UI_.box_from_key[edit_text_key])->scroll_target = {};
 		//
@@ -2117,8 +2119,8 @@ UI_API void UI_PopBox(UI_Box* box) {
 }
 
 UI_API void UI_PopBoxN(UI_Box* box, int n) {
-	UI_ASSERT(UI_STATE.box_stack.length >= n);
-	UI_STATE.box_stack.length -= n - 1;
+	UI_ASSERT(UI_STATE.box_stack.count >= n);
+	UI_STATE.box_stack.count -= n - 1;
 	UI_Box* last_popped = DS_ArrPop(&UI_STATE.box_stack);
 	UI_ASSERT(last_popped == box);
 }
@@ -2139,7 +2141,7 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size, UI_FontV
 	memset(&UI_STATE.outputs, 0, sizeof(UI_STATE.outputs));
 	UI_STATE.window_size = window_size;
 
-	UI_ASSERT(UI_STATE.box_stack.length == 1);
+	UI_ASSERT(UI_STATE.box_stack.count == 1);
 	UI_STATE.mouse_pos = UI_AddV2(UI_STATE.inputs.mouse_position, UI_VEC2{ 0.5f, 0.5f });
 	UI_STATE.base_font = base_font;
 	UI_STATE.icons_font = icons_font;
@@ -2412,7 +2414,7 @@ UI_API void UI_BoxComputeRects(UI_Box* box, UI_Vec2 box_position) {
 static void UI_FinalizeDrawBatch() {
 	UI_ProfEnter();
 	uint32_t first_index = 0;
-	if (UI_STATE.draw_calls.length > 0) {
+	if (UI_STATE.draw_calls.count > 0) {
 		UI_DrawCall last = DS_ArrPeek(UI_STATE.draw_calls);
 		first_index = last.first_index + last.index_count;
 	}
@@ -2455,20 +2457,29 @@ UI_API void UI_EndFrame(UI_Outputs* outputs) {
 	UI_FinalizeDrawBatch();
 
 	UI_STATE.outputs.draw_calls = UI_STATE.draw_calls.data;
-	UI_STATE.outputs.draw_calls_count = UI_STATE.draw_calls.length;
+	UI_STATE.outputs.draw_calls_count = UI_STATE.draw_calls.count;
 	*outputs = UI_STATE.outputs;
 
 	UI_ProfExit();
 }
 
-UI_API UI_SplittersState* UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count,
-	float* panel_end_offsets, float panel_min_width)
+UI_API UI_SplittersState* UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count, float panel_min_width)
 {
 	UI_ProfEnter();
 	UI_ASSERT(panel_count > 0);
 
 	UI_SplittersState* data;
 	UI_BoxGetRetainedVar(UI_MakeVarHolderBox(key), 0, &data);
+
+	float* panel_end_offsets = (float*)DS_ArenaPushZero(&UI_STATE.frame_arena, sizeof(float) * panel_count);
+	if (data->panel_end_offsets) {
+		int panel_copy_count = UI_Min(data->panel_count, panel_count);
+		for (int i = 0; i < panel_copy_count; i++) {
+			panel_end_offsets[i] = data->panel_end_offsets[i]; // Copy over from the previous frame
+		}
+	}
+	data->panel_end_offsets = panel_end_offsets;
+	data->panel_count = panel_count;
 
 	// Sanitize positions
 	float offset = 0.f;
@@ -2561,12 +2572,12 @@ UI_API UI_FontIndex UI_FontInit(const void* ttf_data, float y_offset) {
 	UI_ProfEnter();
 	
 	UI_FontIndex idx = -1;
-	for (int i = 0; i < UI_STATE.fonts.length; i++) {
+	for (int i = 0; i < UI_STATE.fonts.count; i++) {
 		if (UI_STATE.fonts.data[i].data == NULL) { idx = i; break; }
 	}
 	if (idx == -1) {
-		idx = UI_STATE.fonts.length;
-		DS_ArrResizeUndef(&UI_STATE.fonts, UI_STATE.fonts.length + 1);
+		idx = UI_STATE.fonts.count;
+		DS_ArrResizeUndef(&UI_STATE.fonts, UI_STATE.fonts.count + 1);
 	}
 
 	UI_Font* font = &UI_STATE.fonts.data[idx];
