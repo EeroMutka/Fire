@@ -213,7 +213,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 		UI_Box* arrangers = UI_PushArrangerSet(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit());
 
-		for (int i = 0; i < state->trees.length; i++) {
+		for (int i = 0; i < state->trees.count; i++) {
 			UIDemoTreeSpecie* tree = &state->trees.data[i];
 
 			UI_Box* tree_box = UI_AddBox(UI_KEY1(tree->key),
