@@ -9,7 +9,7 @@ int main() {
 	//////////////////////
 	
 	BUILD_Project ui_demo_dx11;
-	BUILD_InitProject(&ui_demo_dx11, "ui_demo_dx11", &opts);
+	BUILD_ProjectInit(&ui_demo_dx11, "ui_demo_dx11", &opts);
 	BUILD_AddIncludeDir(&ui_demo_dx11, "../../"); // Repository root folder
 	
 	BUILD_AddSourceFile(&ui_demo_dx11, "../ui_demo_dx11/ui_demo.cpp");
