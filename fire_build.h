@@ -103,6 +103,9 @@ struct BUILD_Project {
 
 #ifdef /* ---------------- */ BUILD_IMPLEMENTATION /* ---------------- */
 
+#pragma comment(lib, "Ole32.lib") // for StringFromGUID2
+#pragma comment(lib, "Advapi32.lib") // for RegCloseKey
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -110,10 +113,6 @@ struct BUILD_Project {
 #include <string.h>
 #include <assert.h>
 #include <Windows.h>
-
-#pragma comment(lib, "Ole32.lib") // for StringFromGUID2
-#pragma comment(lib, "Advapi32.lib") // for RegCloseKey
-#pragma comment(lib, "OleAut32.lib") // for SysFreeString
 
 #define BUILD_ArrayReserve(ARR, CAPACITY) \
 	while ((CAPACITY) > (ARR)->capacity) { \
