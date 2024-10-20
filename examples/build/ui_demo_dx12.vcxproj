@@ -7,7 +7,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{764F60AD-D9D3-4EE4-8795-60375ECCF3EC}</ProjectGuid>
+    <ProjectGuid>{2612E24D-07BA-4E0A-99F3-E96C607A815A}</ProjectGuid>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Custom|x64'" Label="Configuration">
@@ -24,7 +24,7 @@
   </ImportGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Custom|x64'">
     <OutDir>./</OutDir>
-    <IntDir>./ui_demo_dx11/</IntDir>
+    <IntDir>./ui_demo_dx12/</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Custom|x64'">
     <ClCompile>
@@ -51,7 +51,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="../ui_demo_dx11/ui_demo_dx11.cpp" />
+    <ClCompile Include="../ui_demo_dx12/ui_demo_dx12.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

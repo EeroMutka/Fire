@@ -1,11 +1,11 @@
-#define ENABLE_D3D11_DEBUG_MODE false
-
 #pragma comment (lib, "gdi32")
 #pragma comment (lib, "user32")
 #pragma comment (lib, "dxguid")
 #pragma comment (lib, "dxgi")
 #pragma comment (lib, "d3d11")
 #pragma comment (lib, "d3dcompiler")
+
+#define ENABLE_D3D11_DEBUG_MODE false
 
 #define _CRT_SECURE_NO_WARNINGS
 #include <assert.h>
@@ -40,7 +40,7 @@
 #include "fire_ui/fire_ui_backend_dx11.h"
 #include "fire_ui/fire_ui_backend_fire_os.h"
 
-#include "ui_demo_window.h"
+#include "../shared/ui_"
 
 //// Globals ///////////////////////////////////////////////
 
