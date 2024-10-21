@@ -7,7 +7,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{2612E24D-07BA-4E0A-99F3-E96C607A815A}</ProjectGuid>
+    <ProjectGuid>{DCF76FC8-80F2-4F50-9BD8-EE9FB3E96730}</ProjectGuid>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Custom|x64'" Label="Configuration">

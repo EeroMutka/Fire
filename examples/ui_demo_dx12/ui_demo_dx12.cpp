@@ -119,6 +119,7 @@ static void InitGPU() {
 	assert(ok);
 }
 
+
 static void WaitForPreviousFrame() {
     // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
     // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
@@ -141,11 +142,7 @@ static void WaitForPreviousFrame() {
     g_dx_back_buffer_index = g_dx_swapchain->GetCurrentBackBufferIndex();
 }
 
-int main() {
-	g_window = OS_WINDOW_Create(g_window_size[0], g_window_size[1], "UI demo (DX12)");
-	
-	InitGPU();
-
+static void LoadGPUAssets() {
     bool ok = true;
 
     // Create an empty root signature.
@@ -179,10 +176,10 @@ int main() {
         UINT compileFlags = 0;
 #endif
 
-        ok = D3DCompileFromFile(L"C:\\dev\\FireRepo\\examples\\ui_demo_dx12\\shaders.hlsl", NULL, NULL, "VSMain", "vs_5_0", compileFlags, 0, &vertex_shader, NULL) == S_OK;
+        ok = D3DCompileFromFile(L"..\\ui_demo_dx12\\shaders.hlsl", NULL, NULL, "VSMain", "vs_5_0", compileFlags, 0, &vertex_shader, NULL) == S_OK;
         assert(ok);
 
-        ok = D3DCompileFromFile(L"C:\\dev\\FireRepo\\examples\\ui_demo_dx12\\shaders.hlsl", NULL, NULL, "PSMain", "ps_5_0", compileFlags, 0, &pixel_shader, NULL) == S_OK;
+        ok = D3DCompileFromFile(L"..\\ui_demo_dx12\\shaders.hlsl", NULL, NULL, "PSMain", "ps_5_0", compileFlags, 0, &pixel_shader, NULL) == S_OK;
         assert(ok);
 
         // Define the vertex input layout.
@@ -199,7 +196,7 @@ int main() {
         pso_desc.pRootSignature = g_dx_root_signature;
         pso_desc.VS = { vertex_shader->GetBufferPointer(), vertex_shader->GetBufferSize() };
         pso_desc.PS = { pixel_shader->GetBufferPointer(), pixel_shader->GetBufferSize() };
-        
+
         pso_desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
         pso_desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
         pso_desc.RasterizerState.FrontCounterClockwise = false;
@@ -211,7 +208,7 @@ int main() {
         pso_desc.RasterizerState.AntialiasedLineEnable = false;
         pso_desc.RasterizerState.ForcedSampleCount = 0;
         pso_desc.RasterizerState.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
-        
+
         pso_desc.BlendState.AlphaToCoverageEnable = false;
         pso_desc.BlendState.RenderTarget[0].BlendEnable = false;
         pso_desc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
@@ -317,6 +314,80 @@ int main() {
         // complete before continuing.
         WaitForPreviousFrame();
     }
+}
 
-	TODO();
+static D3D12_RESOURCE_BARRIER Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES old_state, D3D12_RESOURCE_STATES new_state) {
+    D3D12_RESOURCE_BARRIER barrier = { D3D12_RESOURCE_BARRIER_TYPE_TRANSITION };
+    barrier.Transition.pResource = resource;
+    barrier.Transition.StateBefore = old_state;
+    barrier.Transition.StateAfter = new_state;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    return barrier;
+}
+
+int main() {
+	g_window = OS_WINDOW_Create(g_window_size[0], g_window_size[1], "UI demo (DX12)");
+	
+	InitGPU();
+    LoadGPUAssets();
+
+    while (!OS_WINDOW_ShouldClose(&g_window)) {
+
+        OS_WINDOW_Event event; 
+        while (OS_WINDOW_PollEvent(&g_window, &event, NULL, NULL)) {}
+
+        // Populate the command buffer
+        {
+            // Command list allocators can only be reset when the associated
+            // command lists have finished execution on the GPU; apps should use
+            // fences to determine GPU execution progress.
+            bool ok = g_dx_command_allocator->Reset() == S_OK;
+            assert(ok);
+
+            // However, when ExecuteCommandList() is called on a particular command 
+            // list, that command list can then be reset at any time and must be before 
+            // re-recording.
+            ok = g_dx_command_list->Reset(g_dx_command_allocator,  g_dx_pipeline_state) == S_OK;
+            assert(ok);
+
+            g_dx_command_list->SetGraphicsRootSignature(g_dx_root_signature);
+        
+            D3D12_VIEWPORT viewport = {};
+            viewport.Width = (float)g_window_size[0];
+            viewport.Height = (float)g_window_size[1];
+            g_dx_command_list->RSSetViewports(1, &viewport);
+
+            D3D12_RECT scissor_rect = {};
+            scissor_rect.right = g_window_size[0];
+            scissor_rect.bottom = g_window_size[1];
+            g_dx_command_list->RSSetScissorRects(1, &scissor_rect);
+
+            D3D12_RESOURCE_BARRIER present_to_rt = Transition(g_dx_back_buffers[g_dx_back_buffer_index], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            g_dx_command_list->ResourceBarrier(1, &present_to_rt);
+
+            D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = g_dx_rtv_heap->GetCPUDescriptorHandleForHeapStart();
+            rtv_handle.ptr += g_dx_back_buffer_index * g_dx_rtv_descriptor_size;
+            g_dx_command_list->OMSetRenderTargets(1, &rtv_handle, false, NULL);
+
+            const float clear_color[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+            g_dx_command_list->ClearRenderTargetView(rtv_handle, clear_color, 0, NULL);
+            g_dx_command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            g_dx_command_list->IASetVertexBuffers(0, 1, &g_dx_vertex_buffer_view);
+            g_dx_command_list->DrawInstanced(3, 1, 0, 0);
+
+            D3D12_RESOURCE_BARRIER rt_to_present = Transition(g_dx_back_buffers[g_dx_back_buffer_index], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+            g_dx_command_list->ResourceBarrier(1, &rt_to_present);
+
+            ok = g_dx_command_list->Close() == S_OK;
+            assert(ok);
+        }
+
+        ID3D12CommandList* command_lists[] = { g_dx_command_list };
+        g_dx_command_queue->ExecuteCommandLists(DS_ArrayCount(command_lists), command_lists);
+
+        bool ok = g_dx_swapchain->Present(1, 0) == S_OK;
+        assert(ok);
+
+        WaitForPreviousFrame();
+    }
 }
