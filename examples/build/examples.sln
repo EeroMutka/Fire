@@ -1,0 +1,25 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.6.33712.159
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ui_demo_dx11", "ui_demo_dx11.vcxproj", "{764F60AD-D9D3-4EE4-8795-60375ECCF3EC}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ui_demo_dx12", "ui_demo_dx12.vcxproj", "{2612E24D-07BA-4E0A-99F3-E96C607A815A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Custom|x64 = Custom|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{764F60AD-D9D3-4EE4-8795-60375ECCF3EC}.Custom|x64.ActiveCfg = Custom|x64
+		{764F60AD-D9D3-4EE4-8795-60375ECCF3EC}.Custom|x64.Build.0 = Custom|x64
+		{2612E24D-07BA-4E0A-99F3-E96C607A815A}.Custom|x64.ActiveCfg = Custom|x64
+		{2612E24D-07BA-4E0A-99F3-E96C607A815A}.Custom|x64.Build.0 = Custom|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		    SolutionGuid = {E8A6471F-96EE-4CB5-A6F7-DD09AD151C28}
+	EndGlobalSection
+EndGlobal
