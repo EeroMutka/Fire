@@ -1,36 +1,3 @@
-// This file is part of the Fire UI library, see "fire_ui.h"
-
-static const char UI_DX11_SHADER_SRC[] = ""
-"cbuffer constants : register(b0) {\n"
-"float2 pixel_size;\n"
-"}\n"
-"Texture2D    mytexture : register(t0);\n"
-"SamplerState mysampler : register(s0);\n"
-"\n"
-"struct vertexdata {\n"
-"	float2 position : POS;\n"
-"	float2 uv       : UVPOS;\n"
-"	float4 color    : COL;\n"
-"};\n"
-"\n"
-"struct pixeldata {\n"
-"	float4 position : SV_POSITION;\n"
-"	float2 uv       : UVPOS;\n"
-"	float4 color    : COL;\n"
-"};\n"
-"\n"
-"pixeldata vertex_shader(vertexdata vertex) {\n"
-"	pixeldata output;\n"
-"	output.position = float4(2.*vertex.position*pixel_size - 1., 0.5, 1);\n"
-"	output.position.y *= -1.;\n"
-"	output.uv = vertex.uv;\n"
-"	output.color = vertex.color;\n"
-"	return output;\n"
-"}\n"
-"\n"
-"float4 pixel_shader(pixeldata pixel) : SV_TARGET { \n"
-"	return mytexture.Sample(mysampler, pixel.uv) * pixel.color;\n"
-"}\n";
 
 typedef struct UI_DX11_State {
 	ID3D11Device* device;
@@ -151,8 +118,40 @@ static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11Device
 	state.device = device;
 	state.dc = dc;
 
+	static const char shader_src[] = "\
+	cbuffer constants : register(b0) {\
+		float2 pixel_size;\
+	}\
+	Texture2D    mytexture : register(t0);\
+	SamplerState mysampler : register(s0);\
+	\
+	struct vertexdata {\
+		float2 position : POS;\
+		float2 uv       : UVPOS;\
+		float4 color    : COL;\
+	};\
+	\
+	struct pixeldata {\
+		float4 position : SV_POSITION;\
+		float2 uv       : UVPOS;\
+		float4 color    : COL;\
+	};\
+	\
+	pixeldata vertex_shader(vertexdata vertex) {\
+		pixeldata output;\
+		output.position = float4(2.*vertex.position*pixel_size - 1., 0.5, 1);\
+		output.position.y *= -1.;\
+		output.uv = vertex.uv;\
+		output.color = vertex.color;\
+		return output;\
+	}\
+	\
+	float4 pixel_shader(pixeldata pixel) : SV_TARGET {\
+		return mytexture.Sample(mysampler, pixel.uv) * pixel.color;\
+	}";
+
 	ID3DBlob* vertexshaderCSO;
-	D3DCompile(UI_DX11_SHADER_SRC, sizeof(UI_DX11_SHADER_SRC) - 1, "VS", NULL, NULL, "vertex_shader", "vs_5_0", 0, 0, &vertexshaderCSO, NULL);
+	D3DCompile(shader_src, sizeof(shader_src) - 1, "VS", NULL, NULL, "vertex_shader", "vs_5_0", 0, 0, &vertexshaderCSO, NULL);
 
 	device->CreateVertexShader(vertexshaderCSO->GetBufferPointer(), vertexshaderCSO->GetBufferSize(), NULL, &state.vertex_shader);
 
@@ -167,7 +166,7 @@ static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11Device
 	///////////////////////////////////////////////////////////////////////////////////////////////
 
 	ID3DBlob* pixelshaderCSO;
-	D3DCompile(UI_DX11_SHADER_SRC, sizeof(UI_DX11_SHADER_SRC) - 1, "PS", NULL, NULL, "pixel_shader", "ps_5_0", 0, 0, &pixelshaderCSO, NULL);
+	D3DCompile(shader_src, sizeof(shader_src) - 1, "PS", NULL, NULL, "pixel_shader", "ps_5_0", 0, 0, &pixelshaderCSO, NULL);
 
 	device->CreatePixelShader(pixelshaderCSO->GetBufferPointer(), pixelshaderCSO->GetBufferSize(), NULL, &state.pixel_shader);
 

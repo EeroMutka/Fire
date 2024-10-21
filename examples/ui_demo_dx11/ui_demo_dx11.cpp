@@ -1,22 +1,13 @@
-#pragma comment (lib, "gdi32")
-#pragma comment (lib, "user32")
-#pragma comment (lib, "dxguid")
-#pragma comment (lib, "dxgi")
+#define _CRT_SECURE_NO_WARNINGS
 #pragma comment (lib, "d3d11")
 #pragma comment (lib, "d3dcompiler")
 
-#define ENABLE_D3D11_DEBUG_MODE false
+#include <d3d11.h>
+#include <d3dcompiler.h>
 
-#define _CRT_SECURE_NO_WARNINGS
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
-
-#define COBJMACROS
-#include <windows.h>
-#include <d3d11.h>
-#include <dxgi1_3.h>
-#include <d3dcompiler.h>
 
 #include "fire_ds.h"
 
@@ -40,7 +31,9 @@
 #include "fire_ui/fire_ui_backend_dx11.h"
 #include "fire_ui/fire_ui_backend_fire_os.h"
 
-#include "../shared/ui_"
+#include "../shared/ui_demo_window.h"
+
+#define DEBUG_MODE 0
 
 //// Globals ///////////////////////////////////////////////
 
@@ -137,7 +130,7 @@ static void AppInit() {
 	swapchain_desc.Windowed          = TRUE;
 	swapchain_desc.SwapEffect        = DXGI_SWAP_EFFECT_DISCARD;
 
-	uint32_t create_device_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | (ENABLE_D3D11_DEBUG_MODE ? D3D11_CREATE_DEVICE_DEBUG : 0);
+	uint32_t create_device_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | (DEBUG_MODE ? D3D11_CREATE_DEVICE_DEBUG : 0);
 
 	HRESULT res = D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL,
 		create_device_flags, dx_feature_levels, ARRAYSIZE(dx_feature_levels), D3D11_SDK_VERSION,
