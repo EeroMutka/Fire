@@ -72,7 +72,7 @@ static void* UI_DX11_AtlasMapUntilDraw(int atlas_id) {
 	if (mapped->pData == NULL) {
 		ID3D11Texture2D* staging = UI_DX11_STATE.atlases_staging[atlas_id];
 		UI_DX11_STATE.dc->Map(staging, 0, D3D11_MAP_WRITE, 0, mapped);
-		assert(mapped->pData != NULL);
+		UI_ASSERT(mapped->pData != NULL);
 	}
 	return mapped->pData;
 }
@@ -82,7 +82,7 @@ static void* UI_DX11_BufferMapUntilDraw(int buffer_id) {
 	if (mapped->pData == NULL) {
 		ID3D11Buffer* buffer = UI_DX11_STATE.buffers[buffer_id];
 		UI_DX11_STATE.dc->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, mapped);
-		assert(mapped->pData != NULL);
+		UI_ASSERT(mapped->pData != NULL);
 	}
 
 	return mapped->pData;
@@ -308,7 +308,7 @@ static void UI_DX11_Draw(UI_Outputs* outputs, ID3D11RenderTargetView* framebuffe
 		}
 
 		ID3D11ShaderResourceView* texture_srv = (ID3D11ShaderResourceView*)draw_call->texture;
-		assert(texture_srv != NULL);
+		UI_ASSERT(texture_srv != NULL);
 		UI_DX11_STATE.dc->PSSetShaderResources(0, 1, &texture_srv);
 		UI_DX11_STATE.dc->DrawIndexed(draw_call->index_count, draw_call->first_index, 0);
 	}

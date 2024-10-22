@@ -373,7 +373,7 @@ static void UI_DrawBoxWithTextWrapped(UI_Box* box) {
 			box->computed_position.x + box->inner_padding.x,
 			box->computed_position.y + box->inner_padding.y + (float)i * data->line_height,
 		};
-		UI_DrawText(line_string, box->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, UI_WHITE, &box->computed_rect);
+		UI_DrawText(line_string, box->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, UI_BLACK, &box->computed_rect);
 	}
 }
 

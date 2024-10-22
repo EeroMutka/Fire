@@ -177,6 +177,8 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 	{
 		UI_Box* row = UI_AddBox(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal | UI_BoxFlag_DrawBorder);
+		row->inner_padding.x = 10.f;
+		row->inner_padding.y = 10.f;
 		UI_PushBox(row);
 		if (UI_Clicked(UI_AddButtonC(UI_KEY(), UI_SizeFlex(1.f), UI_SizeFit(), 0, "Flex button")->key))          printf("Pressed flexible button!\n");
 		if (UI_Clicked(UI_AddButtonC(UI_KEY(), UI_SizeFit(), UI_SizeFit(), 0, "Fit button")->key))               printf("Pressed fitting button!\n");

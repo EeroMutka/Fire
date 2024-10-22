@@ -1648,9 +1648,11 @@ UI_API void UI_DrawBox(UI_Box* box) {
 
 static UI_DrawBoxDefaultArgs* UI_DrawBoxDefaultArgsConstDefaults() {
 	static const UI_DrawBoxDefaultArgs args = {
-		UI_COLOR{ 250, 255, 255, 255 }, // text_color
-		UI_COLOR{ 255, 255, 255, 50 },  // transparent_bg_color
-		UI_COLOR{ 50, 50, 50, 255 },    // opaque_bg_color
+		UI_COLOR{ 0, 0, 0, 255 }, // text_color
+			//UI_COLOR{ 250, 255, 255, 255 }, // text_color
+		UI_COLOR{ 255, 255, 255, 70 },  // transparent_bg_color
+		//UI_COLOR{ 50, 50, 50, 255 },    // opaque_bg_color
+		UI_COLOR{ 160, 160, 160, 255 },    // opaque_bg_color
 		UI_COLOR{ 0, 0, 0, 128 },       // border_color
 	};
 	return (UI_DrawBoxDefaultArgs*)&args;

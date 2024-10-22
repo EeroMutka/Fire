@@ -1,5 +1,5 @@
 // For debug mode, uncomment this line:
-#define UI_DX12_DEBUG_MODE
+//#define UI_DX12_DEBUG_MODE
 
 #define _CRT_SECURE_NO_WARNINGS
 #pragma comment (lib, "d3d12")
@@ -397,13 +397,18 @@ static D3D12_RESOURCE_BARRIER Transition(ID3D12Resource* resource, D3D12_RESOURC
 static void AppInit() {
     DS_ArenaInit(&g_persist, 4096, DS_HEAP);
 
+    UIDemoInit(&g_demo_state, &g_persist);
+
     g_window = OS_WINDOW_Create(g_window_size[0], g_window_size[1], "UI demo (DX12)");
 	
 	InitGPU();
     LoadGPUAssets();
 
+    D3D12_CPU_DESCRIPTOR_HANDLE atlas_cpu_descriptor = g_dx_srv_heap->GetCPUDescriptorHandleForHeapStart();
+    D3D12_GPU_DESCRIPTOR_HANDLE atlas_gpu_descriptor = g_dx_srv_heap->GetGPUDescriptorHandleForHeapStart();
+
     UI_Backend ui_backend = {0};
-    UI_DX12_Init(&ui_backend, g_dx_device);
+    UI_DX12_Init(&ui_backend, g_dx_device, atlas_cpu_descriptor, atlas_gpu_descriptor);
     UI_Init(DS_HEAP, &ui_backend);
 
     // NOTE: the font data must remain alive across the whole program lifetime!
@@ -459,14 +464,16 @@ int main() {
             rtv_handle.ptr += g_dx_back_buffer_index * g_dx_rtv_descriptor_size;
             g_dx_command_list->OMSetRenderTargets(1, &rtv_handle, false, NULL);
 
+            g_dx_command_list->SetDescriptorHeaps(1, &g_dx_srv_heap);
+
             // draw
 
-            const float clear_color[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+            const float clear_color[] = { 0.5f, 0.5f, 0.5f, 1.0f };
             g_dx_command_list->ClearRenderTargetView(rtv_handle, clear_color, 0, NULL);
 
             g_dx_command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            g_dx_command_list->IASetVertexBuffers(0, 1, &g_dx_vertex_buffer_view);
-            g_dx_command_list->DrawInstanced(3, 1, 0, 0);
+            //g_dx_command_list->IASetVertexBuffers(0, 1, &g_dx_vertex_buffer_view);
+            //g_dx_command_list->DrawInstanced(3, 1, 0, 0);
             
             {
                 UI_Vec2 window_size = {(float)g_window_size[0], (float)g_window_size[1]};
