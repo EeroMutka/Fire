@@ -91,7 +91,7 @@ static UI_TextureID UI_DX12_CreateAtlas(int atlas_id, uint32_t width, uint32_t h
 }
 
 static void UI_DX12_DestroyAtlas(int atlas_id) {
-	TODO();
+	__debugbreak(); //TODO
 }
 
 static void* UI_DX12_AtlasMapUntilDraw(int atlas_id) {
@@ -145,7 +145,7 @@ static void UI_DX12_CreateIndexBuffer(int buffer_id, uint32_t size_in_bytes) {
 }
 
 static void UI_DX12_DestroyBuffer(int buffer_id) {
-	TODO();
+	__debugbreak(); //TODO
 }
 
 static void UI_DX12_Init(UI_Backend* backend, ID3D12Device* device, D3D12_CPU_DESCRIPTOR_HANDLE atlas_cpu_descriptor, D3D12_GPU_DESCRIPTOR_HANDLE atlas_gpu_descriptor) {
@@ -312,7 +312,7 @@ static void UI_DX12_Init(UI_Backend* backend, ID3D12Device* device, D3D12_CPU_DE
 }
 
 static void UI_DX12_Deinit(void) {
-	TODO();
+	__debugbreak(); //TODO
 }
 
 // The following graphics state is expected to be already set, and will not be modified:
