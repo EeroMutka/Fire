@@ -1,4 +1,3 @@
-// This file is part of the Fire UI library, see "fire_ui.h"
 
 static void* UI_OS_GetClipboardAlloc(int size, void* alloc_data) {
 	return DS_ArenaPush(UI_FrameArena(), size);
@@ -61,7 +60,12 @@ static void UI_OS_RegisterInputEvent(UI_Inputs* ui_inputs, const OS_WINDOW_Event
 		if (ui_input) {
 			if (event->kind == OS_WINDOW_EventKind_Press) {
 				ui_inputs->input_events[ui_input] |= UI_InputEvent_PressOrRepeat;
-				if (!event->is_repeat) ui_inputs->input_events[ui_input] |= UI_InputEvent_Press;
+				if (!event->is_repeat) {
+					ui_inputs->input_events[ui_input] |= UI_InputEvent_Press;
+				}
+				if (event->mouse_click_index > 0) {
+					ui_inputs->input_events[ui_input] |= UI_InputEvent_DoubleClick;
+				}
 			}
 			else {
 				ui_inputs->input_events[ui_input] |= UI_InputEvent_Release;

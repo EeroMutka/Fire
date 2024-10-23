@@ -1,7 +1,7 @@
 
-UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* value, float* alpha);
+UI_API UI_Box* UI_AddColorPicker(UI_Key key, float* hue, float* saturation, float* value, float* alpha);
 
-UI_API UI_Box* UI_HueSaturationCircle(UI_Key key, float diameter, float* hue, float* saturation);
+UI_API UI_Box* UI_AddHueSaturationCircle(UI_Key key, float diameter, float* hue, float* saturation);
 
 #ifdef /********************/ UI_IMPLEMENTATION /********************/
 
@@ -98,11 +98,11 @@ static void UI_DrawHueSaturationCircle(UI_Box* box) {
 	UI_DrawCircle(circle_p, 5.f, 8, current_rgba);
 }
 
-UI_API UI_Box* UI_HueSaturationCircle(UI_Key key, float diameter, float* hue, float* saturation) {
+UI_API void UI_AddHueSaturationCircle(UI_Box* box, float diameter, float* hue, float* saturation) {
 	UI_ASSERT(*hue >= 0.f && *hue <= 1.f);
 	UI_ASSERT(*saturation >= 0.f && *saturation <= 1.f);
 
-	UI_Box* box = UI_AddBox(key, diameter, diameter, UI_BoxFlag_DrawBorder);
+	UI_AddBox(box, diameter, diameter, UI_BoxFlag_DrawBorder);
 	box->draw = UI_DrawHueSaturationCircle;
 
 	if (box->prev_frame) {
@@ -113,12 +113,12 @@ UI_API UI_Box* UI_HueSaturationCircle(UI_Key key, float diameter, float* hue, fl
 			UI_Vec2 mouse_pos_relative = UI_SubV2(UI_STATE.mouse_pos, middle);
 			float saturation = sqrtf(mouse_pos_relative.x * mouse_pos_relative.x + mouse_pos_relative.y * mouse_pos_relative.y) / radius;
 			if (saturation < 1.f) {
-				UI_STATE.mouse_clicking_down_box = key;
+				UI_STATE.mouse_clicking_down_box = box->key;
 			}
 		}
 
-		if (UI_STATE.mouse_clicking_down_box == key && UI_InputIsDown(UI_Input_MouseLeft)) {
-			UI_STATE.mouse_clicking_down_box_new = key;
+		if (UI_STATE.mouse_clicking_down_box == box->key && UI_InputIsDown(UI_Input_MouseLeft)) {
+			UI_STATE.mouse_clicking_down_box_new = box->key;
 
 			UI_Vec2 mouse_pos_relative = UI_SubV2(UI_STATE.mouse_pos, middle);
 			*hue = (atan2f(mouse_pos_relative.y, mouse_pos_relative.x) + 3.1415926f) / (3.1415926f * 2.f);
@@ -131,7 +131,6 @@ UI_API UI_Box* UI_HueSaturationCircle(UI_Key key, float diameter, float* hue, fl
 
 	UI_HueSaturationCircleData data = {*hue, *saturation};
 	UI_BoxAddVar(box, UI_GetHueSaturationCircleDataKey(), &data);
-	return box;
 }
 
 typedef struct { float h, s, v; } UI_HueSaturationValueEditData;
@@ -210,66 +209,74 @@ static void UI_DrawColorPickerBoxTransparent(UI_Box* box) {
 	UI_DrawRect(box->computed_rect, box->draw_args->opaque_bg_color);
 }
 
-UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* value, float* alpha) {
-	UI_Box* main_box = UI_AddBox(key, UI_SizeFit(), UI_SizeFit(), UI_BoxFlag_Horizontal);
-	UI_PushBox(main_box);
-	UI_HueSaturationCircle(UI_KEY1(key), 200.f, hue, saturation);
+UI_API void UI_AddColorPicker(UI_Box* box, float* hue, float* saturation, float* value, float* alpha) {
+	UI_AddBox(box, UI_SizeFit(), UI_SizeFit(), UI_BoxFlag_Horizontal);
+	UI_PushBox(box);
+	UI_AddHueSaturationCircle(UI_BBOX(box), 200.f, hue, saturation);
 
-	UI_AddBox(UI_KEY1(key), 5.f, UI_SizeFit(), 0); // pad
+	UI_AddBox(UI_BBOX(box), 5.f, UI_SizeFit(), 0); // pad
 
-	UI_Box* sat_slider_box = UI_AddBox(UI_KEY1(key), 20.f, UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
+	UI_Box* sat_slider_box = UI_BBOX(box);
+	UI_AddBox(sat_slider_box, 20.f, UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
 	sat_slider_box->draw = UI_ColorPickerSaturationSliderDraw;
 
-	UI_AddBox(UI_KEY1(key), 5.f, UI_SizeFit(), 0); // pad
+	UI_AddBox(UI_BBOX(box), 5.f, UI_SizeFit(), 0); // pad
 
-	UI_Box* val_slider_box = UI_AddBox(UI_KEY1(key), 20.f, UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
+	UI_Box* val_slider_box = UI_BBOX(box);
+	UI_AddBox(val_slider_box, 20.f, UI_SizeFlex(1.f), UI_BoxFlag_DrawBorder);
 	val_slider_box->draw = UI_ColorPickerValueSliderDraw;
 
-	UI_AddBox(UI_KEY1(key), 5.f, UI_SizeFit(), 0); // pad
+	UI_AddBox(UI_BBOX(box), 5.f, UI_SizeFit(), 0); // pad
 
-	UI_Box* right_box = UI_AddBox(UI_KEY1(key), 160.f, UI_SizeFlex(1.f), 0);
+	UI_Box* right_box = UI_BBOX(box);
+	UI_AddBox(right_box, 160.f, UI_SizeFlex(1.f), 0);
 	UI_PushBox(right_box);
 
 	UI_Box* color_box_1;
 	UI_Box* color_box_2;
 	{
-		UI_Box* row = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
+		UI_Box* row = UI_BBOX(box);
+		UI_AddBox(row, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 		UI_PushBox(row);
 
-		UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0); // pad
+		UI_AddBox(UI_BBOX(box), UI_SizeFlex(1.f), UI_SizeFit(), 0); // pad
 
-		color_box_1 = UI_AddBox(UI_KEY1(key), 80.f, 80.f, UI_BoxFlag_DrawOpaqueBackground);
+		color_box_1 = UI_BBOX(box);
+		UI_AddBox(color_box_1, 80.f, 80.f, UI_BoxFlag_DrawOpaqueBackground);
 		color_box_1->draw = UI_DrawColorPickerBox;
 
-		color_box_2 = UI_AddBox(UI_KEY1(key), 80.f, 80.f, UI_BoxFlag_DrawOpaqueBackground);
+		color_box_2 = UI_BBOX(box);
+		UI_AddBox(color_box_2, 80.f, 80.f, UI_BoxFlag_DrawOpaqueBackground);
 		color_box_2->draw = UI_DrawColorPickerBoxTransparent;
 
-		UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0); // pad
+		UI_AddBox(UI_BBOX(box), UI_SizeFlex(1.f), UI_SizeFit(), 0); // pad
 
 		UI_PopBox(row);
 	}
 
 	{
-		UI_Box* right_area_row = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
+		UI_Box* right_area_row = UI_BBOX(box);
+		UI_AddBox(right_area_row, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 		UI_PushBox(right_area_row);
 
 		{
-			UI_Box* left_column = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0);
+			UI_Box* left_column = UI_BBOX(box);
+			UI_AddBox(left_column, UI_SizeFlex(1.f), UI_SizeFit(), 0);
 			UI_PushBox(left_column);
 
-			static const char* strings[] = {"R", "G", "B", "A"};
+			static const STR_View strings[] = {STR_VI("R"), STR_VI("G"), STR_VI("B"), STR_VI("A")};
 			float rgba[4] = {0, 0, 0, *alpha};
 			UI_HSVToRGB(*hue, *saturation, *value, &rgba[0], &rgba[1], &rgba[2]);
 
 			bool edited_rgba = false;
 			for (int i = 0; i < 4; i++) {
-				UI_Key row_key = UI_HashInt(key, i);
-				UI_Box* row = UI_AddBox(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
+				UI_Box* row = UI_KBOX(UI_HashInt(box->key, i));
+				UI_AddBox(row, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 				UI_PushBox(row);
-				UI_AddBoxWithTextC(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
+				UI_AddLabel(UI_BBOX(row), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
 
 				float value_before = rgba[i];
-				UI_AddValFloat(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), &rgba[i]);
+				UI_AddValFloat(UI_BBOX(row), UI_SizeFlex(1.f), UI_SizeFit(), &rgba[i]);
 				if (rgba[i] != value_before) edited_rgba = true;
 
 				rgba[i] = UI_Max(UI_Min(rgba[i], 1.f), 0.f);
@@ -285,18 +292,19 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 		}
 
 		{
-			UI_Box* right_column = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0);
+			UI_Box* right_column = UI_BBOX(box);
+			UI_AddBox(right_column, UI_SizeFlex(1.f), UI_SizeFit(), 0);
 			UI_PushBox(right_column);
 
-			static const char* strings[] = {"H", "S", "V"};
+			static const STR_View strings[] = {STR_VI("H"), STR_VI("S"), STR_VI("V")};
 			float* hsv[] = {hue, saturation, value};
 			for (int i = 0; i < 3; i++) {
-				UI_Key row_key = UI_HashInt(key, i);
-				UI_Box* row = UI_AddBox(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
+				UI_Box* row = UI_KBOX(UI_HashInt(box->key, i));
+				UI_AddBox(UI_BBOX(row), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 				UI_PushBox(row);
-				UI_AddBoxWithTextC(UI_KEY1(row_key), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
+				UI_AddLabel(UI_BBOX(row), UI_SizeFit(), UI_SizeFit(), 0, strings[i]);
 
-				UI_AddValFloat(UI_KEY1(row_key), UI_SizeFlex(1.f), UI_SizeFit(), hsv[i]);
+				UI_AddValFloat(UI_BBOX(row), UI_SizeFlex(1.f), UI_SizeFit(), hsv[i]);
 
 				*hsv[i] = UI_Max(UI_Min(*hsv[i], 1.f), 0.f);
 				UI_PopBox(row);
@@ -310,7 +318,7 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 
 	UI_PopBox(right_box);
 
-	UI_PopBox(main_box);
+	UI_PopBox(box);
 
 	// Handle input for saturation & value sliders
 	if (sat_slider_box->prev_frame && val_slider_box->prev_frame) {
@@ -347,8 +355,6 @@ UI_API UI_Box* UI_ColorPicker(UI_Key key, float* hue, float* saturation, float* 
 	UI_HueSaturationValueEditData data = {*hue, *saturation, *value};
 	UI_BoxAddVar(sat_slider_box, UI_GetHueSaturationValueEditDataKey(), &data);
 	UI_BoxAddVar(val_slider_box, UI_GetHueSaturationValueEditDataKey(), &data);
-
-	return main_box;
 }
 
 #endif // UI_IMPLEMENTATION

@@ -8,14 +8,14 @@ typedef struct UI_ValueEditArrayModify {
 	int remove_elem; // -1 if none
 } UI_ValueEditArrayModify;
 
-UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify);
+UI_API void UI_AddValArray(UI_Box* box, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify);
 
-UI_API UI_Box* UI_AddBoxWithTextWrapped(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
+UI_API void UI_AddLabelWrapped(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
 
-#define UI_AddValDSArray(KEY, NAME, ARRAY, DEFAULT_VALUE, EDIT_ELEM) \
-	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (DEFAULT_VALUE), (UI_ArrayEditElemFn)EDIT_ELEM, NULL)
-#define UI_AddValDSArrayEx(KEY, NAME, ARRAY, DEFAULT_VALUE, EDIT_ELEM, USER_DATA) \
-	UI_AddValDSArray_((KEY), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (DEFAULT_VALUE), (UI_ArrayEditElemFn)EDIT_ELEM, USER_DATA)
+#define UI_AddValDSArray(BOX, NAME, ARRAY, DEFAULT_VALUE, EDIT_ELEM) \
+	UI_AddValDSArray_((BOX), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (DEFAULT_VALUE), (UI_ArrayEditElemFn)EDIT_ELEM, NULL)
+#define UI_AddValDSArrayEx(BOX, NAME, ARRAY, DEFAULT_VALUE, EDIT_ELEM, USER_DATA) \
+	UI_AddValDSArray_((BOX), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (DEFAULT_VALUE), (UI_ArrayEditElemFn)EDIT_ELEM, USER_DATA)
 
 // Formatting rules / expected types:
 // 
@@ -40,7 +40,7 @@ UI_API UI_Box* UI_AddBoxWithTextWrapped(UI_Key key, UI_Size w, UI_Size h, UI_Box
 //    int foo = 50;
 //    UI_AddFmt(UI_KEY(), "Editable value: %!d", &foo); // "foo" may be edited by the user
 //    
-UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...);
+UI_API void UI_AddFmt(UI_Box* box, const char* fmt, ...);
 
 #ifdef /********************/ UI_IMPLEMENTATION /********************/
 
@@ -51,69 +51,76 @@ static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis 
 	}
 }
 
-UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify)
+UI_API void UI_AddValArray(UI_Box* box, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify)
 {
-	UI_Box* root_box = UI_AddBox(key, UI_SizeFlex(1.f), UI_SizeFit(), 0);
-	UI_PushBox(root_box);
+	UI_AddBox(box, UI_SizeFlex(1.f), UI_SizeFit(), 0);
+	UI_PushBox(box);
 
-	UI_Key child_box_key = UI_KEY1(key);
+	UI_Box* scroll_area = UI_BBOX(box); //UI_Key child_box_key = UI_KEY1(key);
 	UI_BoxFlags flags = UI_BoxFlag_Horizontal| UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
-	UI_Box* header = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), flags);
+	UI_Box* header = UI_BBOX(box);
+	UI_AddBox(header, UI_SizeFlex(1.f), UI_SizeFit(), flags);
 	UI_PushBox(header);
 
-	bool is_open = UI_PrevFrameBoxFromKey(child_box_key) != NULL;
-	if (UI_PressedIdle(header->key)) {
+	bool is_open = scroll_area->prev_frame != NULL;
+	if (UI_PressedIdle(header)) {
 		is_open = !is_open;
 	}
 
-	UI_Box* label = UI_AddBoxWithTextC(UI_KEY1(key), 20.f, UI_SizeFit(), 0, is_open ? "\x44" : "\x46");
+	UI_Box* label = UI_BBOX(box);
+	UI_AddLabel(label, 20.f, UI_SizeFit(), 0, is_open ? STR_V("\x44") : STR_V("\x46"));
 	label->font = UI_STATE.icons_font;
 
-	UI_AddBoxWithTextC(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0, name);
-	UI_Box* add_button = UI_AddButtonC(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x48");
+	UI_AddLabel(UI_BBOX(box), UI_SizeFlex(1.f), UI_SizeFit(), 0, name);
+	UI_Box* add_button = UI_BBOX(box);
+	UI_AddButton(add_button, UI_SizeFit(), UI_SizeFlex(1.f), 0, STR_V("\x48"));
 	add_button->font = UI_STATE.icons_font;
 	add_button->font.size = (UI_STATE.icons_font.size * 8) / 10;
 	add_button->inner_padding.y += 2.f;
 
-	UI_Box* clear_button = UI_AddButtonC(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x54");
+	UI_Box* clear_button = UI_BBOX(box);
+	UI_AddButton(clear_button, UI_SizeFit(), UI_SizeFlex(1.f), 0, STR_V("\x54"));
 	clear_button->font = UI_STATE.icons_font;
 	clear_button->font.size = (UI_STATE.icons_font.size * 8) / 10;
 	clear_button->inner_padding.y += 2.f;
 
 	UI_PopBox(header);
 
-	if (UI_Clicked(add_button->key)) is_open = true;
+	if (UI_Clicked(add_button)) is_open = true;
 
 	int should_remove_elem = -1;
 
 	if (is_open) {
-		UI_Box* scroll_area = UI_PushScrollArea(child_box_key, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_DrawBorder, 0, 0);
+		UI_PushScrollArea(scroll_area, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_DrawBorder, 0, 0);
 		scroll_area->compute_unexpanded_size = UI_ValEditArrayScrollAreaComputeUnexpandedSize;
 
-		UI_Box* source_files_arrangers = UI_PushArrangerSet(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit());
+		UI_Box* source_files_arrangers = UI_BBOX(box);
+		UI_PushArrangerSet(source_files_arrangers, UI_SizeFlex(1.f), UI_SizeFit());
 
-		UI_Key elems_key = UI_KEY1(key);
 		for (int i = 0; i < array_count; i++) {
-			UI_Key elem_key = UI_HashInt(elems_key, i);
-			UI_Box* elem_box = UI_AddBox(UI_KEY1(elem_key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawOpaqueBackground);
-			UI_PushBox(elem_box);
+			UI_Box* elem = UI_KBOX(UI_HashInt(UI_BKEY(box), i));
+			UI_AddBox(elem, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawOpaqueBackground);
+			UI_PushBox(elem);
 
-			UI_Box* arranger = UI_AddArranger(UI_KEY1(elem_key), UI_SizeFit(), UI_SizeFit());
+			UI_Box* arranger = UI_BBOX(elem);
+			UI_AddArranger(arranger, UI_SizeFit(), UI_SizeFit());
 			arranger->text = STR_Form(UI_FrameArena(), "%d.", i);
 
-			UI_Box* user_box = UI_AddBox(UI_KEY1(elem_key), UI_SizeFlex(1.f), UI_SizeFit(), 0);
+			UI_Box* user_box = UI_BBOX(elem);
+			UI_AddBox(user_box, UI_SizeFlex(1.f), UI_SizeFit(), 0);
 			UI_PushBox(user_box);
-			edit_elem(UI_KEY1(elem_key), (char*)array + i*elem_size, i, user_data);
+			edit_elem(UI_BKEY(elem), (char*)array + i*elem_size, i, user_data);
 			UI_PopBox(user_box);
 
-			UI_Box* remove_button = UI_AddButtonC(UI_KEY1(elem_key), UI_SizeFit(), UI_SizeFit(), 0, "\x4a");
+			UI_Box* remove_button = UI_BBOX(elem);
+			UI_AddButton(remove_button, UI_SizeFit(), UI_SizeFit(), 0, STR_V("\x4a"));
 			remove_button->font = UI_STATE.icons_font;
 			remove_button->font.size = (UI_STATE.icons_font.size * 8) / 10;
 			remove_button->inner_padding.y += 2.f;
 
-			if (UI_Clicked(remove_button->key)) should_remove_elem = i;
+			if (UI_Clicked(remove_button)) should_remove_elem = i;
 
-			UI_PopBox(elem_box);
+			UI_PopBox(elem);
 		}
 
 		UI_ArrangersRequest edit_request;
@@ -123,21 +130,20 @@ UI_API UI_Box* UI_AddValArray(UI_Key key, const char* name, void* array, int arr
 	}
 
 	if (out_modify) {
-		out_modify->append_to_end = UI_Clicked(add_button->key);
-		out_modify->clear = UI_Clicked(clear_button->key);
+		out_modify->append_to_end = UI_Clicked(add_button);
+		out_modify->clear = UI_Clicked(clear_button);
 		out_modify->remove_elem = should_remove_elem;
 	}
 
-	UI_PopBox(root_box);
-	return root_box;
+	UI_PopBox(box);
 }
 
 // default_value may be NULL, in which case the element is zero-initialized
-static void UI_AddValDSArray_(UI_Key key, const char* name, DS_DynArrayRaw* array, int elem_size,
+static void UI_AddValDSArray_(UI_Box* box, const char* name, DS_DynArrayRaw* array, int elem_size,
 	const void* default_value, UI_ArrayEditElemFn edit_elem, void* user_data)
 {
 	UI_ValueEditArrayModify modify;
-	UI_AddValArray(key, name, array->data, array->count, elem_size, edit_elem, user_data, &modify);
+	UI_AddValArray(box, name, array->data, array->count, elem_size, edit_elem, user_data, &modify);
 	
 	if (modify.append_to_end) {
 		DS_ArrResizeRaw(array, array->count + 1, NULL, elem_size);
@@ -153,19 +159,20 @@ static void UI_AddValDSArray_(UI_Key key, const char* name, DS_DynArrayRaw* arra
 	}
 }
 
-static void UI_InfoFmtFinishCurrent_(UI_Key key, STR_Builder* current_string, int* section_index) {
+static void UI_InfoFmtFinishCurrent_(UI_Box* box, STR_Builder* current_string, int* section_index) {
 	if (current_string->str.size > 0) {
-		UI_AddBoxWithText(UI_HashInt(key, *section_index), UI_SizeFit(), UI_SizeFit(), 0, current_string->str);
+		UI_Box* label = UI_KBOX(UI_HashInt(box->key, *section_index));
+		UI_AddLabel(label, UI_SizeFit(), UI_SizeFit(), 0, current_string->str);
 	}
 	current_string->str.size = 0;
 	*section_index += 1;
 }
 
-UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
+UI_API void UI_AddFmt(UI_Box* box, const char* fmt, ...) {
 	va_list args; va_start(args, fmt);
 
-	UI_Box* row = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
-	UI_PushBox(row);
+	UI_AddBox(box, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
+	UI_PushBox(box);
 
 	STR_Builder current_string = {UI_FrameArena()};
 
@@ -187,7 +194,7 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 
 			// Parse specifier
 			switch (*c) {
-			default: STR_CHECK(0);
+			default: UI_ASSERT(0);
 				//case 's': {
 				//	STR_Print(s, va_arg(args, char*));
 				//} break;
@@ -198,12 +205,12 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 				STR_PrintC(&current_string, "%");
 			} break;
 			case 't': {
-				UI_InfoFmtFinishCurrent_(key, &current_string, &section_index);
+				UI_InfoFmtFinishCurrent_(box, &current_string, &section_index);
 
-				UI_Key val_key = UI_HashInt(key, section_index);
+				UI_Box* val_box = UI_KBOX(UI_HashInt(box->key, section_index));
 				if (editable) {
 					UI_Text* val = va_arg(args, UI_Text*);
-					UI_AddValText(val_key, UI_SizeFlex(1.f), UI_SizeFit(), val);
+					UI_AddValText(val_box, UI_SizeFlex(1.f), UI_SizeFit(), val);
 				} else {
 					UI_Text val = va_arg(args, UI_Text);
 					__debugbreak(); // TODO: read-only text
@@ -214,34 +221,34 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 				section_index++;
 			} break;
 			case 'b': {
-				UI_InfoFmtFinishCurrent_(key, &current_string, &section_index);
+				UI_InfoFmtFinishCurrent_(box, &current_string, &section_index);
 
-				UI_Key val_key = UI_HashInt(key, section_index);
+				UI_Box* val_box = UI_KBOX(UI_HashInt(box->key, section_index));
 				if (editable) {
 					bool* val = va_arg(args, bool*);
-					UI_AddCheckbox(val_key, val);
+					UI_AddCheckbox(val_box, val);
 				} else {
 					bool val = va_arg(args, bool);
-					UI_AddCheckbox(val_key, &val);
+					UI_AddCheckbox(val_box, &val);
 				}
 
 				section_index++;
 			} break;
 			case 'f': {
-				UI_InfoFmtFinishCurrent_(key, &current_string, &section_index);
+				UI_InfoFmtFinishCurrent_(box, &current_string, &section_index);
 
-				UI_Key val_key = UI_HashInt(key, section_index);
+				UI_Box* val_box = UI_KBOX(UI_HashInt(box->key, section_index));
 				if (editable) {
 					if (l == 1) {
 						double* val = va_arg(args, double*);
-						UI_AddValFloat64(val_key, UI_SizeFlex(1.f), UI_SizeFit(), val);
+						UI_AddValFloat64(val_box, UI_SizeFlex(1.f), UI_SizeFit(), val);
 					} else {
 						float* val = va_arg(args, float*);
-						UI_AddValFloat(val_key, UI_SizeFlex(1.f), UI_SizeFit(), val);
+						UI_AddValFloat(val_box, UI_SizeFlex(1.f), UI_SizeFit(), val);
 					}
 				} else {
 					double val = va_arg(args, double);
-					UI_AddValFloat64(val_key, UI_SizeFlex(1.f), UI_SizeFit(), &val);
+					UI_AddValFloat64(val_box, UI_SizeFlex(1.f), UI_SizeFit(), &val);
 				}
 				section_index++;
 			} break;
@@ -250,9 +257,9 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 			case 'i': { is_signed = true; goto add_int; }
 			case 'u': {
 			add_int:;
-				UI_InfoFmtFinishCurrent_(key, &current_string, &section_index);
+				UI_InfoFmtFinishCurrent_(box, &current_string, &section_index);
 				
-				UI_Key val_key = UI_HashInt(key, section_index);
+				UI_Box* val_box = UI_KBOX(UI_HashInt(box->key, section_index));
 				if (editable) {
 					void* ptr = va_arg(args, void*);
 					uint64_t val = 0;
@@ -271,7 +278,7 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 						val = is_signed ? (uint64_t)(int64_t)*(int32_t*)ptr : (uint64_t)*(uint32_t*)ptr;
 					}
 
-					UI_AddValNumeric(val_key, UI_SizeFlex(1.f), UI_SizeFit(), &val, is_signed, false);
+					UI_AddValNumeric(val_box, UI_SizeFlex(1.f), UI_SizeFit(), &val, is_signed, false);
 					memcpy(ptr, &val, size);
 				}
 				else {
@@ -286,7 +293,7 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 						val = is_signed ? (uint64_t)(int64_t)va_arg(args, int32_t) : (uint64_t)va_arg(args, uint32_t);
 					}
 
-					UI_AddValNumeric(val_key, UI_SizeFlex(1.f), UI_SizeFit(), &val, is_signed, false);
+					UI_AddValNumeric(val_box, UI_SizeFlex(1.f), UI_SizeFit(), &val, is_signed, false);
 				}
 				section_index++;
 			} break;
@@ -298,8 +305,8 @@ UI_API void UI_AddFmt(UI_Key key, const char* fmt, ...) {
 		}
 	}
 
-	UI_InfoFmtFinishCurrent_(UI_KEY1(key), &current_string, &section_index);
-	UI_PopBox(row);
+	UI_InfoFmtFinishCurrent_(box, &current_string, &section_index);
+	UI_PopBox(box);
 
 	va_end(args);
 }
@@ -312,7 +319,7 @@ typedef struct UI_BoxWithTextWrappedData {
 
 static UI_Key UI_BoxWithTextWrappedDataKey() { return UI_KEY(); }
 
-static void UI_AddBoxWithTextWrappedComputeUnexpandedSize(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass) {
+static void UI_AddLabelWrappedComputeUnexpandedSize(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass) {
 	box->computed_unexpanded_size._[axis] = 0.f;
 	if (axis == UI_Axis_Y) {
 		float line_width = box->computed_expanded_size.x - 2.f * box->inner_padding.x;
@@ -373,18 +380,17 @@ static void UI_DrawBoxWithTextWrapped(UI_Box* box) {
 			box->computed_position.x + box->inner_padding.x,
 			box->computed_position.y + box->inner_padding.y + (float)i * data->line_height,
 		};
-		UI_DrawText(line_string, box->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, UI_BLACK, &box->computed_rect);
+		UI_DrawText(line_string, box->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, UI_WHITE, &box->computed_rect);
 	}
 }
 
-UI_API UI_Box* UI_AddBoxWithTextWrapped(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
-	UI_Box* box = UI_AddBox(key, w, h, flags);
+UI_API void UI_AddLabelWrapped(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
+	UI_AddBox(box, w, h, flags);
 	box->text = string;
 	box->font = UI_STATE.base_font;
 	box->inner_padding = UI_DEFAULT_TEXT_PADDING;
-	box->compute_unexpanded_size = UI_AddBoxWithTextWrappedComputeUnexpandedSize;
+	box->compute_unexpanded_size = UI_AddLabelWrappedComputeUnexpandedSize;
 	box->draw = UI_DrawBoxWithTextWrapped;
-	return box;
 }
 
 #endif // UI_IMPLEMENTATION

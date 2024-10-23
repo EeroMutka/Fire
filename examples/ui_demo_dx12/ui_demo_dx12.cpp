@@ -364,7 +364,7 @@ static void UpdateAndRender() {
         rtv_handle.ptr += g_dx_frame_index * g_dx_rtv_descriptor_size;
         g_dx_command_list->OMSetRenderTargets(1, &rtv_handle, false, NULL);
 
-        const float clear_color[] = { 0.5f, 0.5f, 0.5f, 1.0f };
+        const float clear_color[] = { 0.15f, 0.15f, 0.15f, 1.0f };
         g_dx_command_list->ClearRenderTargetView(rtv_handle, clear_color, 0, NULL);
 
         g_dx_command_list->SetDescriptorHeaps(1, &g_dx_srv_heap);

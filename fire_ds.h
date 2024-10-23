@@ -1,11 +1,16 @@
-// fire_ds.h - basic data structures
+// fire_ds.h - by Eero Mutka (https://eeromutka.github.io/)
 //
-// Author: Eero Mutka
-// Version: 0
-// Date: 25 March, 2024
+// Features:
+// - Dynamic arrays
+// - Hash maps & sets
+// - Memory arenas
+// - Bucket arrays
+// - Slot allocators
 //
 // This code is released under the MIT license (https://opensource.org/licenses/MIT).
 //
+// If you wish to use a different prefix than DS_, simply do a find and replace in this file.
+// 
 
 #ifndef DS_INCLUDED
 #define DS_INCLUDED
@@ -99,9 +104,7 @@ struct DS_Arena {
 	int total_mem_reserved;
 };
 
-// -------------------------------------------------------------------
-
-// -- internal helpers -----------
+// --- Internal helpers -------------------------------------
 
 #define DS_Concat_(a, b) a ## b
 #define DS_Concat(a, b) DS_Concat_(a, b)
@@ -159,59 +162,10 @@ static inline void DS_ArrBoundsCheck_(bool x) { DS_ASSERT(x); }
 #define DS_ArrBoundsCheck(ARR, INDEX) (void)0
 #endif
 
-#define DS_DoublyListRemove_(list, elem, next_name) { \
-	if (elem->next_name[0]) elem->next_name[0]->next_name[1] = elem->next_name[1]; \
-	else list[0] = elem->next_name[1]; \
-	if (elem->next_name[1]) elem->next_name[1]->next_name[0] = elem->next_name[0]; \
-	else list[1] = elem->next_name[0]; \
-	}
-
-#define DS_DoublyListPushBack_(list, elem, next_name) { \
-	elem->next_name[0] = list[1]; \
-	elem->next_name[1] = NULL; \
-	if (list[1]) list[1]->next_name[1] = elem; \
-	else list[0] = elem; \
-	list[1] = elem; \
-	}
-
-static inline void* DS_ListPopFront_(void** p_list, void* next) {
-	void* first = *p_list;
-	*p_list = next;
-	return first;
-}
-
 #define DS_KIB(x) ((uint64_t)(x) << 10)
 #define DS_MIB(x) ((uint64_t)(x) << 20)
 #define DS_GIB(x) ((uint64_t)(x) << 30)
 #define DS_TIB(x) ((uint64_t)(x) << 40)
-
-/*
-Remove a node from doubly-linked list, e.g.
-	struct Node { Node *next[2]; };
-	Node *list[2] = ...;
-	Node *node = ...;
-	DS_DoublyListRemove(node, list, next);
-*/
-#define DS_DoublyListRemove(list, elem, next_name)   DS_DoublyListRemove_(list, elem, next_name)
-
-/*
-Push a node to the end of doubly-linked list, e.g.
-	struct Node { Node *next[2]; };
-	Node *list[2] = ...;
-	Node *node = ...;
-	DS_DoublyListPushBack(node, list, next);
-*/
-#define DS_DoublyListPushBack(list, elem, next_name)  DS_DoublyListPushBack_(list, elem, next_name)
-
-/*
-Remove the first node of a singly linked list, e.g.
-	struct Node { Node *next; };
-	Node *list = ...;
-	Node *first = DS_ListPopFront(&list, next);
-*/
-#define DS_ListPopFront(list, next_name)  DS_ListPopFront_(list, (*list)->next_name)
-
-#define DS_ListPushFront(list, elem, next_name) {(elem)->next_name = *(list); *(list) = (elem);}
 
 #define DS_Clone(T, ARENA, VALUE) DS_Clone_(T, ARENA, VALUE)
 
@@ -438,6 +392,27 @@ DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena* arena);
 DS_API void DS_ArenaSetMark(DS_Arena* arena, DS_ArenaMark mark);
 DS_API void DS_ArenaReset(DS_Arena* arena);
 
+// -- Dual-arena scope -----------------------------------------------
+
+// The convention when passing a DS_Scope* into a function is that allocations that are returned to the caller
+// are allocated from `arena`. Temporary allocations within the function scope are allocated from the `inner` arena.
+typedef struct DS_Scope {
+	DS_Arena* arena;
+	DS_Arena* inner;
+	DS_ArenaMark base; // marks the beginning of the scope for `arena`
+} DS_Scope;
+
+static inline DS_Scope DS_ScopeBegin(DS_Scope* parent) {
+	DS_Scope new_scope = {parent->inner, parent->arena, parent->inner->mark};
+	return new_scope;
+}
+
+static inline void DS_ScopeEnd(DS_Scope* scope) {
+	if (scope->arena != scope->inner) {
+		DS_ArenaSetMark(scope->arena, scope->base);
+	}
+}
+
 // -- Memory allocation --------------------------------
 
 #ifndef DS_NO_MALLOC
@@ -474,11 +449,12 @@ static inline void* DS_CloneSizeA(DS_Arena* arena, const void* value, int size, 
 // -- Dynamic array --------------------------------
 
 #ifdef __cplusplus
-template<class T> struct DS_DynArray_ {
+template<class T> struct DS_DynArray {
 	DS_Allocator* allocator; T* data; int32_t count; int32_t capacity;
-	inline T& operator [](int i) { return (DS_ArrBoundsCheck((*this), i), data[i]); }
+	inline T& operator [](size_t i)       { return DS_ArrBoundsCheck((*this), i), data[i]; }
+	inline T operator [](size_t i) const  { return DS_ArrBoundsCheck((*this), i), data[i]; }
 };
-#define DS_DynArray(T) DS_DynArray_<T>
+#define DS_DynArray(T) DS_DynArray<T>
 typedef struct { DS_Allocator* allocator; void* data; int32_t count; int32_t capacity; } DS_DynArrayRaw;
 #else
 #define DS_DynArray(T) struct { DS_Allocator* allocator; T* data; int32_t count; int32_t capacity; }
@@ -527,12 +503,12 @@ typedef DS_DynArray(void) DS_DynArrayRaw;
 // Reset the array to a default state and free its memory if using the heap allocator.
 #define DS_ArrDeinit(ARR)             DS_ArrDeinitRaw((DS_DynArrayRaw*)(ARR), DS_ArrElemSize(*ARR))
 
-// Magical array iteration macro.
-// e.g.
-// DS_DynArray(float) foo;
-// DS_ForArrEach(float, &foo, it) {
-//     printf("foo at index %d has the value of %f\n", it.i, it.elem);
-// }
+// Array iteration macro.
+// Example:
+//   DS_DynArray(float) foo;
+//   DS_ForArrEach(float, &foo, it) {
+//       printf("foo at index %d has the value of %f\n", it.i, it.elem);
+//   }
 #define DS_ForArrEach(T, ARR, IT) \
 	(void)((T*)0 == (ARR)->data); /* Trick the compiler into checking that T is the same as the elem type of ARR */ \
 	struct DS_Concat(_dummy_, __LINE__) {int i; T *ptr;}; /* Declaring new struct types in for-loop initializers is not standard C */ \
@@ -566,8 +542,8 @@ DS_API void DS_ArrResizeRaw(DS_DynArrayRaw* array, int count, const void* value,
 typedef DS_SlotAllocator(char, 1) SlotAllocatorRaw;
 
 // Iterate through all slots in a slot allocator, even the destroyed ones. To detect whether or not a slot is destroyed,
-// you must encode it yourself in the slot data. However, you shouldn't encode it within the first N bytes, where N is the
-// size of a pointer, because the slot allocator internally stores a pointer there on destroyed slots.
+// you must encode it yourself in the slot data. However, you shouldn't encode it within the first (pointer-size) bytes,
+// because the slot allocator internally stores a pointer there on destroyed slots.
 #define DS_ForSlotAllocatorEachSlot(T, ALLOCATOR, IT) \
 	struct DS_Concat(_dummy_, __LINE__) {void* bucket; uint32_t slot_index; T* elem;}; \
 	for (struct DS_Concat(_dummy_, __LINE__) IT = {(ALLOCATOR)->buckets[0]}; DS_SlotAllocatorIter((SlotAllocatorRaw*)(ALLOCATOR), &IT.bucket, &IT.slot_index, (void**)&IT.elem);)
@@ -575,6 +551,7 @@ typedef DS_SlotAllocator(char, 1) SlotAllocatorRaw;
 #define DS_SlotAllocatorInit(ALLOCATOR, BACKING_ALLOCATOR) \
 	DS_SlotAllocatorInitRaw((SlotAllocatorRaw*)(ALLOCATOR), DS_SlotBucketNextPtrOffset(ALLOCATOR), DS_SlotSize(ALLOCATOR), DS_SlotBucketSize(ALLOCATOR), DS_SlotN(ALLOCATOR), BACKING_ALLOCATOR)
 
+#define DS_SlotAllocatorDeinit(ALLOCATOR)  DS_SlotAllocatorDeinitRaw((SlotAllocatorRaw*)(ALLOCATOR))
 
 // The slot's memory won't be initialized or overridden if it existed before.
 #define DS_TakeSlot(ALLOCATOR) \
@@ -632,6 +609,28 @@ typedef DS_BucketArray(char) DS_BucketArrayRaw;
 
 #define DS_BucketArrayDeinit(ARRAY)        DS_BucketArrayDeinitRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketNextPtrOffset(ARRAY))
 
+// -- C++ extras -----------------------------------
+
+#ifdef __cplusplus
+template<class T, int32_t COUNT>
+struct DS_Array { // fixed-length array
+	T data[COUNT];
+	inline T& operator [](size_t i)       { return data[i]; }
+	inline T operator [](size_t i) const  { return data[i]; }
+};
+
+template<class T>
+struct DS_ArrayView {
+	T* data; int32_t count;
+	DS_ArrayView() : data(0), count(0) {}
+	DS_ArrayView(T* _data, int32_t _count) : data(_data), count(_count) {}
+	DS_ArrayView(const DS_DynArray<T>& other) : data(other.data), count(other.count) {}
+	template<int32_t COUNT> DS_ArrayView(DS_Array<T, COUNT>& other) : data(&other.data[0]), count(COUNT) {}
+	inline T& operator [](size_t i)       { return DS_ArrBoundsCheck((*this), i), data[i]; }
+	inline T operator [](size_t i) const  { return DS_ArrBoundsCheck((*this), i), data[i]; }
+};
+#endif
+
 // -- IMPLEMENTATION ------------------------------------------------------------------
 
 static inline bool DS_SlotAllocatorIter(SlotAllocatorRaw* allocator, void** bucket, uint32_t* slot_index, void** elem) {
@@ -681,6 +680,18 @@ static inline void DS_SlotAllocatorInitRaw(SlotAllocatorRaw* allocator,
 	DS_ProfExit();
 }
 
+static inline void DS_SlotAllocatorDeinitRaw(SlotAllocatorRaw* allocator) {
+	DS_ProfEnter();
+	void* bucket = allocator->buckets[0];
+	for (; bucket;) {
+		void* next_bucket = *(void**)((char*)bucket + allocator->bucket_next_ptr_offset);
+		DS_MemFree(allocator->allocator, bucket);
+		bucket = next_bucket;
+	}
+	DS_DebugFillGarbage(allocator, sizeof(*allocator));
+	DS_ProfExit();
+}
+
 static inline void* DS_TakeSlotRaw(SlotAllocatorRaw* allocator) {
 	DS_ProfEnter();
 	void* result = NULL;
@@ -699,7 +710,7 @@ static inline void* DS_TakeSlotRaw(SlotAllocatorRaw* allocator) {
 		if (bucket == NULL || allocator->last_bucket_end == allocator->num_slots_per_bucket) {
 			// We need to allocate a new bucket
 
-			void* new_bucket = DS_AllocatorFn(allocator->allocator, NULL, 0, allocator->bucket_size, DS_DEFAULT_ALIGNMENT);
+			void* new_bucket = DS_MemAlloc(allocator->allocator, allocator->bucket_size);
 			if (bucket) {
 				// set the `next` pointer of the previous bucket to point to the new bucket
 				*(void**)((char*)bucket + allocator->bucket_next_ptr_offset) = new_bucket;

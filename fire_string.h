@@ -1,10 +1,10 @@
-// fire_string.h - string utilities
+// fire_string.h - by Eero Mutka (https://eeromutka.github.io/)
 //
-// Author: Eero Mutka
-// Version: 0
-// Date: 25 March, 2024
-//
+// Length-based string type and string utilities.
+// 
 // This code is released under the MIT license (https://opensource.org/licenses/MIT).
+//
+// If you wish to use a different prefix than STR_, simply do a find and replace in this file.
 //
 
 #ifndef FIRE_STRING_INCLUDED
@@ -17,25 +17,26 @@
 #include <stdarg.h>
 #include <math.h> // isnan, isinf
 
-#ifdef STR_USE_FIRE_DS_ARENA
-#define STR_ARENA DS_Arena
-#define STR_ARENA_ALLOCATE(ARENA, SIZE) (void*)DS_ArenaPush(ARENA, SIZE)
+#ifdef STR_USE_FIRE_DS
+// Requires that fire_ds.h has been included
+#define STR_MemAlloc(ALLOCATOR, SIZE) (void*)DS_MemAlloc((DS_Allocator*)ALLOCATOR, SIZE)
+#define STR_MemFree(ALLOCATOR, PTR) DS_MemFree((DS_Allocator*)ALLOCATOR, (void*)(PTR))
+#elif defined(STR_USE_CUSTOM_MALLOC)
+// (Provide your own implementation)
 #else
-// Provide a custom arena implementation using the following definitions:
-// - STR_ARENA: the arena type
-// - STR_ARENA_ALLOCATE: allocate memory from the arena, i.e. `void *STR_ARENA_ALLOCATE(STR_ARENA *arena, int size)`
-#if !defined(STR_ARENA) || !defined(STR_ARENA_ALLOCATE)
-#error STR_ARENA implementation is missing.
-#endif
+#include <stdlib.h>
+#define STR_MemAlloc(ALLOCATOR, SIZE) (void*)malloc(SIZE)
+#define STR_MemFree(ALLOCATOR, PTR) free((void*)(PTR))
 #endif
 
 typedef struct STR_View {
 	const char* data;
 	int size;
+
 #ifdef __cplusplus
 	STR_View() : data(0), size(0) {}
 	STR_View(const char* _data, int _size) : data(_data), size(_size) {}
-	STR_View(const char* c_string) : data(c_string), size((int)strlen(c_string)) {}
+	STR_View(const char* c_string) : data(c_string), size(c_string ? (int)strlen(c_string) : 0) {}
 #endif
 } STR_View;
 
@@ -43,9 +44,9 @@ typedef struct STR_View {
 #define STR_API static
 #endif
 
-#ifndef STR_CHECK
+#ifndef STR_ASSERT
 #include <assert.h>
-#define STR_CHECK(x) assert(x)
+#define STR_ASSERT(x) assert(x)
 #endif
 
 #ifndef STR_PROFILER_MACROS
@@ -56,15 +57,15 @@ typedef struct STR_View {
 
 // String view literal macros
 #ifdef __cplusplus
-#define STR_V(x) STR_View{(char*)x, sizeof(x)-1}
-#define STR_VI(x) STR_(x)
+#define STR_V(x)    STR_View{(char*)x, sizeof(x)-1}
+#define STR_VI(x)   STR_View{(char*)x, sizeof(x)-1}
 #else
-#define STR_V(x) (STR_View){(char*)x, sizeof(x)-1}
-#define STR_VI(x) {(char*)x, sizeof(x)-1} // STR_View literal that works in C initializer lists
+#define STR_V(x)  (STR_View){(char*)x, sizeof(x)-1}
+#define STR_VI(x)           {(char*)x, sizeof(x)-1} // STR_View literal that works in C initializer lists
 #endif
 
 typedef struct STR_Builder {
-	STR_ARENA* arena;
+	void* allocator;
 	STR_View str;
 	int capacity;
 } STR_Builder;
@@ -101,19 +102,18 @@ typedef struct STR_Formatter {
 %?   -  STR_Formatter pointer
 */
 
-STR_API void STR_SetTempArena(STR_ARENA* arena);
-STR_API STR_ARENA* STR_GetTempArena();
+STR_API char* STR_ToC(void* allocator, STR_View str); // Allocates a new string
+STR_API STR_View STR_ToV(const char* str); // Makes a string view into `str`
 
-STR_API char* STR_ToC(STR_ARENA* arena, STR_View str);
-STR_API STR_View STR_ToV(const char* str);
-STR_API const char* STR_CloneC(STR_ARENA* arena, const char* str);
-STR_API STR_View STR_Clone(STR_ARENA* arena, STR_View str);
+STR_API const char* STR_CloneC(void* allocator, const char* str); // Allocates a new string
+STR_API STR_View STR_Clone(void* allocator, STR_View str); // Allocates a new string
+STR_API void STR_Free(void* allocator, STR_View str);
 
-STR_API char* STR_FormC(STR_ARENA* arena, const char* fmt, ...);
-STR_API STR_View STR_Form(STR_ARENA* arena, const char* fmt, ...);
+STR_API char* STR_FormC(void* allocator, const char* fmt, ...); // Allocates a new string
+STR_API STR_View STR_Form(void* allocator, const char* fmt, ...); // Allocates a new string
 
-STR_API char* STR_FormTempC(const char* fmt, ...);
-STR_API STR_View STR_FormTemp(const char* fmt, ...);
+STR_API void STR_BuilderInit(STR_Builder* s, void* allocator); // Alternatively, init by {}-initializer and passing in the allocator field
+STR_API void STR_BuilderDeinit(STR_Builder* s);
 
 STR_API void STR_PrintC(STR_Builder* s, const char* string);
 STR_API void STR_PrintV(STR_Builder* s, STR_View string);
@@ -134,9 +134,9 @@ STR_API bool STR_ParseI64(STR_View s, int64_t* out_value);
 
 STR_API bool STR_ParseFloat(STR_View s, double* out);
 
-STR_API STR_View STR_IntToStr(STR_ARENA* arena, int value);
-STR_API STR_View STR_IntToStrEx(STR_ARENA* arena, uint64_t data, bool is_signed, int radix);
-STR_API STR_View STR_FloatToStr(STR_ARENA* arena, double value, int min_decimals);
+STR_API STR_View STR_IntToStr(void* allocator, int value);
+STR_API STR_View STR_IntToStrEx(void* allocator, uint64_t data, bool is_signed, int radix);
+STR_API STR_View STR_FloatToStr(void* allocator, double value, int min_decimals);
 
 STR_API int STR_IntToStr_(char* buffer, uint64_t data, bool is_signed, int radix); // NOT null-terminated, the size of the string is returned.
 STR_API int STR_FloatToStr_(char* buffer, double value, int min_decimals); // NOT null-terminated, the size of the string is returned.
@@ -174,9 +174,9 @@ STR_API bool STR_Contains(STR_View str, STR_View substr);
 STR_API bool STR_ContainsC(STR_View str, const char* substr);
 STR_API bool STR_ContainsU(STR_View str, uint32_t codepoint);
 
-STR_API STR_View STR_Replace(STR_ARENA* arena, STR_View str, STR_View search_for, STR_View replace_with);
-STR_API STR_View STR_ReplaceMulti(STR_ARENA* arena, STR_View str, STR_Array search_for, STR_Array replace_with);
-STR_API STR_View STR_ToLower(STR_ARENA* arena, STR_View str);
+STR_API STR_View STR_Replace(void* allocator, STR_View str, STR_View search_for, STR_View replace_with);
+STR_API STR_View STR_ReplaceMulti(void* allocator, STR_View str, STR_Array search_for, STR_Array replace_with);
+STR_API STR_View STR_ToLower(void* allocator, STR_View str);
 STR_API uint32_t STR_CodepointToLower(uint32_t codepoint);
 
 STR_API bool STR_EndsWith(STR_View str, STR_View end);
@@ -198,10 +198,6 @@ STR_API STR_View STR_SliceBefore(STR_View str, int mid);
 STR_API STR_View STR_SliceAfter(STR_View str, int mid);
 
 // -- IMPLEMENTATION ------------------------------------------------------------
-
-///////////// Global state //////////////
-static STR_ARENA* STR_ACTIVE_TEMP_ARENA;
-/////////////////////////////////////////
 
 typedef struct STR_ASCIISet {
 	char bytes[32];
@@ -337,19 +333,19 @@ STR_API bool STR_MatchCaseInsensitiveC(const char* a, const char* b) {
 }
 
 STR_API STR_View STR_Slice(STR_View str, int lo, int hi) {
-	STR_CHECK(hi >= lo && hi <= str.size);
+	STR_ASSERT(hi >= lo && hi <= str.size);
 	STR_View result = { str.data + lo, hi - lo };
 	return result;
 }
 
 STR_API STR_View STR_SliceAfter(STR_View str, int mid) {
-	STR_CHECK(mid <= str.size);
+	STR_ASSERT(mid <= str.size);
 	STR_View result = { str.data + mid, str.size - mid };
 	return result;
 }
 
 STR_API STR_View STR_SliceBefore(STR_View str, int mid) {
-	STR_CHECK(mid <= str.size);
+	STR_ASSERT(mid <= str.size);
 	STR_View result = { str.data, mid };
 	return result;
 }
@@ -422,7 +418,7 @@ STR_API bool STR_CutStart(STR_View* str, STR_View start) {
 	return starts_with;
 }
 
-/*STR_API STR_RangeArray STR_Split(STR_ARENA *arena, STR_View str, char character) {
+/*STR_API STR_RangeArray STR_Split(STR_Allocator *allocator, STR_View str, char character) {
 	STR_ProfEnter();
 	int required_len = 1;
 	for (int i = 0; i < str.size; i++) {
@@ -430,7 +426,7 @@ STR_API bool STR_CutStart(STR_View* str, STR_View start) {
 	}
 
 	STR_RangeArray splits = {0};
-	splits.data = (StrRange*)STR_ARENA_ALLOCATE(arena, required_len * sizeof(StrRange));
+	splits.data = (StrRange*)STR_MemAlloc(allocator, required_len * sizeof(StrRange));
 
 	int prev = 0;
 	for (int i = 0; i < str.size; i++) {
@@ -447,24 +443,24 @@ STR_API bool STR_CutStart(STR_View* str, STR_View start) {
 	return splits;
 }*/
 
-STR_API STR_View STR_FloatToStr(STR_ARENA* arena, double value, int min_decimals) {
+STR_API STR_View STR_FloatToStr(void* allocator, double value, int min_decimals) {
 	char buffer[100];
 	int size = STR_FloatToStr_(buffer, value, min_decimals);
 	STR_View value_str = { buffer, size };
-	return STR_Clone(arena, value_str);
+	return STR_Clone(allocator, value_str);
 }
 
-STR_API STR_View STR_IntToStr(STR_ARENA* arena, int value) { return STR_IntToStrEx(arena, value, true, 10); }
+STR_API STR_View STR_IntToStr(void* allocator, int value) { return STR_IntToStrEx(allocator, value, true, 10); }
 
-STR_API STR_View STR_IntToStrEx(STR_ARENA* arena, uint64_t data, bool is_signed, int radix) {
+STR_API STR_View STR_IntToStrEx(void* allocator, uint64_t data, bool is_signed, int radix) {
 	char buffer[100];
 	int size = STR_IntToStr_(buffer, data, is_signed, radix);
 	STR_View value_str = { buffer, size };
-	return STR_Clone(arena, value_str);
+	return STR_Clone(allocator, value_str);
 }
 
 STR_API int STR_IntToStr_(char* buffer, uint64_t data, bool is_signed, int radix) {
-	STR_CHECK(radix >= 2 && radix <= 16);
+	STR_ASSERT(radix >= 2 && radix <= 16);
 	int offset = 0;
 
 	uint64_t remaining = data;
@@ -663,26 +659,26 @@ STR_API int STR_FloatToStr_(char* buffer, double value, int min_decimals) {
 	return offset;
 }
 
-/*STR_API STR_View STR_JoinN(STR_ARENA *arena, STR_Array args) {
-	STR_ProfEnter();
-	int offset = 0;
+/*STR_API STR_View STR_JoinN(STR_Allocator* allocator, STR_Array args) {
+STR_ProfEnter();
+int offset = 0;
 
-	for (int i = 0; i < args.size; i++) {
-		offset += args.data[i].size;
-	}
+for (int i = 0; i < args.size; i++) {
+offset += args.data[i].size;
+}
 
-	char *data = (char*)STR_ARENA_ALLOCATE(arena, offset + 1);
+char *data = (char*)STR_MemAlloc(allocator, offset + 1);
 
-	offset = 0;
-	for (int i = 0; i < args.size; i++) {
-		memcpy(data + offset, args.data[i].data, args.data[i].size);
-		offset += args.data[i].size;
-	}
+offset = 0;
+for (int i = 0; i < args.size; i++) {
+memcpy(data + offset, args.data[i].data, args.data[i].size);
+offset += args.data[i].size;
+}
 
-	*((char*)data + offset) = 0; // Add a null termination for better visualization in a debugger
-	STR_View result = {data, offset};
-	STR_ProfExit();
-	return result;
+*((char*)data + offset) = 0; // Add a null termination for better visualization in a debugger
+STR_View result = {data, offset};
+STR_ProfExit();
+return result;
 }*/
 
 static const uint32_t STR_UTF8_OFFSETS[6] = {
@@ -743,7 +739,7 @@ STR_API uint32_t STR_NextCodepoint(STR_View str, int* byteoffset) {
 		sz++;
 	} while (*byteoffset < str.size && !STR_IsUtf8FirstByte(str.data[*byteoffset]));
 	ch -= STR_UTF8_OFFSETS[sz - 1];
-	
+
 	return (uint32_t)ch;
 }
 
@@ -777,7 +773,7 @@ inline bool DoesAddOverflow(uint64_t x, uint64_t y) { return x + y < x; }
 
 STR_API bool STR_ParseU64Ex(STR_View s, int base, uint64_t* out_value) {
 	STR_ProfEnter();
-	STR_CHECK(2 <= base && base <= 16);
+	STR_ASSERT(2 <= base && base <= 16);
 
 	uint64_t value = 0;
 	int i = 0;
@@ -814,7 +810,7 @@ STR_API bool STR_ParseI64(STR_View s, int64_t* out_value) {
 
 STR_API bool STR_ParseI64Ex(STR_View s, int base, int64_t* out_value) {
 	STR_ProfEnter();
-	STR_CHECK(2 <= base && base <= 16);
+	STR_ASSERT(2 <= base && base <= 16);
 
 	int64_t sign = 1;
 	if (s.size > 0) {
@@ -832,15 +828,15 @@ STR_API bool STR_ParseI64Ex(STR_View s, int base, int64_t* out_value) {
 	return ok;
 }
 
-STR_API const char* STR_CloneC(STR_ARENA* arena, const char* str) {
-	char* data = (char*)STR_ARENA_ALLOCATE(arena, (int)strlen(str) + 1);
+STR_API const char* STR_CloneC(void* allocator, const char* str) {
+	char* data = (char*)STR_MemAlloc(allocator, (int)strlen(str) + 1);
 	strcpy(data, str);
 	return data;
 }
 
-STR_API char* STR_ToC(STR_ARENA* arena, STR_View str) {
+STR_API char* STR_ToC(void* allocator, STR_View str) {
 	STR_ProfEnter();
-	char* data = (char*)STR_ARENA_ALLOCATE(arena, str.size + 1);
+	char* data = (char*)STR_MemAlloc(allocator, str.size + 1);
 	memcpy(data, str.data, str.size);
 	data[str.size] = 0;
 	STR_ProfExit();
@@ -852,11 +848,15 @@ STR_API STR_View STR_ToV(const char* s) {
 	return result;
 }
 
-STR_API STR_View STR_Clone(STR_ARENA* arena, STR_View str) {
-	char* data = (char*)STR_ARENA_ALLOCATE(arena, str.size);
+STR_API STR_View STR_Clone(void* allocator, STR_View str) {
+	char* data = (char*)STR_MemAlloc(allocator, str.size);
 	memcpy(data, str.data, str.size);
 	STR_View result = { data, str.size };
 	return result;
+}
+
+STR_API void STR_Free(void* allocator, STR_View str) {
+	STR_MemFree(allocator, str.data);
 }
 
 static double STR_ToFloat_(const char* str, int* success) {
@@ -972,7 +972,7 @@ static double STR_ToFloat_(const char* str, int* success) {
 STR_API bool STR_ParseFloat(STR_View s, double* out) {
 	STR_ProfEnter();
 
-	STR_CHECK(s.size < 63);
+	STR_ASSERT(s.size < 63);
 	char cstr[64] = {0};
 	memcpy(cstr, s.data, s.size);
 
@@ -985,11 +985,11 @@ STR_API bool STR_ParseFloat(STR_View s, double* out) {
 	return success == 1;
 }
 
-STR_API STR_View STR_Replace(STR_ARENA* arena, STR_View str, STR_View search_for, STR_View replace_with) {
+STR_API STR_View STR_Replace(void* allocator, STR_View str, STR_View search_for, STR_View replace_with) {
 	if (search_for.size > str.size) return str;
 	STR_ProfEnter();
 
-	STR_Builder builder = { arena };
+	STR_Builder builder = { allocator };
 
 	int last = str.size - search_for.size;
 
@@ -1008,12 +1008,12 @@ STR_API STR_View STR_Replace(STR_ARENA* arena, STR_View str, STR_View search_for
 	return builder.str;
 }
 
-STR_API STR_View STR_ReplaceMulti(STR_ARENA* arena, STR_View str, STR_Array search_for, STR_Array replace_with) {
+STR_API STR_View STR_ReplaceMulti(void* allocator, STR_View str, STR_Array search_for, STR_Array replace_with) {
 	STR_ProfEnter();
-	STR_CHECK(search_for.size == replace_with.size);
+	STR_ASSERT(search_for.size == replace_with.size);
 	int n = search_for.size;
 
-	STR_Builder builder = { arena };
+	STR_Builder builder = { allocator };
 
 	for (int i = 0; i < str.size;) {
 
@@ -1053,10 +1053,10 @@ STR_API uint32_t STR_CodepointToLower(uint32_t codepoint) { // TODO: handle unic
 	return codepoint >= 'A' && codepoint <= 'Z' ? codepoint + 32 : codepoint;
 }
 
-STR_API STR_View STR_ToLower(STR_ARENA* arena, STR_View str) {
+STR_API STR_View STR_ToLower(void* allocator, STR_View str) {
 	STR_ProfEnter();
 
-	STR_View result = STR_Clone(arena, str);
+	STR_View result = STR_Clone(allocator, str);
 	char* data = (char*)result.data; // normally, strings are const char*, but let's just ignore that here
 
 	for (int i = 0; i < result.size; i++) {
@@ -1064,14 +1064,6 @@ STR_API STR_View STR_ToLower(STR_ARENA* arena, STR_View str) {
 	}
 	STR_ProfExit();
 	return result;
-}
-
-STR_API void STR_SetTempArena(STR_ARENA* arena) {
-	STR_ACTIVE_TEMP_ARENA = arena;
-}
-
-STR_API STR_ARENA* STR_GetTempArena() {
-	return STR_ACTIVE_TEMP_ARENA;
 }
 
 STR_API void STR_PrintVA(STR_Builder* s, const char* fmt, va_list args) {
@@ -1089,7 +1081,7 @@ STR_API void STR_PrintVA(STR_Builder* s, const char* fmt, va_list args) {
 
 			// Parse specifier
 			switch (*c) {
-			default: STR_CHECK(0);
+			default: STR_ASSERT(0);
 			case 's': {
 				STR_PrintC(s, va_arg(args, char*));
 			} break;
@@ -1144,38 +1136,30 @@ STR_API void STR_PrintVA(STR_Builder* s, const char* fmt, va_list args) {
 	}
 }
 
-STR_API char* STR_FormC(STR_ARENA* arena, const char* fmt, ...) {
+STR_API char* STR_FormC(void* allocator, const char* fmt, ...) {
 	va_list args; va_start(args, fmt);
-	STR_Builder builder = { arena };
+	STR_Builder builder = { allocator };
 	STR_PrintVA(&builder, fmt, args);
 	STR_PrintU(&builder, '\0');
 	va_end(args);
 	return (char*)builder.str.data;
 }
 
-STR_API char* STR_FormTempC(const char* fmt, ...) {
+STR_API STR_View STR_Form(void* allocator, const char* fmt, ...) {
 	va_list args; va_start(args, fmt);
-	STR_Builder builder = { STR_ACTIVE_TEMP_ARENA };
-	STR_PrintVA(&builder, fmt, args);
-	STR_PrintU(&builder, '\0');
-	va_end(args);
-	return (char*)builder.str.data;
-}
-
-STR_API STR_View STR_Form(STR_ARENA* arena, const char* fmt, ...) {
-	va_list args; va_start(args, fmt);
-	STR_Builder builder = { arena };
+	STR_Builder builder = { allocator };
 	STR_PrintVA(&builder, fmt, args);
 	va_end(args);
 	return builder.str;
 }
 
-STR_API STR_View STR_FormTemp(const char* fmt, ...) {
-	va_list args; va_start(args, fmt);
-	STR_Builder builder = { STR_ACTIVE_TEMP_ARENA };
-	STR_PrintVA(&builder, fmt, args);
-	va_end(args);
-	return builder.str;
+STR_API void STR_BuilderInit(STR_Builder* s, void* allocator) {
+	STR_Builder result = {allocator};
+	*s = result;
+}
+
+STR_API void STR_BuilderDeinit(STR_Builder* s) {
+	STR_Free(s->allocator, s->str);
 }
 
 STR_API void STR_PrintC(STR_Builder* s, const char* string) {
@@ -1193,9 +1177,10 @@ STR_API void STR_PrintV(STR_Builder* s, STR_View string) {
 
 	// Resize string if necessary
 	if (capacity != s->capacity) {
-		char* new_memory = (char*)STR_ARENA_ALLOCATE(s->arena, capacity);
+		char* new_memory = (char*)STR_MemAlloc(s->allocator, capacity);
 		memcpy(new_memory, s->str.data, s->str.size);
-
+		STR_MemFree(s->allocator, s->str.data);
+		
 		s->str.data = new_memory;
 		s->capacity = capacity;
 	}

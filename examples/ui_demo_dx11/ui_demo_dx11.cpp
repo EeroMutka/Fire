@@ -79,7 +79,7 @@ static void UpdateAndRender() {
 	UI_Outputs ui_outputs;
 	UI_EndFrame(&ui_outputs);
 	
-	FLOAT clear_color[4] = { 0.5f, 0.5f, 0.5f, 1.f };
+	FLOAT clear_color[4] = { 0.15f, 0.15f, 0.15f, 1.f };
 	g_d3d11_device_context->ClearRenderTargetView(g_d3d11_framebuffer_rtv, clear_color);
 
 	UI_DX11_Draw(&ui_outputs, g_d3d11_framebuffer_rtv);

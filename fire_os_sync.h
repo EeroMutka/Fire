@@ -1,5 +1,6 @@
-// fire_os_sync.h - Multithreading library (currently only implemented on windows)
-// Written by Eero Mutka.
+// fire_os_sync.h - by Eero Mutka (https://eeromutka.github.io/)
+// 
+// Threading and synchronization primitives. Only Windows is supported for time being.
 //
 // This code is released under the MIT license (https://opensource.org/licenses/MIT).
 //
@@ -57,7 +58,9 @@ OS_SYNC_API void OS_SYNC_ConditionVarWait(OS_SYNC_ConditionVar* condition_var, O
 
 #ifdef /**********/ FIRE_OS_SYNC_IMPLEMENTATION /**********/
 
-#include <process.h> // for _endthreadex. TODO: get rid of this include
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <process.h> // for _endthreadex
 
 static uint32_t OS_SYNC_ThreadEntryFn(void* args) {
 	OS_SYNC_Thread* thread = (OS_SYNC_Thread*)args;
