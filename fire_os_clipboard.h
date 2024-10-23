@@ -1,5 +1,6 @@
-// fire_os_window.h - clipboard utilities (currently only implemented on windows)
-// Written by Eero Mutka.
+// fire_os_window.h - by Eero Mutka (https://eeromutka.github.io/)
+// 
+// Clipboard utility library. Only Windows is supported for time being.
 //
 // This code is released under the MIT license (https://opensource.org/licenses/MIT).
 //
@@ -23,6 +24,9 @@ OS_CLIPBOARD_API bool OS_CLIPBOARD_SetText(const char* data, int size);
 
 
 #ifdef /**********/ FIRE_OS_CLIPBOARD_IMPLEMENTATION /**********/
+
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 
 OS_CLIPBOARD_API bool OS_CLIPBOARD_GetText(char** out_data, int* out_size, OS_CLIPBOARD_AllocFn alloc, void* alloc_data) {
 	char* data = NULL;

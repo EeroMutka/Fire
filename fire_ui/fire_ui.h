@@ -1,12 +1,10 @@
-// Fire UI - immediate mode user interface library
-//
-// Author: Eero Mutka
-// Version: 0
-// Date: 25 March, 2024
+// Fire UI - by Eero Mutka (https://eeromutka.github.io/)
+// 
+// Immediate mode user interface library.
 //
 // This code is released under the MIT license (https://opensource.org/licenses/MIT).
 //
-// Headers that must have been included before this file:
+// Dependencies that must be included before this file:
 // - "fire_ds.h"
 // - "fire_string.h"
 // - "stb_rect_pack.h"  (from https://github.com/nothings/stb)
@@ -35,9 +33,13 @@
 #endif
 
 // * Retrieve an unique key for the macro usage site.
-#define UI_KEY()      UI_LangAgnosticLiteral(UI_Key){(uintptr_t)__FILE__ ^ (uintptr_t)__COUNTER__}
-#define UI_KEY1(A)    UI_HashKey(UI_KEY(), (A))
-#define UI_KEY2(A, B) UI_HashKey(UI_KEY1(A), (B))
+#define UI_KEY()            UI_LangAgnosticLiteral(UI_Key){(uintptr_t)__FILE__ ^ (uintptr_t)__COUNTER__}
+#define UI_KKEY(OTHER_KEY)  UI_HashKey(UI_KEY(), (OTHER_KEY))
+#define UI_BKEY(OTHER_BOX)  UI_HashKey(UI_KEY(), (OTHER_BOX)->key)
+
+#define UI_BOX()            UI_GetOrAddBox(UI_KEY(), true)
+#define UI_BBOX(OTHER_BOX)  UI_GetOrAddBox(UI_BKEY(OTHER_BOX), true)
+#define UI_KBOX(OTHER_KEY)  UI_GetOrAddBox(UI_KKEY(OTHER_KEY), true)
 
 #define UI_Max(A, B) ((A) > (B) ? (A) : (B))
 #define UI_Min(A, B) ((A) < (B) ? (A) : (B))
@@ -177,8 +179,10 @@ struct UI_Box {
 
 	UI_Key key;
 	UI_Box* parent;
-	UI_Box* next[2]; // prev and next pointers
-	UI_Box* first_child[2]; // first and last child
+	UI_Box* prev;
+	UI_Box* next;
+	UI_Box* first_child;
+	UI_Box* last_child;
 
 	union {
 		UI_BoxFlags flags;
@@ -186,7 +190,7 @@ struct UI_Box {
 	};
 
 	UI_Size size[2];
-	UI_Vec2 offset; // this is used for scroll-bars. Maybe I could refactor this into a function pointer or something.
+	UI_Vec2 offset;
 	UI_Vec2 inner_padding; // applied to text or children
 
 	STR_View text;
@@ -232,9 +236,16 @@ typedef enum UI_AlignH { UI_AlignH_Left, UI_AlignH_Middle, UI_AlignH_Right } UI_
 #define UI_TEXTURE_ID_NIL ((UI_TextureID)0)
 //#define UI_BUFFER_ID_NIL ((UI_BufferID)0)
 
+#ifndef UI_MAX_BACKEND_BUFFERS
+#define UI_MAX_BACKEND_BUFFERS 16
+#endif
+
 typedef uint64_t UI_TextureID; // UI_TEXTURE_ID_NIL is a reserved value
+// typedef uint64_t UI_BufferID;  // UI_BUFFER_ID_NIL is a reserved value
 
 typedef struct UI_DrawCall {
+	int vertex_buffer_id;
+	int index_buffer_id;
 	UI_TextureID texture;
 	uint32_t first_index;
 	uint32_t index_count;
@@ -280,6 +291,7 @@ typedef enum UI_InputEvent {
 	UI_InputEvent_PressOrRepeat = 1 << 0,
 	UI_InputEvent_Press = 1 << 1,
 	UI_InputEvent_Release = 1 << 2,
+	UI_InputEvent_DoubleClick = 1 << 3,
 } UI_InputEvent;
 
 typedef struct UI_Backend {
@@ -291,7 +303,7 @@ typedef struct UI_Backend {
 	void (*resize_vertex_buffer)(uint32_t size);
 	void (*resize_index_buffer)(uint32_t size);
 	UI_TextureID (*resize_atlas)(uint32_t width, uint32_t height);
-	
+
 	// When mapping a resource, the returned pointer must stay valid until UI_EndFrame or resize_* is called.
 	void* (*map_atlas)();
 	void* (*map_vertex_buffer)();
@@ -332,7 +344,7 @@ typedef struct UI_Outputs {
 	int draw_calls_count;
 } UI_Outputs;
 
-typedef DS_Map(UI_Key, UI_Box*) UI_BoxFromKeyMap;
+typedef DS_Map(UI_Key, void*) UI_PtrFromKeyMap;
 
 typedef struct UI_State {
 	DS_Allocator* allocator;
@@ -342,8 +354,8 @@ typedef struct UI_State {
 	DS_Arena prev_frame_arena;
 	DS_Arena frame_arena;
 
-	UI_BoxFromKeyMap prev_frame_box_from_key;
-	UI_BoxFromKeyMap box_from_key;
+	UI_PtrFromKeyMap prev_frame_data_from_key;
+	UI_PtrFromKeyMap data_from_key;
 
 	bool selection_is_visible; // The selected box can be hidden, i.e. when clicking a button with your mouse. Then, when pressing an arrow key, it becomes visible again.
 
@@ -358,7 +370,8 @@ typedef struct UI_State {
 
 	// atlas
 	stbtt_pack_context pack_context;
-	UI_TextureID atlas;
+	//bool atlas_needs_reupload;
+	UI_TextureID atlases[2]; // 0 is the current atlas, 1 is NULL or the old atlas
 	uint8_t* atlas_buffer_grayscale; // stb rect pack works with grayscale, but we want to convert to RGBA8 on the fly.
 
 	// Mouse position in screen space coordinates, snapped to the pixel center. Placing it at the pixel center means we don't
@@ -366,9 +379,8 @@ typedef struct UI_State {
 	UI_Vec2 mouse_pos;
 	UI_Vec2 window_size;
 
-	UI_Vec2 last_released_mouse_pos;
-	UI_Vec2 last_pressed_mouse_pos;
-	UI_Vec2 mouse_travel_distance_after_press; // NOTE: holding alt/shift will modify the speed at which this value changes
+	UI_Vec2 last_released_mouse_pos; // Cleanup: remove from this struct
+	UI_Vec2 mouse_travel_distance_after_press; // NOTE: holding alt/shift will modify the speed at which this value changes. Cleanup: remove from this struct
 
 	UI_Key mouse_clicking_down_box;
 	UI_Key mouse_clicking_down_box_new;
@@ -433,7 +445,6 @@ typedef struct UI_ValTextState {
 } UI_ValTextState;
 
 typedef struct UI_ValNumericState {
-	UI_Box* box;
 	double value_before_press;
 	bool is_dragging;
 	bool is_editing_text;
@@ -455,6 +466,7 @@ UI_API inline bool UI_InputIsDown(UI_Input input) { return UI_STATE.input_is_dow
 UI_API inline bool UI_InputWasPressed(UI_Input input) { return UI_STATE.inputs.input_events[input] & UI_InputEvent_Press; }
 UI_API inline bool UI_InputWasPressedOrRepeated(UI_Input input) { return (UI_STATE.inputs.input_events[input] & UI_InputEvent_PressOrRepeat) != 0; }
 UI_API inline bool UI_InputWasReleased(UI_Input input) { return (UI_STATE.inputs.input_events[input] & UI_InputEvent_Release) != 0; }
+UI_API inline bool UI_DoubleClickedAnywhere(void) { return (UI_STATE.inputs.input_events[UI_Input_MouseLeft] & UI_InputEvent_DoubleClick) != 0; }
 
 UI_API inline DS_Arena* UI_FrameArena(void) { return &UI_STATE.frame_arena; }
 
@@ -503,6 +515,8 @@ UI_API UI_DrawBoxDefaultArgs* UI_DrawBoxDefaultArgsInit();
 
 // -- Tree builder API with implicit context -------
 
+UI_API UI_Box* UI_GetOrAddBox(UI_Key key, bool assert_newly_added);
+
 UI_API void UI_BoxComputeExpandedSizes(UI_Box* box);
 UI_API void UI_BoxComputeRects(UI_Box* box, UI_Vec2 box_position);
 
@@ -510,59 +524,50 @@ UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis, int pa
 UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size);
 UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI_ScissorRect scissor);
 
-UI_API UI_Box* UI_MakeVarHolderBox(UI_Key key); // Make a box which can only store variables and which can't be used as part of a box tree structure.
-
-UI_API UI_Box* UI_MakeRootBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags);
+UI_API void UI_InitRootBox(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags);
 UI_API void UI_PushBox(UI_Box* box);
 UI_API void UI_PopBox(UI_Box* box);
 UI_API void UI_PopBoxN(UI_Box* box, int n);
 
-UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags);
+UI_API void UI_AddBox(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags);
 
-UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
-UI_API UI_Box* UI_AddBoxWithTextC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
+UI_API void UI_AddLabel(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
 
-UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
-UI_API UI_Box* UI_AddButtonC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
+UI_API void UI_AddButton(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
 
-UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
-UI_API UI_Box* UI_AddDropdownButtonC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string);
+UI_API void UI_AddDropdownButton(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
 
-UI_API void UI_AddCheckbox(UI_Key key, bool* value);
+UI_API void UI_AddCheckbox(UI_Box* box, bool* value);
 
-UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* text);
-UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text);
+UI_API UI_ValTextState* UI_AddValText(UI_Box* box, UI_Size w, UI_Size h, UI_Text* text);
 
-UI_API UI_ValNumericState* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int* value);
-UI_API UI_ValNumericState* UI_AddValInt64(UI_Key key, UI_Size w, UI_Size h, int64_t* value);
-UI_API UI_ValNumericState* UI_AddValUInt64(UI_Key key, UI_Size w, UI_Size h, uint64_t* value);
-UI_API UI_ValNumericState* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value);
-UI_API UI_ValNumericState* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value);
-UI_API UI_ValNumericState* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float);
+UI_API UI_ValNumericState* UI_AddValInt(UI_Box* box, UI_Size w, UI_Size h, int32_t* value);
+UI_API UI_ValNumericState* UI_AddValInt64(UI_Box* box, UI_Size w, UI_Size h, int64_t* value);
+UI_API UI_ValNumericState* UI_AddValUInt64(UI_Box* box, UI_Size w, UI_Size h, uint64_t* value);
+UI_API UI_ValNumericState* UI_AddValFloat(UI_Box* box, UI_Size w, UI_Size h, float* value);
+UI_API UI_ValNumericState* UI_AddValFloat64(UI_Box* box, UI_Size w, UI_Size h, double* value);
+UI_API UI_ValNumericState* UI_AddValNumeric(UI_Box* box, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float);
 
-// * Returns NULL if the collapsable header is closed.
-UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, STR_View text);
-UI_API UI_Box* UI_PushCollapsingC(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, const char* text);
+// - Returns false if the collapsable header is closed.
+UI_API bool UI_PushCollapsing(UI_Box* box, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, STR_View text);
 UI_API void UI_PopCollapsing(UI_Box* box);
 
 UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, STR_View initial_value);
-UI_API void UI_TextInitC(DS_Allocator* allocator, UI_Text* text, const char* initial_value);
 UI_API void UI_TextDeinit(UI_Text* text);
 UI_API void UI_TextSet(UI_Text* text, STR_View value);
-UI_API void UI_TextSetC(UI_Text* text, const char* value);
 
-// * `anchor_x` / `anchor_y` can be 0 or 1: A value of 0 means anchoring the scrollbar to left / top, 1 means anchoring it to right / bottom.
-UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y);
+// - `anchor_x` / `anchor_y` can be 0 or 1: A value of 0 means anchoring the scrollbar to left / top, 1 means anchoring it to right / bottom.
+UI_API void UI_PushScrollArea(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y);
 UI_API void UI_PopScrollArea(UI_Box* box);
 
-UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h);
+UI_API void UI_PushArrangerSet(UI_Box* box, UI_Size w, UI_Size h);
 UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request);
-UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h);
+UI_API void UI_AddArranger(UI_Box* box, UI_Size w, UI_Size h);
 
 // --------------------------------------
 
-UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key); // Returns NULL if a box with this key did not exist
-UI_API UI_Box* UI_BoxFromKey(UI_Key key); // Returns NULL if a box with this key has not been created this frame so far
+//UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key); // Returns NULL if a box with this key did not exist
+//UI_API UI_Box* UI_BoxFromKey(UI_Key key); // Returns NULL if a box with this key has not been created this frame so far
 
 #define UI_BoxAddVar(BOX, KEY, VALUE)            UI_BoxAddVarData(BOX, KEY, VALUE, sizeof(*VALUE))
 
@@ -582,37 +587,27 @@ UI_API bool UI_BoxGetRetainedVarData(UI_Box* box, UI_Key key, void** out_ptr, in
 
 UI_API bool UI_BoxIsAParentOf(UI_Box* box, UI_Box* child);
 
-UI_API bool UI_HasMovedMouseAfterPressed(void);
+UI_API bool UI_Clicked(UI_Box* box);
+UI_API bool UI_Pressed(UI_Box* box);
+UI_API bool UI_PressedIdle(UI_Box* box); // Differs from UI_Pressed by calling UI_IsHoveredIdle instead of UI_IsHovered
+UI_API bool UI_PressedEx(UI_Box* box, UI_Input mouse_button);
+UI_API bool UI_PressedIdleEx(UI_Box* box, UI_Input mouse_button); // Differs from UI_Pressed by calling UI_IsHoveredIdle instead of UI_IsHovered
+UI_API bool UI_DoubleClicked(UI_Box* box);
+UI_API bool UI_DoubleClickedIdle(UI_Box* box); // Differs from UI_DoubleClicked by calling UI_IsHoveredIdle instead of UI_IsHovered
 
-UI_API bool UI_ClickedAnywhere(void);
-UI_API bool UI_DoubleClickedAnywhere(void);
+UI_API bool UI_IsHovered(UI_Box* box);
+UI_API bool UI_IsHoveredIdle(UI_Box* box); // Differs from UI_IsHovered in that if a clickable child box is also hovered, this will return false.
+UI_API bool UI_IsMouseInsideOf(UI_Box* box); // like IsHovered, except ignores the NoHover box flag
 
-// These input functions can be called even before a box with the given key has been created.
-// You may, for example, implement a "close" button, which you can first ask if it has been pressed during this frame,
-// and if so, decide to not create it still on the same frame.
-// Internally, these functions look at the rectangle of the box of the previous frame and the mouse position
-// of the current frame to determine overlap.
+UI_API bool UI_IsSelected(UI_Box* box);
 
-UI_API bool UI_Clicked(UI_Key key);
-UI_API bool UI_Pressed(UI_Key key);
-UI_API bool UI_PressedIdle(UI_Key key); // Differs from UI_Pressed by calling UI_IsHoveredIdle instead of UI_IsHovered
-UI_API bool UI_PressedEx(UI_Key key, UI_Input mouse_button);
-UI_API bool UI_PressedIdleEx(UI_Key key, UI_Input mouse_button); // Differs from UI_Pressed by calling UI_IsHoveredIdle instead of UI_IsHovered
-UI_API bool UI_DoubleClicked(UI_Key key);
-UI_API bool UI_DoubleClickedIdle(UI_Key key); // Differs from UI_DoubleClicked by calling UI_IsHoveredIdle instead of UI_IsHovered
-
-UI_API bool UI_IsHovered(UI_Key key);
-UI_API bool UI_IsHoveredIdle(UI_Key key); // Differs from UI_IsHovered in that if a clickable child box is also hovered, this will return false.
-UI_API bool UI_IsMouseInsideOf(UI_Key key); // like IsHovered, except ignores the NoHover box flag
-
-UI_API bool UI_IsSelected(UI_Key key);
-
-UI_API bool UI_IsClickingDown(UI_Key key);
-UI_API bool UI_IsClickingDownAndHovered(UI_Key key);
+UI_API bool UI_IsClickingDown(UI_Box* box);
+UI_API bool UI_IsClickingDownAndHovered(UI_Box* box);
 
 UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection);
 
 UI_API UI_SplittersState* UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count, float panel_min_size);
+UI_API void UI_SplittersNormalizeToTotalSize(UI_SplittersState* splitters, float total_size);
 
 UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontView font);
 UI_API float UI_TextWidth(STR_View text, UI_FontView font);
@@ -683,36 +678,27 @@ static const UI_Vec2 UI_DEFAULT_TEXT_PADDING = { 10.f, 5.f };
 UI_API inline bool UI_MarkGreaterThan(UI_Mark a, UI_Mark b) { return a.line > b.line || (a.line == b.line && a.col > b.col); }
 UI_API inline bool UI_MarkLessThan(UI_Mark a, UI_Mark b) { return a.line < b.line || (a.line == b.line && a.col < b.col); }
 
-UI_API UI_Box* UI_AddButtonC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
-	return UI_AddButton(key, w, h, flags, STR_ToV(string));
-}
-
-UI_API UI_Box* UI_AddButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
+UI_API void UI_AddButton(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
 	UI_ProfEnter();
 	flags |= UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
-	UI_Box* box = UI_AddBoxWithText(key, w, h, flags, string);
+	UI_AddLabel(box, w, h, flags, string);
 	UI_ProfExit();
-	return box;
 }
 
-UI_API UI_Box* UI_AddDropdownButtonC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
-	return UI_AddDropdownButton(key, w, h, flags, STR_ToV(string));
-}
-
-UI_API UI_Box* UI_AddDropdownButton(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
+UI_API void UI_AddDropdownButton(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
 	UI_ProfEnter();
 	flags |= UI_BoxFlag_Horizontal | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder |UI_BoxFlag_DrawTransparentBackground;
-	UI_Box* box = UI_AddBox(key, w, h, flags);
+	UI_AddBox(box, w, h, flags);
 	UI_PushBox(box);
 
-	UI_AddBoxWithText(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), 0, string);
+	UI_AddLabel(UI_BBOX(box), UI_SizeFlex(1.f), UI_SizeFit(), 0, string);
 
-	UI_Box* icon_box = UI_AddBoxWithTextC(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, "\x44");
+	UI_Box* icon_box = UI_BBOX(box);
+	UI_AddLabel(icon_box, UI_SizeFit(), UI_SizeFit(), 0, "\x44");
 	icon_box->font = UI_STATE.icons_font;
 	
 	UI_PopBox(box);
 	UI_ProfExit();
-	return box;
 }
 
 static int UI_ColumnFromXOffset(float x, STR_View line, UI_FontView font) {
@@ -1027,13 +1013,12 @@ UI_API void UI_EditTextSelectAll(const UI_Text* text, UI_Selection* selection) {
 	UI_ProfExit();
 }
 
-UI_API UI_ValNumericState* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float) {
+UI_API UI_ValNumericState* UI_AddValNumeric(UI_Box* box, UI_Size w, UI_Size h, void* value_64_bit, bool is_signed, bool is_float) {
 	UI_ProfEnter();
 	
-	UI_Box* box_prev_frame = UI_PrevFrameBoxFromKey(key);
 	UI_ValNumericState data = {0};
 	UI_Key data_key = UI_KEY();
-	if (box_prev_frame) UI_BoxGetVar(box_prev_frame, data_key, &data);
+	if (box->prev_frame) UI_BoxGetVar(box->prev_frame, data_key, &data);
 
 	STR_View value_str;
 	if (is_float) {
@@ -1042,7 +1027,7 @@ UI_API UI_ValNumericState* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, vo
 		value_str = STR_IntToStrEx(UI_FrameArena(), *(uint64_t*)value_64_bit, is_signed, 10);
 	}
 
-	bool should_enable_text_edit = UI_STATE.selected_box_new == key && UI_STATE.selected_box != key;
+	bool should_enable_text_edit = UI_STATE.selected_box_new == box->key && UI_STATE.selected_box != box->key;
 
 	if (data.is_dragging && !UI_InputIsDown(UI_Input_MouseLeft)) {
 		data.is_dragging = false;
@@ -1056,13 +1041,11 @@ UI_API UI_ValNumericState* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, vo
 		data.is_editing_text = true;
 	}
 	
-	UI_Box* box = NULL;
-
 	if (data.is_editing_text) {
 		UI_Text new_text;
 		UI_TextInit(UI_FrameArena(), &new_text, data.text);
 		
-		box = UI_AddValText(key, w, h, &new_text);
+		UI_AddValText(box, w, h, &new_text);
 
 		data.text = UI_TextToStr(new_text);
 
@@ -1075,10 +1058,10 @@ UI_API UI_ValNumericState* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, vo
 		}
 
 		if (!should_enable_text_edit) {
-			if (UI_STATE.selected_box != key) {
+			if (UI_STATE.selected_box != box->key) {
 				data.is_editing_text = false;
 			}
-			if (UI_InputWasPressed(UI_Input_MouseLeft) && !UI_Pressed(key)) {
+			if (UI_InputWasPressed(UI_Input_MouseLeft) && !UI_Pressed(box)) {
 				data.is_editing_text = false;
 			}
 			if (UI_InputWasPressed(UI_Input_Enter) || UI_InputWasPressed(UI_Input_Escape)) {
@@ -1087,10 +1070,10 @@ UI_API UI_ValNumericState* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, vo
 		}
 	}
 	else {
-		box = UI_AddBoxWithText(key, w, h,
+		UI_AddLabel(box, w, h,
 			UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_PressingStaysWithoutHover, value_str);
 
-		if (UI_Pressed(key)) {
+		if (UI_Pressed(box)) {
 			UI_STATE.outputs.lock_and_hide_cursor = true;
 
 			if (is_float) {
@@ -1104,7 +1087,7 @@ UI_API UI_ValNumericState* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, vo
 			data.is_dragging = true;
 		}
 
-		if (UI_IsHovered(box->key)) {
+		if (UI_IsHovered(box)) {
 			UI_STATE.outputs.cursor = UI_MouseCursor_ResizeH;
 		}
 
@@ -1125,76 +1108,36 @@ UI_API UI_ValNumericState* UI_AddValNumeric(UI_Key key, UI_Size w, UI_Size h, vo
 	
 	UI_ValNumericState* new_data;
 	UI_BoxGetRetainedVar(box, data_key, &new_data);
-	data.box = box;
 	*new_data = data;
 
 	UI_ProfExit();
 	return new_data;
 }
 
-UI_API UI_ValNumericState* UI_AddValInt(UI_Key key, UI_Size w, UI_Size h, int* value) {
+UI_API UI_ValNumericState* UI_AddValInt(UI_Box* box, UI_Size w, UI_Size h, int32_t* value) {
 	int64_t value_i64 = *value;
-	UI_ValNumericState* data = UI_AddValNumeric(key, w, h, &value_i64, true, false);
-	*value = (int)value_i64;
+	UI_ValNumericState* data = UI_AddValNumeric(box, w, h, &value_i64, true, false);
+	*value = (int32_t)value_i64;
 	return data;
 }
 
-UI_API UI_ValNumericState* UI_AddValInt64(UI_Key key, UI_Size w, UI_Size h, int64_t* value) {
-	return UI_AddValNumeric(key, w, h, value, true, false);
+UI_API UI_ValNumericState* UI_AddValInt64(UI_Box* box, UI_Size w, UI_Size h, int64_t* value) {
+	return UI_AddValNumeric(box, w, h, value, true, false);
 }
 
-UI_API UI_ValNumericState* UI_AddValUInt64(UI_Key key, UI_Size w, UI_Size h, uint64_t* value) {
-	return UI_AddValNumeric(key, w, h, value, false, false);
+UI_API UI_ValNumericState* UI_AddValUInt64(UI_Box* box, UI_Size w, UI_Size h, uint64_t* value) {
+	return UI_AddValNumeric(box, w, h, value, false, false);
 }
 
-UI_API UI_ValNumericState* UI_AddValFloat(UI_Key key, UI_Size w, UI_Size h, float* value) {
+UI_API UI_ValNumericState* UI_AddValFloat(UI_Box* box, UI_Size w, UI_Size h, float* value) {
 	double value_f64 = (double)*value;
-	UI_ValNumericState* data = UI_AddValNumeric(key, w, h, &value_f64, false, true);
+	UI_ValNumericState* data = UI_AddValNumeric(box, w, h, &value_f64, false, true);
 	*value = (float)value_f64;
 	return data;
 }
 
-UI_API UI_ValNumericState* UI_AddValFloat64(UI_Key key, UI_Size w, UI_Size h, double* value) {
-	return UI_AddValNumeric(key, w, h, value, false, true);
-}
-
-UI_API UI_Box* UI_AddValFilepath(UI_Key key, UI_Size w, UI_Size h, UI_Text* filepath) {
-	UI_ProfEnter();
-	UI_Box* box = UI_AddBox(key, w, h, UI_BoxFlag_Horizontal);
-	UI_PushBox(box);
-
-	UI_Key edit_text_key = UI_KEY1(key);
-	UI_AddValText(edit_text_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), filepath);
-
-	UI_Box* button = UI_AddButtonC(UI_KEY1(key), UI_SizeFit(), UI_SizeFlex(1.f), 0, "\x42");
-	button->font = UI_STATE.icons_font;
-
-	if (UI_Clicked(button->key)) {
-		UI_TODO();
-		// STR_View pick_result;
-		// if (OS_FilePicker(UI_FrameArena(), &pick_result)) {
-		// 	UI_TODO();
-		// 	// UI_Selection selection;
-		// 	// UI_SelectAll(filepath, &selection);
-		// 	// UI_ReplaceSelectionWithText(filepath, &selection, pick_result, box->style->font);
-		// 	// result.edited = true;
-		// }
-
-		//OS_FilePicker(
-		//if (file.count) {
-		//	// reset scroll
-		//	(*UI_.box_from_key[edit_text_key])->scroll_target = {};
-		//
-		//}
-	}
-
-	UI_PopBox(box);
-	UI_ProfExit();
-	return box;
-}
-
-UI_API void UI_TextInitC(DS_Allocator* allocator, UI_Text* text, const char* initial_value) {
-	UI_TextInit(allocator, text, STR_ToV(initial_value));
+UI_API UI_ValNumericState* UI_AddValFloat64(UI_Box* box, UI_Size w, UI_Size h, double* value) {
+	return UI_AddValNumeric(box, w, h, value, false, true);
 }
 
 UI_API void UI_TextInit(DS_Allocator* allocator, UI_Text* text, STR_View initial_value) {
@@ -1211,10 +1154,6 @@ UI_API void UI_TextDeinit(UI_Text* text) {
 	DS_ArrDeinit(&text->line_offsets);
 	DS_ArrDeinit(&text->text);
 	UI_ProfExit();
-}
-
-UI_API void UI_TextSetC(UI_Text* text, const char* value) {
-	UI_TextSet(text, STR_ToV(value));
 }
 
 UI_API void UI_TextSet(UI_Text* text, STR_View value) {
@@ -1241,32 +1180,33 @@ static void UI_DrawValTextInnerBox(UI_Box* box) {
 	}
 }
 
-UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text) {
+UI_API UI_ValTextState* UI_AddValText(UI_Box* box, UI_Size w, UI_Size h, UI_Text* text) {
 	UI_ProfEnter();
 
 	UI_FontView font = UI_STATE.base_font;
 
-	UI_Box* outer = UI_AddBox(key, w, h, UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_Clickable);
-	UI_PushBox(outer);
+	UI_AddBox(box, w, h, UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_Clickable);
+	UI_PushBox(box);
 
-	UI_Box* inner = UI_AddBoxWithTextC(UI_KEY1(key), UI_SizeFit(), UI_SizeFit(), 0, "");
+	UI_Box* inner = UI_BBOX(box);
+	UI_AddLabel(inner, UI_SizeFit(), UI_SizeFit(), 0, "");
 	inner->draw = UI_DrawValTextInnerBox;
 
 	UI_ValTextState* state;
-	bool had_text_edit_state = UI_BoxGetRetainedVar(outer, UI_AddValTextDataKey(), &state);
+	bool had_text_edit_state = UI_BoxGetRetainedVar(box, UI_AddValTextDataKey(), &state);
 
-	bool pressed_this = UI_Pressed(key);
+	bool pressed_this = UI_Pressed(box);
 
 	if (state->is_editing) {
 		if (UI_InputWasPressed(UI_Input_MouseLeft) && !pressed_this) state->is_editing = false;
 		if (UI_InputWasPressed(UI_Input_Enter))   state->is_editing = false;
 		if (UI_InputWasPressed(UI_Input_Escape))  state->is_editing = false;
-		if (UI_STATE.selected_box_new != key)     state->is_editing = false;
+		if (UI_STATE.selected_box_new != box->key)     state->is_editing = false;
 	}
 	else {
 		bool became_selected =
-			(UI_STATE.selected_box_new == key && UI_STATE.selected_box != key) ||
-			(UI_STATE.selected_box_new == key && !had_text_edit_state);
+			(UI_STATE.selected_box_new == box->key && UI_STATE.selected_box != box->key) ||
+			(UI_STATE.selected_box_new == box->key && !had_text_edit_state);
 
 		if (pressed_this || became_selected) {
 			state->is_editing = true;
@@ -1289,8 +1229,8 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text) {
 			UI_EditTextArrowKeyInputX(-1, text, selection, font);
 		}
 
-		bool pressed_with_mouse = UI_InputWasPressed(UI_Input_MouseLeft) && UI_IsHovered(key);
-		if (pressed_with_mouse || UI_STATE.mouse_clicking_down_box == key) {
+		bool pressed_with_mouse = UI_InputWasPressed(UI_Input_MouseLeft) && UI_IsHovered(box);
+		if (pressed_with_mouse || UI_STATE.mouse_clicking_down_box == box->key) {
 			if (inner->prev_frame) {
 				float origin = inner->prev_frame->computed_position.x + inner->prev_frame->inner_padding.x;
 			
@@ -1364,118 +1304,106 @@ UI_API UI_Box* UI_AddValText(UI_Key key, UI_Size w, UI_Size h, UI_Text* text) {
 		}
 	}
 
-	UI_PopBox(outer);
+	UI_PopBox(box);
 
 	inner->text = STR_Clone(&UI_STATE.frame_arena, UI_TextToStr(*text)); // set text after possibile modifications
 
-	if (UI_IsHovered(outer->key)) {
+	if (UI_IsHovered(box)) {
 		UI_STATE.outputs.cursor = UI_MouseCursor_I_beam;
 	}
 
 	UI_ProfExit();
-	return outer;
+
+	return state;
 }
 
-UI_API void UI_AddCheckbox(UI_Key key, bool* value) {
+UI_API void UI_AddCheckbox(UI_Box* box, bool* value) {
 	UI_ProfEnter();
 
 	float h = UI_STATE.base_font.size + 2.f * UI_DEFAULT_TEXT_PADDING.y;
 
-	UI_Box* box = UI_AddBox(UI_KEY1(key), h, h, 0);
+	UI_AddBox(box, h, h, 0);
 	box->inner_padding = UI_VEC2{ 5.f, 5.f };
 	UI_PushBox(box);
 
-	UI_Box* inner;
 	UI_BoxFlags inner_flags = UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder;
-	UI_Key inner_key = UI_KEY1(key);
+	UI_Box* inner = UI_BBOX(box);
 	if (*value) {
-		inner = UI_AddBoxWithTextC(inner_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), inner_flags, "A");
+		UI_AddLabel(inner, UI_SizeFlex(1.f), UI_SizeFlex(1.f), inner_flags, "A");
 	}
 	else {
-		inner = UI_AddBox(inner_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), inner_flags);
+		UI_AddBox(inner, UI_SizeFlex(1.f), UI_SizeFlex(1.f), inner_flags);
 	}
 	inner->font = UI_STATE.icons_font;
 	inner->inner_padding = UI_VEC2{ 5.f, 2.f };
 	
 	UI_PopBox(box);
 
-	if (UI_Pressed(inner->key)) *value = !*value;
+	if (UI_Pressed(inner)) *value = !*value;
 	
 	UI_ProfExit();
 }
 
-UI_API UI_Box* UI_AddBoxWithTextC(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, const char* string) {
-	return UI_AddBoxWithText(key, w, h, flags, STR_ToV(string));
-}
-
-UI_API UI_Box* UI_AddBoxWithText(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
+UI_API void UI_AddLabel(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
 	UI_ProfEnter();
-	UI_Box* box = UI_AddBox(key, w, h, flags | UI_BoxFlag_HasText);
+	UI_AddBox(box, w, h, flags | UI_BoxFlag_HasText);
 	box->text = STR_Clone(&UI_STATE.frame_arena, string);
 	box->font = UI_STATE.base_font;
 	box->inner_padding = UI_DEFAULT_TEXT_PADDING;
 	UI_ProfExit();
-	return box;
 }
 
-UI_API UI_Box* UI_PushCollapsingC(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, const char* text) {
-	return UI_PushCollapsing(key, w, h, indent, flags, STR_ToV(text));
-}
-
-UI_API UI_Box* UI_PushCollapsing(UI_Key key, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, STR_View text) {
+UI_API bool UI_PushCollapsing(UI_Box* box, UI_Size w, UI_Size h, UI_Size indent, UI_BoxFlags flags, STR_View text) {
 	UI_ProfEnter();
-	UI_Key child_box_key = UI_KEY1(key);
+	
+	UI_Box* header = UI_BBOX(box);
 	UI_BoxFlags box_flags = UI_BoxFlag_Horizontal | UI_BoxFlag_Clickable | UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground;
-	UI_Box* box = UI_AddBox(key, UI_SizeFlex(1.f), h, box_flags);
-	UI_PushBox(box);
+	UI_AddBox(header, UI_SizeFlex(1.f), h, box_flags);
 
-	bool is_open = UI_PrevFrameBoxFromKey(child_box_key) != NULL;
-	if (UI_Pressed(box->key)) {
+	bool is_open = box->prev_frame != NULL && box->prev_frame->parent != NULL;
+	if (UI_Pressed(header)) {
 		is_open = !is_open;
 	}
 
-	UI_Box* label = UI_AddBoxWithTextC(UI_KEY1(key), 20.f, h, 0, is_open ? "\x44" : "\x46");
-	label->font = UI_STATE.icons_font;
+	UI_PushBox(header);
+	UI_Box* icon = UI_BBOX(box);
+	UI_AddLabel(icon, 20.f, h, 0, is_open ? "\x44" : "\x46");
+	icon->font = UI_STATE.icons_font;
+	UI_AddLabel(UI_BBOX(box), w, h, 0, text);
+	UI_PopBox(header);
 
-	UI_AddBoxWithText(UI_KEY1(key), w, h, 0, text);
-
-	UI_PopBox(box);
-
-	UI_Box* outer_child_box = NULL;
-	UI_Box* inner_child_box = NULL;
 	if (is_open) {
-		outer_child_box = UI_AddBox(child_box_key, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
-		UI_PushBox(outer_child_box);
-		UI_AddBox(UI_KEY1(key), indent, UI_SizeFit(), 0);
+		UI_AddBox(box, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
+		UI_PushBox(box);
+		UI_AddBox(UI_BBOX(box), indent, UI_SizeFit(), 0);
 		
-		inner_child_box = UI_AddBox(UI_KEY1(key), UI_SizeFlex(1.f), UI_SizeFit(), flags);
+		UI_Box* inner_child_box = UI_BBOX(box);
+		UI_AddBox(inner_child_box, UI_SizeFlex(1.f), UI_SizeFit(), flags);
 		UI_PushBox(inner_child_box);
 	}
 	UI_ProfExit();
-	return inner_child_box;
+	return is_open;
 }
 
 UI_API void UI_PopCollapsing(UI_Box* box) {
 	UI_ProfEnter();
+	UI_PopBox(box->last_child);
 	UI_PopBox(box);
-	UI_PopBox(box->parent);
 	UI_ProfExit();
 }
 
-UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y) {
+UI_API void UI_PushScrollArea(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y) {
 	UI_ProfEnter();
 
-	UI_Key content_box_key = UI_KEY1(key);
-	UI_Key temp_box_keys[2] = { UI_KEY1(key), UI_KEY1(key) };
+	UI_Box* content = UI_BBOX(box);
+	UI_Box* temp_boxes[2] = { UI_BBOX(box), UI_BBOX(box) };
 	int anchors[] = { anchor_x, anchor_y };
 
-	UI_Box* content_prev_frame = UI_PrevFrameBoxFromKey(content_box_key); // may return NULL
-	UI_Box* deepest_temp_box_prev_frame = UI_PrevFrameBoxFromKey(temp_box_keys[0]); // may return NULL
-	
-	UI_Box* temp_boxes[2] = {0};
+	UI_Box* content_prev_frame = content->prev_frame; // may be NULL
+	UI_Box* deepest_temp_box_prev_frame = temp_boxes[0]->prev_frame; // may return NULL
 
-	UI_Box* parent = UI_AddBox(key, w, h, UI_BoxFlag_Horizontal | flags);
-	UI_PushBox(parent);
+	UI_AddBox(box, w, h, UI_BoxFlag_Horizontal | flags);
+	UI_PushBox(box);
 
 	UI_Vec2 offset = { 0.f, 0.f };
 
@@ -1486,14 +1414,14 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 	// We should automatically add either X or Y scrollbars
 	for (int y = 1; y >= 0; y--) { // y is the direction of the scroll bar
 		int x = 1 - y;
-		UI_Key y_key = UI_HashInt(UI_KEY1(key), y);
+		UI_Key y_key = UI_HashInt(UI_BKEY(box), y);
 
 		UI_Size size[2];
 		size[x] = UI_SizeFlex(1.f);
 		size[y] = UI_SizeFlex(1.f);
-		UI_Box* temp_box = UI_AddBox(temp_box_keys[y], size[0], size[1], 0/*UI_BoxFlag_NoScissor*/);
-		temp_boxes[y] = temp_box;
-
+		UI_Box* temp_box = temp_boxes[y];
+		UI_AddBox(temp_box, size[0], size[1], 0);
+		
 		// Use the content size from the previous frame
 		float content_length_px = content_prev_frame ? content_prev_frame->computed_unexpanded_size._[y] : 0.f;
 		
@@ -1505,7 +1433,9 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 			size[y] = UI_SizeFlex(1.f);
 
 			UI_BoxFlags layout_dir_flag = y == UI_Axis_X ? UI_BoxFlag_Horizontal : 0;
-			UI_Box* rail_line_box = UI_AddBox(UI_KEY1(y_key), size[0], size[1], layout_dir_flag | UI_BoxFlag_DrawBorder);
+			
+			UI_Box* rail_line_box = UI_KBOX(y_key);
+			UI_AddBox(rail_line_box, size[0], size[1], layout_dir_flag | UI_BoxFlag_DrawBorder);
 			if (anchors[y] == 1) {
 				rail_line_box->flags |= (y == 1 ? UI_BoxFlag_ReverseLayoutY : UI_BoxFlag_ReverseLayoutX);
 			}
@@ -1522,33 +1452,36 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 
 			size[x] = 18.f;
 			size[y] = scrollbar_distance_ratio * rail_line_length_px;
-			UI_Box* pad_before_bar = UI_AddBox(UI_KEY1(y_key), size[0], size[1], UI_BoxFlag_PressingStaysWithoutHover);
+			UI_Box* pad_before_bar = UI_KBOX(y_key);
+			UI_AddBox(pad_before_bar, size[0], size[1], UI_BoxFlag_PressingStaysWithoutHover);
 
 			size[x] = 18.f;
 			size[y] = rail_line_length_px * scrollbar_length_ratio;
-			UI_Box* scrollbar = UI_AddBox(UI_KEY1(y_key), size[0], size[1],
+			UI_Box* scrollbar = UI_KBOX(y_key);
+			UI_AddBox(scrollbar, size[0], size[1],
 				UI_BoxFlag_PressingStaysWithoutHover | UI_BoxFlag_Clickable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground);
 
 			size[x] = 18.f;
 			size[y] = UI_SizeFlex(1.f);
-			UI_Box* pad_after_bar = UI_AddBox(UI_KEY1(y_key), size[0], size[1], UI_BoxFlag_PressingStaysWithoutHover);
+			UI_Box* pad_after_bar = UI_KBOX(y_key);
+			UI_AddBox(pad_after_bar, size[0], size[1], UI_BoxFlag_PressingStaysWithoutHover);
 
 			UI_PopBox(rail_line_box);
 
 			// scrollbar inputs
 
-			if (UI_Pressed(scrollbar->key)) {
+			if (UI_Pressed(scrollbar)) {
 				UI_STATE.scrollbar_origin_before_press = offset._[y];
 			}
 
-			if (UI_IsClickingDown(scrollbar->key)) {
+			if (UI_IsClickingDown(scrollbar)) {
 				float mouse_delta = UI_STATE.mouse_pos._[y] - UI_STATE.last_released_mouse_pos._[y];
 				float ratio_of_scrollbar_moved = mouse_delta / rail_line_length_px;
 				offset._[y] = UI_STATE.scrollbar_origin_before_press - ratio_of_scrollbar_moved * content_length_px;
 			}
 
-			if (UI_IsClickingDown(pad_before_bar->key) || UI_IsClickingDown(pad_after_bar->key)) {
-				float origin = parent->prev_frame ? parent->prev_frame->computed_position._[y] : 0.f;
+			if (UI_IsClickingDown(pad_before_bar) || UI_IsClickingDown(pad_after_bar)) {
+				float origin = box->prev_frame ? box->prev_frame->computed_position._[y] : 0.f;
 				float scroll_ratio = (UI_STATE.mouse_pos._[y] - origin) / rail_line_length_px - 0.5f * scrollbar_length_ratio;
 
 				offset._[y] = -scroll_ratio * content_length_px;
@@ -1559,7 +1492,7 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 
 			// idea: hold middle click and move mouse could scroll in X and Y
 
-			if (UI_IsHovered(parent->key) && y == UI_Axis_Y) {
+			if (UI_IsHovered(box) && y == UI_Axis_Y) {
 				offset._[y] += UI_STATE.inputs.mouse_wheel_delta * 30.f;
 			}
 
@@ -1576,7 +1509,7 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 		UI_PushBox(temp_box);
 	}
 
-	UI_Box* content = UI_AddBox(content_box_key, UI_SizeFlex(1.f), UI_SizeFlex(1.f), UI_BoxFlag_NoFlexDownX|UI_BoxFlag_NoFlexDownY);
+	UI_AddBox(content, UI_SizeFlex(1.f), UI_SizeFlex(1.f), UI_BoxFlag_NoFlexDownX|UI_BoxFlag_NoFlexDownY);
 	content->offset = offset;
 	UI_PushBox(content);
 
@@ -1584,7 +1517,6 @@ UI_API UI_Box* UI_PushScrollArea(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags f
 	if (anchor_y == 1) temp_boxes[0]->flags |= UI_BoxFlag_ReverseLayoutY;
 
 	UI_ProfExit();
-	return parent;
 }
 
 UI_API void UI_PopScrollArea(UI_Box* box) {
@@ -1641,11 +1573,9 @@ UI_API void UI_DrawBox(UI_Box* box) {
 
 static UI_DrawBoxDefaultArgs* UI_DrawBoxDefaultArgsConstDefaults() {
 	static const UI_DrawBoxDefaultArgs args = {
-		UI_COLOR{ 0, 0, 0, 255 }, // text_color
-			//UI_COLOR{ 250, 255, 255, 255 }, // text_color
-		UI_COLOR{ 255, 255, 255, 70 },  // transparent_bg_color
-		//UI_COLOR{ 50, 50, 50, 255 },    // opaque_bg_color
-		UI_COLOR{ 160, 160, 160, 255 },    // opaque_bg_color
+		UI_COLOR{ 250, 255, 255, 255 }, // text_color
+		UI_COLOR{ 255, 255, 255, 50 },  // transparent_bg_color
+		UI_COLOR{ 50, 50, 50, 255 },    // opaque_bg_color
 		UI_COLOR{ 0, 0, 0, 128 },       // border_color
 	};
 	return (UI_DrawBoxDefaultArgs*)&args;
@@ -1691,8 +1621,8 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 		AnimState* anim_state;
 		UI_BoxGetRetainedVar(box, UI_KEY(), &anim_state);
 
-		float is_clicking = (float)UI_IsClickingDownAndHovered(box->key);
-		anim_state->lazy_is_hovered = (float)UI_IsHoveredIdle(box->key);
+		float is_clicking = (float)UI_IsClickingDownAndHovered(box);
+		anim_state->lazy_is_hovered = (float)UI_IsHoveredIdle(box);
 		anim_state->lazy_is_holding_down = is_clicking > anim_state->lazy_is_holding_down ?
 			is_clicking : UI_Lerp(anim_state->lazy_is_holding_down, is_clicking, 0.2f);
 
@@ -1718,13 +1648,13 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 		}
 	}
 
-	if (UI_IsSelected(box->key) && UI_STATE.selection_is_visible) {
+	if (UI_IsSelected(box) && UI_STATE.selection_is_visible) {
 		//UI_Rect box_rect = box->computed_rect;
 		UI_Color selection_color = UI_COLOR{ 250, 200, 85, 240 };
 		UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, selection_color);
 	}
 
-	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+	for (UI_Box* child = box->first_child; child; child = child->next) {
 		UI_DrawBox(child);
 	}
 
@@ -1736,90 +1666,69 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	UI_ProfExit();
 }
 
-UI_API bool UI_HasMovedMouseAfterPressed(void) {
-	UI_Vec2 delta = UI_SubV2(UI_STATE.mouse_pos, UI_STATE.last_pressed_mouse_pos);
-	return delta.x * delta.x + delta.y * delta.y > 4.f;
+UI_API bool UI_Pressed(UI_Box* box) {
+	return UI_PressedEx(box, UI_Input_MouseLeft);
 }
 
-UI_API bool UI_ClickedAnywhere(void) {
-	bool clicked = UI_InputWasReleased(UI_Input_MouseLeft) || UI_InputWasReleased(UI_Input_Enter);
-	return clicked;
-}
-
-UI_API bool UI_Pressed(UI_Key key) {
-	return UI_PressedEx(key, UI_Input_MouseLeft);
-}
-
-UI_API bool UI_PressedEx(UI_Key key, UI_Input mouse_button) {
-	bool pressed = UI_InputWasPressed(mouse_button) && UI_IsHovered(key);
-	pressed = pressed || (UI_STATE.selected_box == key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter));
+UI_API bool UI_PressedEx(UI_Box* box, UI_Input mouse_button) {
+	bool pressed = UI_InputWasPressed(mouse_button) && UI_IsHovered(box);
+	pressed = pressed || (UI_STATE.selected_box == box->key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter));
 	return pressed;
 }
 
-UI_API bool UI_PressedIdleEx(UI_Key key, UI_Input mouse_button) {
-	bool pressed = UI_InputWasPressed(mouse_button) && UI_IsHoveredIdle(key);
-	pressed = pressed || (UI_STATE.selected_box == key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter));
+UI_API bool UI_PressedIdleEx(UI_Box* box, UI_Input mouse_button) {
+	bool pressed = UI_InputWasPressed(mouse_button) && UI_IsHoveredIdle(box);
+	pressed = pressed || (UI_STATE.selected_box == box->key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter));
 	return pressed;
 }
 
-UI_API bool UI_PressedIdle(UI_Key key) {
-	return UI_PressedIdleEx(key, UI_Input_MouseLeft);
+UI_API bool UI_PressedIdle(UI_Box* box) {
+	return UI_PressedIdleEx(box, UI_Input_MouseLeft);
 }
 
-UI_API bool UI_Clicked(UI_Key key) {
-	bool clicked = UI_IsClickingDownAndHovered(key) &&
+UI_API bool UI_Clicked(UI_Box* box) {
+	bool clicked = UI_IsClickingDownAndHovered(box) &&
 		(UI_InputWasReleased(UI_Input_MouseLeft) || (UI_STATE.selection_is_visible && UI_InputWasReleased(UI_Input_Enter)));
 	return clicked;
 }
 
-UI_API bool UI_DoubleClickedAnywhere(void) {
-	bool result = UI_InputWasPressed(UI_Input_MouseLeft);
-	if (result && UI_InputIsDown(UI_Input_Shift)) UI_TODO();
-
-	result = result && !UI_HasMovedMouseAfterPressed();
-	result = result && UI_STATE.time_since_pressed_lmb < 0.2f;
+UI_API bool UI_DoubleClicked(UI_Box* box) {
+	bool result = UI_Pressed(box) && UI_DoubleClickedAnywhere();
 	return result;
 }
 
-UI_API bool UI_DoubleClicked(UI_Key key) {
-	bool result = UI_Pressed(key) && UI_DoubleClickedAnywhere();
+UI_API bool UI_DoubleClickedIdle(UI_Box* box) {
+	bool result = UI_PressedIdle(box) && UI_DoubleClickedAnywhere();
 	return result;
 }
 
-UI_API bool UI_DoubleClickedIdle(UI_Key key) {
-	bool result = UI_PressedIdle(key) && UI_DoubleClickedAnywhere();
+UI_API bool UI_IsSelected(UI_Box* box) {
+	return UI_STATE.selected_box == box->key;
+}
+
+UI_API bool UI_IsClickingDown(UI_Box* box) {
+	return UI_STATE.mouse_clicking_down_box == box->key || UI_STATE.keyboard_clicking_down_box == box->key;
+}
+
+UI_API bool UI_IsClickingDownAndHovered(UI_Box* box) {
+	return (UI_STATE.keyboard_clicking_down_box == box->key && UI_STATE.selected_box == box->key) ||
+		(UI_STATE.mouse_clicking_down_box == box->key && UI_IsHovered(box));
+}
+
+UI_API bool UI_IsHovered(UI_Box* box) {
+	bool result = box->prev_frame && !(box->prev_frame->flags & UI_BoxFlag_NoHover) && UI_PointIsInRect(box->prev_frame->computed_rect, UI_STATE.mouse_pos);
 	return result;
 }
 
-UI_API bool UI_IsSelected(UI_Key key) {
-	return key == UI_STATE.selected_box;
-}
-
-UI_API bool UI_IsClickingDown(UI_Key key) {
-	return UI_STATE.mouse_clicking_down_box == key || UI_STATE.keyboard_clicking_down_box == key;
-}
-
-UI_API bool UI_IsClickingDownAndHovered(UI_Key key) {
-	return (UI_STATE.keyboard_clicking_down_box == key && UI_STATE.selected_box == key) ||
-		(UI_STATE.mouse_clicking_down_box == key && UI_IsHovered(key));
-}
-
-UI_API bool UI_IsHovered(UI_Key key) {
-	UI_Box* box = UI_PrevFrameBoxFromKey(key);
-	bool result = box != NULL && !(box->flags & UI_BoxFlag_NoHover) && UI_PointIsInRect(box->computed_rect, UI_STATE.mouse_pos);
-	return result;
-}
-
-UI_API bool UI_IsMouseInsideOf(UI_Key key) {
-	UI_Box* box = UI_PrevFrameBoxFromKey(key);
-	bool result = box != NULL && UI_PointIsInRect(box->computed_rect, UI_STATE.mouse_pos);
+UI_API bool UI_IsMouseInsideOf(UI_Box* box) {
+	bool result = box->prev_frame && UI_PointIsInRect(box->prev_frame->computed_rect, UI_STATE.mouse_pos);
 	return result;
 }
 
 static bool UI_HasAnyHoveredClickableChild_(UI_Box* box) {
 	UI_ProfEnter();
 	bool result = false;
-	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+	for (UI_Box* child = box->first_child; child; child = child->next) {
 		if (UI_PointIsInRect(child->computed_rect, UI_STATE.mouse_pos)) {
 			if (child->flags & UI_BoxFlag_Clickable) {
 				result = true;
@@ -1835,37 +1744,23 @@ static bool UI_HasAnyHoveredClickableChild_(UI_Box* box) {
 	return result;
 }
 
-UI_API bool UI_IsHoveredIdle(UI_Key key) {
-	UI_Box* box = UI_PrevFrameBoxFromKey(key);
-	bool result = box != NULL && !(box->flags & UI_BoxFlag_NoHover) && UI_PointIsInRect(box->computed_rect, UI_STATE.mouse_pos);
-	result = result && !UI_HasAnyHoveredClickableChild_(box);
+UI_API bool UI_IsHoveredIdle(UI_Box* box) {
+	bool result = box->prev_frame && !(box->prev_frame->flags & UI_BoxFlag_NoHover) && UI_PointIsInRect(box->prev_frame->computed_rect, UI_STATE.mouse_pos);
+	result = result && !UI_HasAnyHoveredClickableChild_(box->prev_frame);
 	return result;
 }
 
-//UI_API UI_Style* UI_PeekStyle(void) {
-//	return DS_ArrPeek(UI_STATE.style_stack);
+//UI_API UI_Box* UI_BoxFromKey(UI_Key key) {
+//	UI_Box* box = NULL;
+//	DS_MapFind(&UI_STATE.data_from_key, key, &box);
+//	return box;
 //}
 
-//UI_API UI_Style* UI_MakeStyle(void) {
-//	return DS_Clone(UI_Style, UI_FrameArena(), *DS_ArrPeek(UI_STATE.style_stack));
+//UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key) {
+//	UI_Box* box = NULL;
+//	DS_MapFind(&UI_STATE.prev_frame_data_from_key, key, &box);
+//	return box;
 //}
-
-//UI_API UI_Style* UI_PushStyle(void) {
-//	UI_Style* style = DS_Clone(UI_Style, UI_FrameArena(), *DS_ArrPeek(UI_STATE.style_stack));
-//	DS_ArrPush(&UI_STATE.style_stack, style);
-//	return style;
-//}
-//
-//UI_API void UI_PopStyle(UI_Style* style) {
-//	UI_ASSERT(DS_ArrPeek(UI_STATE.style_stack) == style);
-//	DS_ArrPop(&UI_STATE.style_stack);
-//}
-
-UI_API UI_Box* UI_PrevFrameBoxFromKey(UI_Key key) {
-	UI_Box* box = NULL;
-	DS_MapFind(&UI_STATE.prev_frame_box_from_key, key, &box);
-	return box;
-}
 
 UI_API void UI_BoxAddVarData(UI_Box* box, UI_Key key, void* ptr, int size) {
 	UI_BoxVariableHeader* header = (UI_BoxVariableHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxVariableHeader) + size);
@@ -1921,14 +1816,9 @@ UI_API bool UI_BoxGetVarData(UI_Box* box, UI_Key key, void* out_value, int size)
 	return ptr != NULL;
 }
 
-UI_API UI_Box* UI_BoxFromKey(UI_Key key) {
-	UI_Box* box = NULL;
-	DS_MapFind(&UI_STATE.box_from_key, key, &box);
-	return box;
-}
-
-UI_API bool UI_SelectionMovementInput(UI_Box* node, UI_Key* out_new_selected_box) {
+UI_API bool UI_SelectionMovementInput(UI_Box* box, UI_Key* out_new_selected_box) {
 	UI_ProfEnter();
+
 	// There are two strategies for tab-navigation. At any point (except the first step), stop if the node is selectable.
 
 	// Strategy 1. (going down):
@@ -1942,24 +1832,24 @@ UI_API bool UI_SelectionMovementInput(UI_Box* node, UI_Key* out_new_selected_box
 	// When going up, go from bottom-up and stop when a selectable node is found
 
 	bool result = false;
-	if (UI_IsSelected(node->key) && node->parent) {
+	if (UI_IsSelected(box) && box->parent && box->flags & UI_BoxFlag_Selectable) { // UI_BoxFlag_Selectable might have been removed for this new frame
 		if (UI_InputWasPressedOrRepeated(UI_Input_Down) || (UI_InputWasPressedOrRepeated(UI_Input_Tab) && !UI_InputIsDown(UI_Input_Shift))) {
-			UI_Box* n = node;
+			UI_Box* n = box;
 			for (;;) {
-				if (n->first_child[0]) {
-					n = n->first_child[0];
+				if (n->first_child) {
+					n = n->first_child;
 				}
 				else {
 					for (;;) {
-						if (n->next[1]) {
-							n = n->next[1];
+						if (n->next) {
+							n = n->next;
 							break;
 						}
 						else if (n->parent) {
 							n = n->parent;
 						}
 						else {
-							n = n->first_child[0];
+							n = n->first_child;
 							break;
 						}
 					}
@@ -1972,22 +1862,22 @@ UI_API bool UI_SelectionMovementInput(UI_Box* node, UI_Key* out_new_selected_box
 			}
 		}
 		if (UI_InputWasPressedOrRepeated(UI_Input_Up) || (UI_InputWasPressedOrRepeated(UI_Input_Tab) && UI_InputIsDown(UI_Input_Shift))) {
-			UI_Box* n = node;
+			UI_Box* n = box;
 			for (;;) {
 				// go to the previous node
-				if (n->next[0]) {
-					n = n->next[0];
-					for (; n->first_child[1];) {
-						n = n->first_child[1];
+				if (n->prev) {
+					n = n->prev;
+					for (; n->last_child;) {
+						n = n->last_child;
 					}
 				}
 				else if (n->parent) {
 					n = n->parent;
 				}
 				else {
-					n = n->first_child[1];
-					for (; n->first_child[1];) {
-						n = n->first_child[1];
+					n = n->last_child;
+					for (; n->last_child;) {
+						n = n->last_child;
 					}
 				}
 
@@ -2000,7 +1890,7 @@ UI_API bool UI_SelectionMovementInput(UI_Box* node, UI_Key* out_new_selected_box
 		}
 	}
 
-	for (UI_Box* child = node->first_child[0]; child; child = child->next[1]) {
+	for (UI_Box* child = box->first_child; child; child = child->next) {
 		if (UI_SelectionMovementInput(child, out_new_selected_box)) {
 			result = true;
 			break;
@@ -2012,23 +1902,29 @@ end:;
 	return result;
 }
 
-UI_API UI_Box* UI_MakeVarHolderBox(UI_Key key) {
-	UI_Box* box = (UI_Box*)DS_New(UI_VarHolderBox, UI_FrameArena()); // NOTE: UI_VarHolderBox must have the member layout as UI_Box for this to work!
-	bool newly_added = DS_MapInsert(&UI_STATE.box_from_key, key, box);
-	UI_ASSERT(newly_added); // If this fails, then a box with the same key has already been added during this frame!
-	box->prev_frame = UI_PrevFrameBoxFromKey(key);
-	return box;
-}
-
-UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, bool is_a_root) {
+UI_API UI_Box* UI_GetOrAddBox(UI_Key key, bool assert_newly_added) {
 	UI_ProfEnter();
 	
 	UI_Box* box = DS_New(UI_Box, UI_FrameArena());
-	bool newly_added = DS_MapInsert(&UI_STATE.box_from_key, key, box);
-	UI_ASSERT(newly_added); // If this fails, then a box with the same key has already been added during this frame!
+	void* box_voidptr = box; // this is annoying...
+	bool newly_added = DS_MapInsert(&UI_STATE.data_from_key, key, box_voidptr);
+	if (assert_newly_added) {
+		UI_ASSERT(newly_added); // If this fails, then a box with the same key has already been added during this frame!
+	}
 
 	box->key = key;
-	box->prev_frame = UI_PrevFrameBoxFromKey(key);
+	
+	void* prev_frame_box = NULL;
+	DS_MapFind(&UI_STATE.prev_frame_data_from_key, key, &prev_frame_box);
+	box->prev_frame = (UI_Box*)prev_frame_box;
+
+	UI_ProfExit();
+	return box;
+}
+
+UI_API UI_Box* UI_InitBox(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags) {
+	UI_ProfEnter();
+
 	box->size[0] = w;
 	box->size[1] = h;
 	box->flags = flags;
@@ -2036,68 +1932,64 @@ UI_API UI_Box* UI_MakeBox_(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags, 
 	box->draw_args = UI_DrawBoxDefaultArgsConstDefaults();
 	box->compute_unexpanded_size = UI_BoxComputeUnexpandedSizeDefault;
 
-	if (UI_STATE.mouse_clicking_down_box == key && UI_InputIsDown(UI_Input_MouseLeft)) {
-		UI_STATE.mouse_clicking_down_box_new = key;
+	if (UI_STATE.mouse_clicking_down_box == box->key && UI_InputIsDown(UI_Input_MouseLeft)) {
+		UI_STATE.mouse_clicking_down_box_new = box->key;
 	}
 
-	if (UI_STATE.keyboard_clicking_down_box == key && (UI_STATE.selection_is_visible && UI_InputIsDown(UI_Input_Enter))) {
-		UI_STATE.keyboard_clicking_down_box_new = key;
+	if (UI_STATE.keyboard_clicking_down_box == box->key && (UI_STATE.selection_is_visible && UI_InputIsDown(UI_Input_Enter))) {
+		UI_STATE.keyboard_clicking_down_box_new = box->key;
 	}
 
 	if (flags & UI_BoxFlag_Clickable) {
-		bool pressed_with_mouse = UI_InputWasPressed(UI_Input_MouseLeft) && UI_IsHovered(key);
-		bool pressed_with_keyboard = UI_STATE.selected_box == key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter);
+		bool pressed_with_mouse = UI_InputWasPressed(UI_Input_MouseLeft) && UI_IsHovered(box);
+		bool pressed_with_keyboard = UI_STATE.selected_box == box->key && UI_STATE.selection_is_visible && UI_InputWasPressed(UI_Input_Enter);
 		if (pressed_with_mouse) {
-			UI_STATE.mouse_clicking_down_box_new = key;
-			if (box->flags & UI_BoxFlag_Selectable) UI_STATE.selected_box_new = key;
+			UI_STATE.mouse_clicking_down_box_new = box->key;
+			if (box->flags & UI_BoxFlag_Selectable) UI_STATE.selected_box_new = box->key;
 		}
 		if (pressed_with_keyboard) {
-			UI_STATE.keyboard_clicking_down_box_new = key;
-			if (box->flags & UI_BoxFlag_Selectable) UI_STATE.selected_box_new = key;
+			UI_STATE.keyboard_clicking_down_box_new = box->key;
+			if (box->flags & UI_BoxFlag_Selectable) UI_STATE.selected_box_new = box->key;
 		}
 	}
 
-	// Keep the currently selected box selected, unless overwritten by pressing some other box
-	if (UI_STATE.selected_box == key && UI_STATE.selected_box_new == UI_INVALID_KEY) {
-		UI_STATE.selected_box_new = key;
-	}
-
-	if (box->prev_frame) {
-		if (is_a_root) {
-			UI_Key new_selected_box;
-			if (UI_SelectionMovementInput(box->prev_frame, &new_selected_box)) {
-				if (UI_STATE.selection_is_visible) { // only move if selection is already visible; otherwise first make it visible
-					UI_STATE.selected_box_new = new_selected_box;
-				}
-				UI_STATE.selection_is_visible = true;
-			}
-		}
+	// Keep the currently selected box selected unless overwritten by pressing some other box
+	if (UI_STATE.selected_box == box->key && UI_STATE.selected_box_new == UI_INVALID_KEY) {
+		UI_STATE.selected_box_new = box->key;
 	}
 
 	UI_ProfExit();
 	return box;
 }
 
-UI_API UI_Box* UI_MakeRootBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
-	return UI_MakeBox_(key, w, h, flags, true);
+UI_API void UI_InitRootBox(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags) {
+	UI_InitBox(box, w, h, flags);
+	if (box->prev_frame) {
+		// Update keyboard input on root boxes
+		UI_Key new_selected_box;
+		if (UI_SelectionMovementInput(box->prev_frame, &new_selected_box)) {
+			if (UI_STATE.selection_is_visible) { // only move if selection is already visible; otherwise first make it visible
+				UI_STATE.selected_box_new = new_selected_box;
+			}
+			UI_STATE.selection_is_visible = true;
+		}
+	}
 }
 
-UI_API UI_Box* UI_AddBox(UI_Key key, UI_Size w, UI_Size h, UI_BoxFlags flags) {
-	UI_ProfEnter();
+UI_API void UI_AddBox(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags) {
+	UI_InitBox(box, w, h, flags);
+	
 	UI_Box* parent = DS_ArrPeek(UI_STATE.box_stack);
 	UI_ASSERT(parent != NULL); // AddBox creates a new box under the currently pushed box. If this fails, no box is currently pushed
-	
-	UI_Box* box = UI_MakeBox_(key, w, h, flags, false);
+	UI_ASSERT(box->parent == NULL); // Has UI_AddBox been called once this frame already?
+
 	box->parent = parent;
 	if (parent->flags & UI_BoxFlag_NoHover) box->flags |= UI_BoxFlag_NoHover;
 
-	if (parent->first_child[1]) parent->first_child[1]->next[1] = box;
-	else parent->first_child[0] = box;
-	box->next[0] = parent->first_child[1];
-	parent->first_child[1] = box;
-
-	UI_ProfExit();
-	return box;
+	if (parent->last_child) parent->last_child->next = box;
+	else parent->first_child = box;
+	box->prev = parent->last_child;
+	parent->last_child = box;
 }
 
 UI_API void UI_PushBox(UI_Box* box) {
@@ -2127,7 +2019,7 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size, UI_FontV
 	UI_STATE.draw_next_index = 0;
 	UI_STATE.draw_vertices = (UI_DrawVertex*)UI_STATE.backend.map_vertex_buffer();
 	UI_STATE.draw_indices = (uint32_t*)UI_STATE.backend.map_index_buffer();
-	UI_STATE.draw_active_texture = UI_STATE.atlas;
+	UI_STATE.draw_active_texture = UI_STATE.atlases[0];
 	UI_ASSERT(UI_STATE.draw_active_texture != UI_TEXTURE_ID_NIL);
 	UI_ASSERT(UI_STATE.draw_vertices != NULL);
 	UI_ASSERT(UI_STATE.draw_indices != NULL);
@@ -2146,8 +2038,8 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size, UI_FontV
 	UI_STATE.frame_arena = prev_frame_arena;
 	DS_ArenaReset(&UI_STATE.frame_arena);
 
-	UI_STATE.prev_frame_box_from_key = UI_STATE.box_from_key;
-	DS_MapInit(&UI_STATE.box_from_key, &UI_STATE.frame_arena);
+	UI_STATE.prev_frame_data_from_key = UI_STATE.data_from_key;
+	DS_MapInit(&UI_STATE.data_from_key, &UI_STATE.frame_arena);
 	
 	UI_STATE.mouse_clicking_down_box = UI_STATE.mouse_clicking_down_box_new;
 	UI_STATE.mouse_clicking_down_box_new = UI_INVALID_KEY;
@@ -2183,8 +2075,8 @@ UI_API void UI_Deinit(void) {
 	DS_ArenaDeinit(&UI_STATE.prev_frame_arena);
 	DS_ArenaDeinit(&UI_STATE.persistent_arena);
 
-	UI_STATE.backend.resize_vertex_buffer(0);
 	UI_STATE.backend.resize_index_buffer(0);
+	UI_STATE.backend.resize_vertex_buffer(0);
 	UI_STATE.backend.resize_atlas(0, 0);
 
 	DS_MemFree(UI_STATE.allocator, UI_STATE.atlas_buffer_grayscale);
@@ -2207,8 +2099,9 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 
 	// init atlas
 	{
-		UI_STATE.atlas = backend->resize_atlas(UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE);
-		UI_ASSERT(UI_STATE.atlas != UI_TEXTURE_ID_NIL);
+		UI_TextureID atlas = backend->resize_atlas(UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE);
+		UI_ASSERT(atlas != UI_TEXTURE_ID_NIL);
+		UI_STATE.atlases[0] = atlas;
 
 		// pack a white rectangle into the atlas. See UI_WHITE_PIXEL_UV
 
@@ -2250,11 +2143,11 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 		float total_leftover = child_area_size;
 		float total_flex = 0.f;
 
-		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+		for (UI_Box* child = box->first_child; child; child = child->next) {
 			total_leftover -= child->computed_unexpanded_size._[axis];
 		}
 		
-		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+		for (UI_Box* child = box->first_child; child; child = child->next) {
 			if (total_leftover > 0) {
 				total_flex += child->size[axis] < 0.f ? child->size[axis] + 100.f : 0.f; // flex up
 			} else {
@@ -2262,7 +2155,7 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 			}
 		}
 
-		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+		for (UI_Box* child = box->first_child; child; child = child->next) {
 			float child_size = child->computed_unexpanded_size._[axis];
 
 			if (total_leftover > 0) {
@@ -2282,7 +2175,7 @@ UI_API void UI_BoxComputeExpandedSize(UI_Box* box, UI_Axis axis, float size) {
 		}
 	}
 	else {
-		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+		for (UI_Box* child = box->first_child; child; child = child->next) {
 			float child_size = child->computed_unexpanded_size._[axis];
 
 			float leftover = child_area_size - child_size;
@@ -2330,7 +2223,7 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 
 	UI_Axis layout_axis = box->flags & UI_BoxFlag_Horizontal ? UI_Axis_X : UI_Axis_Y;
 
-	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+	for (UI_Box* child = box->first_child; child; child = child->next) {
 		float child_position = (child->flags & UI_BoxFlag_NoAutoOffset ? cursor_base : cursor);
 		if (layout_from_end) child_position -= child->computed_expanded_size._[axis];
 
@@ -2346,23 +2239,23 @@ UI_API void UI_BoxComputeRectsStep(UI_Box* box, UI_Axis axis, float position, UI
 UI_API void UI_BoxComputeUnexpandedSizeDefault(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass) {
 	UI_ProfEnter();
 	
-	for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+	for (UI_Box* child = box->first_child; child; child = child->next) {
 		child->compute_unexpanded_size(child, axis, pass, request_second_pass);
 	}
 
 	float fitting_size = 0.f;
 
 	if (box->flags & UI_BoxFlag_HasText) {
-		UI_ASSERT(box->first_child[0] == NULL); // A box which has text must not have children
+		UI_ASSERT(box->first_child == NULL); // A box which has text must not have children
 
 		float text_size = axis == 0 ? UI_TextWidth(box->text, box->font) : (float)box->font.size;
 		fitting_size = (float)(int)(text_size + 0.5f) + 2.f * box->inner_padding._[axis];
 	}
 
-	if (box->first_child[0]) {
+	if (box->first_child) {
 		UI_Axis layout_axis = box->flags & UI_BoxFlag_Horizontal ? UI_Axis_X : UI_Axis_Y;
 
-		for (UI_Box* child = box->first_child[0]; child; child = child->next[1]) {
+		for (UI_Box* child = box->first_child; child; child = child->next) {
 			if (layout_axis == axis) {
 				fitting_size += child->computed_unexpanded_size._[axis];
 			}
@@ -2419,6 +2312,8 @@ static void UI_FinalizeDrawBatch() {
 		draw_call.texture = UI_STATE.draw_active_texture;
 		draw_call.first_index = first_index;
 		draw_call.index_count = index_count;
+		draw_call.vertex_buffer_id = 0;
+		draw_call.index_buffer_id = 1;
 		DS_ArrPush(&UI_STATE.draw_calls, draw_call);
 	}
 	UI_ProfExit();
@@ -2434,7 +2329,6 @@ UI_API void UI_EndFrame(UI_Outputs* outputs) {
 		if (UI_InputIsDown(UI_Input_Alt)) scale /= 50.f;
 		if (UI_InputIsDown(UI_Input_Shift)) scale *= 50.f;
 		UI_STATE.mouse_travel_distance_after_press = UI_AddV2(UI_STATE.mouse_travel_distance_after_press, UI_MulV2F(delta, scale));
-		UI_STATE.last_pressed_mouse_pos = UI_STATE.mouse_pos;
 	}
 	else {
 		UI_STATE.last_released_mouse_pos = UI_STATE.mouse_pos;
@@ -2455,13 +2349,20 @@ UI_API void UI_EndFrame(UI_Outputs* outputs) {
 	UI_ProfExit();
 }
 
+UI_API void UI_SplittersNormalizeToTotalSize(UI_SplittersState* splitters, float total_size) {
+	float normalize_factor = total_size / splitters->panel_end_offsets[splitters->panel_count - 1];
+	for (int i = 0; i < splitters->panel_count; i++) {
+		splitters->panel_end_offsets[i] = splitters->panel_end_offsets[i] * normalize_factor;
+	}
+}
+
 UI_API UI_SplittersState* UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int panel_count, float panel_min_width)
 {
 	UI_ProfEnter();
 	UI_ASSERT(panel_count > 0);
 
 	UI_SplittersState* data;
-	UI_BoxGetRetainedVar(UI_MakeVarHolderBox(key), 0, &data);
+	UI_BoxGetRetainedVar(UI_KBOX(key), 0, &data); // TODO: go directly from key to data and not through a box
 
 	float* panel_end_offsets = (float*)DS_ArenaPushZero(&UI_STATE.frame_arena, sizeof(float) * panel_count);
 	if (data->panel_end_offsets) {
@@ -2481,14 +2382,8 @@ UI_API UI_SplittersState* UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int 
 	}
 
 	float rect_width = area.max._[X] - area.min._[X];
-	float normalize_factor = rect_width / panel_end_offsets[panel_count - 1];
-
-	for (int i = 0; i < panel_count; i++) {
-		// Normalize all positions so that the last position has the same value
-		// as the width of the area rectangle.
-		panel_end_offsets[i] = panel_end_offsets[i] * normalize_factor;
-	}
-
+	UI_SplittersNormalizeToTotalSize(data, rect_width);
+	
 	if (data->holding_splitter && !UI_InputIsDown(UI_Input_MouseLeft)) {
 		data->holding_splitter = 0;
 	}
@@ -2593,8 +2488,9 @@ UI_API void UI_FontDeinit(UI_FontIndex font_idx) {
 	font->data = NULL;
 }
 
-static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontView font) {
+static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontView font, int* out_atlas_index) {
 	UI_ProfEnter();
+	int atlas_index = 0;
 	UI_CachedGlyphKey key = { codepoint, font.size };
 
 	UI_Font* font_data = DS_ArrGetPtr(UI_STATE.fonts, font.font);
@@ -2658,12 +2554,13 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontView font) {
 		// UI_.atlas_needs_reupload = true;
 	}
 
+	if (out_atlas_index) *out_atlas_index = atlas_index;
 	UI_ProfExit();
 	return *glyph;
 }
 
 UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontView font) {
-	UI_CachedGlyph glyph = UI_GetCachedGlyph(codepoint, font);
+	UI_CachedGlyph glyph = UI_GetCachedGlyph(codepoint, font, NULL);
 	return glyph.x_advance;
 	//bool ok = DS_MapFind(&font->atlas->glyphs, &((UI_FontAtlasKey){codepoint, font->id}), &val);
 	//if (!ok) {
@@ -3172,7 +3069,8 @@ UI_API UI_Vec2 UI_DrawText(STR_View text, UI_FontView font, UI_Vec2 origin, UI_A
 	origin.y = (float)(int)(origin.y + 0.5f); // round to integer
 
 	for STR_Each(text, r, i) {
-		UI_CachedGlyph glyph = UI_GetCachedGlyph(r, font);
+		int atlas_index = 0;
+		UI_CachedGlyph glyph = UI_GetCachedGlyph(r, font, &atlas_index);
 
 		UI_Rect glyph_rect;
 		glyph_rect.min.x = origin.x + glyph.offset_pixels.x;
@@ -3186,7 +3084,7 @@ UI_API UI_Vec2 UI_DrawText(STR_View text, UI_FontView font, UI_Vec2 origin, UI_A
 		glyph_uv_rect.max.x += glyph.size_pixels.x / (float)UI_GLYPH_MAP_SIZE;
 		glyph_uv_rect.max.y += glyph.size_pixels.y / (float)UI_GLYPH_MAP_SIZE;
 
-		UI_DrawSprite(glyph_rect, color, glyph_uv_rect, UI_STATE.atlas, scissor);
+		UI_DrawSprite(glyph_rect, color, glyph_uv_rect, UI_STATE.atlases[atlas_index], scissor);
 		origin.x += glyph.x_advance;
 	}
 
@@ -3196,17 +3094,30 @@ UI_API UI_Vec2 UI_DrawText(STR_View text, UI_FontView font, UI_Vec2 origin, UI_A
 
 static UI_Key UI_ArrangerSetVarKey() { return UI_KEY(); }
 
-UI_API UI_Box* UI_PushArrangerSet(UI_Key key, UI_Size w, UI_Size h) {
+UI_API void UI_PushArrangerSet(UI_Box* box, UI_Size w, UI_Size h) {
 	UI_ProfEnter();
-	UI_Box* box = UI_AddBox(key, w, h, /*UI_BoxFlag_NoScissor*/0);
+
+	UI_AddBox(box, w, h, /*UI_BoxFlag_NoScissor*/0);
 	UI_PushBox(box);
 	
 	UI_ArrangerSet arranger_set = {0};
 	UI_BoxAddVar(box, UI_ArrangerSetVarKey(), &arranger_set);
 
 	UI_ProfExit();
-	return box;
 }
+
+#define UI_DoublyListRemove(LIST, ELEM) \
+	if (ELEM->prev) ELEM->prev->next = ELEM->next; \
+	else LIST->first_child = ELEM->next; \
+	if (ELEM->next) ELEM->next->prev = ELEM->prev; \
+	else LIST->last_child = ELEM->prev;
+
+#define UI_DoublyListPushBack(LIST, ELEM) \
+	ELEM->prev = LIST->last_child; \
+	ELEM->next = NULL; \
+	if (LIST->last_child) LIST->last_child->next = ELEM; \
+	else LIST->first_child = ELEM; \
+	LIST->last_child = ELEM;
 
 UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request) {
 	UI_ProfEnter();
@@ -3228,14 +3139,14 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 	int target_index = 0;
 	if (dragging) {
 		int elem_count = 0;
-		for (UI_Box* elem = box->first_child[0]; elem; elem = elem->next[1]) {
+		for (UI_Box* elem = box->first_child; elem; elem = elem->next) {
 			if (elem == dragging) {
 				dragging_index = elem_count;
 			}
 			elem_count++;
 		}
 
-		for (UI_Box* elem = box->first_child[0]; elem; elem = elem->next[1]) {
+		for (UI_Box* elem = box->first_child; elem; elem = elem->next) {
 			if (elem->computed_position.y > mouse_rel_y) {
 				break;
 			}
@@ -3245,15 +3156,15 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 		target_index = UI_Min(UI_Max(target_index - 1, 0), elem_count - 1);
 
 		// When dragging an arranger, bring the dragged element to the END so that it will be drawn on top of the other things!
-		DS_DoublyListRemove(dragging->parent->first_child, dragging, next);
-		DS_DoublyListPushBack(dragging->parent->first_child, dragging, next);
+		UI_DoublyListRemove(dragging->parent, dragging);
+		UI_DoublyListPushBack(dragging->parent, dragging);
 	}
 
 	// Now we have the original positions and sizes for each box.
 	// Then we just need to figure out their target positions and provide them as offsets
 
 	int i = 0;
-	for (UI_Box* elem = box->first_child[0]; elem; elem = elem->next[1]) {
+	for (UI_Box* elem = box->first_child; elem; elem = elem->next) {
 		elem->flags |= UI_BoxFlag_NoAutoOffset;
 
 		float interp_amount = 0.2f;
@@ -3290,12 +3201,12 @@ UI_API void UI_PopArrangerSet(UI_Box* box, UI_ArrangersRequest* out_edit_request
 	UI_ProfExit();
 }
 
-UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
+UI_API void UI_AddArranger(UI_Box* box, UI_Size w, UI_Size h) {
 	UI_ProfEnter();
-	UI_Box* box = UI_AddBoxWithTextC(key, w, h, UI_BoxFlag_Clickable, ":");
+	UI_AddLabel(box, w, h, UI_BoxFlag_Clickable, ":");
 
-	bool holding_down = UI_IsClickingDown(box->key);
-	if (holding_down || UI_IsHovered(box->key)) {
+	bool holding_down = UI_IsClickingDown(box);
+	if (holding_down || UI_IsHovered(box)) {
 		UI_STATE.outputs.cursor = UI_MouseCursor_ResizeV;
 	}
 
@@ -3318,7 +3229,6 @@ UI_API UI_Box* UI_AddArranger(UI_Key key, UI_Size w, UI_Size h) {
 		UI_ASSERT(elem);
 	}
 	UI_ProfExit();
-	return box;
 }
 
 #endif // UI_IMPLEMENTATION
