@@ -1,3 +1,6 @@
+// For debug mode, uncomment this line:
+//#define UI_DX11_DEBUG_MODE 0
+
 #define _CRT_SECURE_NO_WARNINGS
 #pragma comment (lib, "d3d11")
 #pragma comment (lib, "d3dcompiler")
@@ -32,8 +35,6 @@
 #include "fire_ui/fire_ui_backend_fire_os.h"
 
 #include "../shared/ui_demo_window.h"
-
-#define DEBUG_MODE 0
 
 //// Globals ///////////////////////////////////////////////
 
@@ -130,7 +131,10 @@ static void AppInit() {
 	swapchain_desc.Windowed          = TRUE;
 	swapchain_desc.SwapEffect        = DXGI_SWAP_EFFECT_DISCARD;
 
-	uint32_t create_device_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | (DEBUG_MODE ? D3D11_CREATE_DEVICE_DEBUG : 0);
+	uint32_t create_device_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+#ifdef UI_DX11_DEBUG_MODE
+	uint32_t create_device_flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
 
 	HRESULT res = D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL,
 		create_device_flags, dx_feature_levels, ARRAYSIZE(dx_feature_levels), D3D11_SDK_VERSION,

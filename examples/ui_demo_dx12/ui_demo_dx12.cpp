@@ -1,5 +1,5 @@
 // For debug mode, uncomment this line:
-#define UI_DX12_DEBUG_MODE
+//#define UI_DX12_DEBUG_MODE
 
 #define _CRT_SECURE_NO_WARNINGS
 #pragma comment (lib, "d3d12")
