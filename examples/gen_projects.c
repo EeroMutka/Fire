@@ -4,7 +4,7 @@
 // and target platforms to fire_build.h, which will make easy cross-platform
 // build configuration possible.
 // 
-// Also, this file also acts as an example program for fire_build.h!
+// Also, this file also acts as a nice example program for fire_build.h :)
 //
 
 #include "../fire_build.h"
@@ -34,7 +34,7 @@ int main()
 	
 	BUILD_AddSourceFile(&ui_demo_dx12, "../ui_demo_dx12/ui_demo_dx12.cpp");
 	
-	// -- Generate --
+	// -- Generate projects --
 	
 	BUILD_Project* projects[] = {&ui_demo_dx11, &ui_demo_dx12};
 	BUILD_CreateDirectory("build");
