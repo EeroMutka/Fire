@@ -29,10 +29,7 @@ This is a collection of easy to use programming libraries that are compatible wi
 
 Open `examples/build/examples.sln` in [Visual Studio 2017](https://visualstudio.microsoft.com/) (or higher) to build and run the examples.
 
-The VS project files can be edited and generated through a build script found at `examples/gen_project_files.c`. To regenerate the project files,
-1. Open `x64 Native Tools Command Prompt for VS <year>` from the Windows Start Menu. Within this terminal, `cd` into the `examples` folder.
-2. Run `cl gen_project_files.c && gen_project_files`.
-3. Open the newly generated `examples/build/examples.sln` in Visual Studio.
+The VS project files can be configured using the `examples/gen_projects.c` file. To regenerate the project files, run `examples/gen_projects.bat`.
 
 ## Screenshots
 
