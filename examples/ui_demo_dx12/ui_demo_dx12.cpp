@@ -67,7 +67,8 @@ static ID3D12Fence* g_dx_fence;
 static HANDLE g_dx_fence_event;
 
 static uint32_t g_dx_frame_index; // cycles through the frames
-static uint64_t g_dx_render_finished_fence_value[2];
+//static uint64_t g_dx_render_finished_fence_value[2];
+static uint64_t g_dx_render_finished_fence_value;
 
 // -------------------------------------------------------------
 
@@ -87,15 +88,7 @@ static STR_View ReadEntireFile(DS_Arena* arena, const char* file) {
     return result;
 }
 
-static void MoveToNextFrame() {
-    // About frame pacing:
-    // https://raphlinus.github.io/ui/graphics/gpu/2021/10/22/swapchain-frame-pacing.html
-    
-    // Once the GPU is done presenting this newly built frame, it will signal the fence to the "render finished" fence value
-    uint64_t render_finished_fence_value = g_dx_render_finished_fence_value[g_dx_frame_index];
-    g_dx_command_queue->Signal(g_dx_fence, render_finished_fence_value);
-    
-#if 1
+static void WaitForGPU() {
     // Wait for the GPU to finish rendering this frame.
     // This means that the CPU will have a bunch of idle time, and the GPU will have a bunch of idle time.
     // For computationally heavy applications, this is not good. But it's the simplest to implement.
@@ -103,16 +96,32 @@ static void MoveToNextFrame() {
     // frames-in-flight - should there be two atlases, one per frame? Or should the CPU wait on frames where it modifies it?
     // I guess when only adding things to the atlas, no frame sync is even needed. This needs some thought.
 
-    if (g_dx_fence->GetCompletedValue() < g_dx_render_finished_fence_value[g_dx_frame_index])
+    g_dx_render_finished_fence_value++;
+
+    uint64_t render_finished_fence_value = g_dx_render_finished_fence_value;
+    g_dx_command_queue->Signal(g_dx_fence, render_finished_fence_value);
+
+    if (g_dx_fence->GetCompletedValue() < g_dx_render_finished_fence_value)
     {
-        bool ok = g_dx_fence->SetEventOnCompletion(g_dx_render_finished_fence_value[g_dx_frame_index], g_dx_fence_event) == S_OK;
+        bool ok = g_dx_fence->SetEventOnCompletion(g_dx_render_finished_fence_value, g_dx_fence_event) == S_OK;
         assert(ok);
         WaitForSingleObjectEx(g_dx_fence_event, INFINITE, FALSE);
     }
 
-    // Increment the frame index (wraps around to 0) to the next frame index.
     g_dx_frame_index = g_dx_swapchain->GetCurrentBackBufferIndex();
+}
+
+static void MoveToNextFrame() {
+    // About frame pacing:
+    // https://raphlinus.github.io/ui/graphics/gpu/2021/10/22/swapchain-frame-pacing.html
+    
+#if 1
+    WaitForGPU();
 #else
+    // Once the GPU is done presenting this newly built frame, it will signal the fence to the "render finished" fence value
+    uint64_t render_finished_fence_value = g_dx_render_finished_fence_value[g_dx_frame_index];
+    g_dx_command_queue->Signal(g_dx_fence, render_finished_fence_value);
+    
     // Increment the frame index (wraps around to 0) to the next frame index.
     g_dx_frame_index = g_dx_swapchain->GetCurrentBackBufferIndex();
 
@@ -123,9 +132,30 @@ static void MoveToNextFrame() {
         assert(ok);
         WaitForSingleObjectEx(g_dx_fence_event, INFINITE, FALSE);
     }
-#endif
-
     g_dx_render_finished_fence_value[g_dx_frame_index] = render_finished_fence_value + 1;
+#endif
+}
+
+static void FreeRenderTargets() {
+    for (int i = 0; i < BACK_BUFFER_COUNT; i++) {
+        g_dx_back_buffers[i]->Release();
+        g_dx_back_buffers[i] = NULL;
+    }
+}
+
+static void CreateRenderTargets() {
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = g_dx_rtv_heap->GetCPUDescriptorHandleForHeapStart();
+
+    // Create a RTV for each frame.
+    for (int i = 0; i < BACK_BUFFER_COUNT; i++) {
+        ID3D12Resource* back_buffer;
+        bool ok = g_dx_swapchain->GetBuffer(i, IID_PPV_ARGS(&back_buffer)) == S_OK;
+        assert(ok);
+
+        g_dx_device->CreateRenderTargetView(back_buffer, NULL, rtv_handle);
+        g_dx_back_buffers[i] = back_buffer;
+        rtv_handle.ptr += g_dx_rtv_descriptor_size;
+    }
 }
 
 static void InitDX12() {
@@ -160,33 +190,6 @@ static void InitDX12() {
 		assert(ok);
 	}
 
-	// Create swapchain
-	{
-		DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {};
-		swapchain_desc.BufferCount = BACK_BUFFER_COUNT;
-		swapchain_desc.Width = g_window_size[0];
-		swapchain_desc.Height = g_window_size[1];
-		swapchain_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		swapchain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-		swapchain_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-		swapchain_desc.SampleDesc.Count = 1;
-
-		IDXGIFactory4* dxgi_factory = NULL;
-		ok = CreateDXGIFactory1(IID_PPV_ARGS(&dxgi_factory)) == S_OK;
-		assert(ok);
-
-		IDXGISwapChain1* swapchain1 = NULL;
-		ok = dxgi_factory->CreateSwapChainForHwnd(g_dx_command_queue, (HWND)g_window.handle, &swapchain_desc, NULL, NULL, &swapchain1) == S_OK;
-		assert(ok);
-
-		ok = swapchain1->QueryInterface(IID_PPV_ARGS(&g_dx_swapchain)) == S_OK;
-		assert(ok);
-
-		swapchain1->Release();
-		dxgi_factory->Release();
-	}
-	
-	g_dx_frame_index = g_dx_swapchain->GetCurrentBackBufferIndex();
 
 	// Create descriptor heaps
 	{
@@ -207,23 +210,6 @@ static void InitDX12() {
 		g_dx_rtv_descriptor_size = g_dx_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	}
 
-	// Create frame resources
-	{
-		D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = g_dx_rtv_heap->GetCPUDescriptorHandleForHeapStart();
-
-		// Create a RTV for each frame.
-		for (int i = 0; i < BACK_BUFFER_COUNT; i++)
-		{
-			ID3D12Resource* back_buffer;
-			ok = g_dx_swapchain->GetBuffer(i, IID_PPV_ARGS(&back_buffer)) == S_OK;
-			assert(ok);
-
-			g_dx_device->CreateRenderTargetView(back_buffer, NULL, rtv_handle);
-			g_dx_back_buffers[i] = back_buffer;
-			rtv_handle.ptr += g_dx_rtv_descriptor_size;
-		}
-	}
-
 	// Create command allocator
 	ok = g_dx_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_dx_command_allocator)) == S_OK;
 	assert(ok);
@@ -241,13 +227,43 @@ static void InitDX12() {
     {
         ok = g_dx_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_dx_fence)) == S_OK;
         assert(ok);
-        g_dx_render_finished_fence_value[0] = 1;
-        g_dx_render_finished_fence_value[1] = 1;
+        //g_dx_render_finished_fence_value[0] = 1;
+        //g_dx_render_finished_fence_value[1] = 1;
 
         // Create an event handle to use for frame synchronization.
         g_dx_fence_event = CreateEventW(NULL, FALSE, FALSE, NULL);
         assert(g_dx_fence_event != NULL);
     }
+    
+    // Create swapchain
+    {
+        DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {};
+        swapchain_desc.BufferCount = BACK_BUFFER_COUNT;
+        swapchain_desc.Width = g_window_size[0];
+        swapchain_desc.Height = g_window_size[1];
+        swapchain_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        swapchain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        swapchain_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        swapchain_desc.SampleDesc.Count = 1;
+
+        IDXGIFactory4* dxgi_factory = NULL;
+        ok = CreateDXGIFactory1(IID_PPV_ARGS(&dxgi_factory)) == S_OK;
+        assert(ok);
+
+        IDXGISwapChain1* swapchain1 = NULL;
+        ok = dxgi_factory->CreateSwapChainForHwnd(g_dx_command_queue, (HWND)g_window.handle, &swapchain_desc, NULL, NULL, &swapchain1) == S_OK;
+        assert(ok);
+
+        ok = swapchain1->QueryInterface(IID_PPV_ARGS(&g_dx_swapchain)) == S_OK;
+        assert(ok);
+
+        swapchain1->Release();
+        dxgi_factory->Release();
+    }
+
+    CreateRenderTargets();
+
+	g_dx_frame_index = g_dx_swapchain->GetCurrentBackBufferIndex();
 }
 
 static D3D12_RESOURCE_BARRIER Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES old_state, D3D12_RESOURCE_STATES new_state) {
@@ -295,9 +311,7 @@ static void AppDeinit() {
     g_dx_fence->Release();
     g_dx_command_list->Release();
     g_dx_command_allocator->Release();
-    for (int i = 0; i < BACK_BUFFER_COUNT; i++) {
-        g_dx_back_buffers[i]->Release();
-    }
+    FreeRenderTargets();
     g_dx_srv_heap->Release();
     g_dx_rtv_heap->Release();
     g_dx_swapchain->Release();
@@ -307,6 +321,86 @@ static void AppDeinit() {
     DS_ArenaDeinit(&g_persist);
 }
 
+static void UpdateAndRender() {
+
+    UI_Vec2 window_size = {(float)g_window_size[0], (float)g_window_size[1]};
+    UI_BeginFrame(&g_ui_inputs, window_size, {g_base_font, 18}, {g_icons_font, 18});
+
+    UIDemoBuild(&g_demo_state, window_size);
+
+    UI_Outputs ui_outputs;
+    UI_EndFrame(&ui_outputs);
+
+    UI_OS_ApplyOutputs(&g_window, &ui_outputs);
+
+    // Populate the command buffer
+    {
+        // Command list allocators can only be reset when the associated
+        // command lists have finished execution on the GPU; apps should use
+        // fences to determine GPU execution progress.
+        bool ok = g_dx_command_allocator->Reset() == S_OK;
+        assert(ok);
+
+        // However, when ExecuteCommandList() is called on a particular command 
+        // list, that command list can then be reset at any time and must be before 
+        // re-recording.
+        ok = g_dx_command_list->Reset(g_dx_command_allocator, NULL) == S_OK;
+        assert(ok);
+
+        D3D12_VIEWPORT viewport = {};
+        viewport.Width = (float)g_window_size[0];
+        viewport.Height = (float)g_window_size[1];
+        g_dx_command_list->RSSetViewports(1, &viewport);
+
+        D3D12_RECT scissor_rect = {};
+        scissor_rect.right = g_window_size[0];
+        scissor_rect.bottom = g_window_size[1];
+        g_dx_command_list->RSSetScissorRects(1, &scissor_rect);
+
+        D3D12_RESOURCE_BARRIER present_to_rt = Transition(g_dx_back_buffers[g_dx_frame_index], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        g_dx_command_list->ResourceBarrier(1, &present_to_rt);
+
+        D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = g_dx_rtv_heap->GetCPUDescriptorHandleForHeapStart();
+        rtv_handle.ptr += g_dx_frame_index * g_dx_rtv_descriptor_size;
+        g_dx_command_list->OMSetRenderTargets(1, &rtv_handle, false, NULL);
+
+        const float clear_color[] = { 0.5f, 0.5f, 0.5f, 1.0f };
+        g_dx_command_list->ClearRenderTargetView(rtv_handle, clear_color, 0, NULL);
+
+        g_dx_command_list->SetDescriptorHeaps(1, &g_dx_srv_heap);
+        g_dx_command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+        UI_DX12_Draw(&ui_outputs, g_dx_command_list);
+
+        D3D12_RESOURCE_BARRIER rt_to_present = Transition(g_dx_back_buffers[g_dx_frame_index], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+        g_dx_command_list->ResourceBarrier(1, &rt_to_present);
+
+        ok = g_dx_command_list->Close() == S_OK;
+        assert(ok);
+    }
+
+    ID3D12CommandList* command_lists[] = { g_dx_command_list };
+    g_dx_command_queue->ExecuteCommandLists(DS_ArrayCount(command_lists), command_lists);
+
+    bool ok = g_dx_swapchain->Present(1, 0) == S_OK;
+    assert(ok);
+
+    MoveToNextFrame();
+}
+
+static void OnResizeWindow(uint32_t width, uint32_t height, void* user_ptr) {
+    g_window_size[0] = width;
+    g_window_size[1] = height;
+
+    FreeRenderTargets();
+    bool ok = g_dx_swapchain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0) == S_OK;
+    assert(ok);
+    CreateRenderTargets();
+    g_dx_frame_index = g_dx_swapchain->GetCurrentBackBufferIndex();
+
+    UpdateAndRender();
+}
+
 int main() {
     AppInit();
 
@@ -314,73 +408,11 @@ int main() {
         UI_OS_ResetFrameInputs(&g_window, &g_ui_inputs);
 
         OS_WINDOW_Event event; 
-        while (OS_WINDOW_PollEvent(&g_window, &event, NULL, NULL)) {
+        while (OS_WINDOW_PollEvent(&g_window, &event, OnResizeWindow, NULL)) {
             UI_OS_RegisterInputEvent(&g_ui_inputs, &event);
         }
 
-        UI_Vec2 window_size = {(float)g_window_size[0], (float)g_window_size[1]};
-        UI_BeginFrame(&g_ui_inputs, window_size, {g_base_font, 18}, {g_icons_font, 18});
-
-        UIDemoBuild(&g_demo_state, window_size);
-
-        UI_Outputs ui_outputs;
-        UI_EndFrame(&ui_outputs);
-        
-        UI_OS_ApplyOutputs(&g_window, &ui_outputs);
-
-        // Populate the command buffer
-        {
-            // Command list allocators can only be reset when the associated
-            // command lists have finished execution on the GPU; apps should use
-            // fences to determine GPU execution progress.
-            bool ok = g_dx_command_allocator->Reset() == S_OK;
-            assert(ok);
-
-            // However, when ExecuteCommandList() is called on a particular command 
-            // list, that command list can then be reset at any time and must be before 
-            // re-recording.
-            ok = g_dx_command_list->Reset(g_dx_command_allocator, NULL) == S_OK;
-            assert(ok);
-
-            D3D12_VIEWPORT viewport = {};
-            viewport.Width = (float)g_window_size[0];
-            viewport.Height = (float)g_window_size[1];
-            g_dx_command_list->RSSetViewports(1, &viewport);
-
-            D3D12_RECT scissor_rect = {};
-            scissor_rect.right = g_window_size[0];
-            scissor_rect.bottom = g_window_size[1];
-            g_dx_command_list->RSSetScissorRects(1, &scissor_rect);
-
-            D3D12_RESOURCE_BARRIER present_to_rt = Transition(g_dx_back_buffers[g_dx_frame_index], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-            g_dx_command_list->ResourceBarrier(1, &present_to_rt);
-
-            D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = g_dx_rtv_heap->GetCPUDescriptorHandleForHeapStart();
-            rtv_handle.ptr += g_dx_frame_index * g_dx_rtv_descriptor_size;
-            g_dx_command_list->OMSetRenderTargets(1, &rtv_handle, false, NULL);
-
-            const float clear_color[] = { 0.5f, 0.5f, 0.5f, 1.0f };
-            g_dx_command_list->ClearRenderTargetView(rtv_handle, clear_color, 0, NULL);
-
-            g_dx_command_list->SetDescriptorHeaps(1, &g_dx_srv_heap);
-            g_dx_command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            
-            UI_DX12_Draw(&ui_outputs, g_dx_command_list);
-
-            D3D12_RESOURCE_BARRIER rt_to_present = Transition(g_dx_back_buffers[g_dx_frame_index], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-            g_dx_command_list->ResourceBarrier(1, &rt_to_present);
-
-            ok = g_dx_command_list->Close() == S_OK;
-            assert(ok);
-        }
-        
-        ID3D12CommandList* command_lists[] = { g_dx_command_list };
-        g_dx_command_queue->ExecuteCommandLists(DS_ArrayCount(command_lists), command_lists);
-
-        bool ok = g_dx_swapchain->Present(1, 0) == S_OK;
-        assert(ok);
-
-        MoveToNextFrame();
+        UpdateAndRender();
     }
 
     AppDeinit();

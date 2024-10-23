@@ -87,7 +87,7 @@ static void UpdateAndRender() {
 	g_d3d11_swapchain->Present(1, 0);
 }
 
-static void OnResizeWindow(uint32_t width, uint32_t height, void *user_ptr) {
+static void OnResizeWindow(uint32_t width, uint32_t height, void* user_ptr) {
 	g_window_size.x = (float)width;
 	g_window_size.y = (float)height;
 
