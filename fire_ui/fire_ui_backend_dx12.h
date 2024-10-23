@@ -1,4 +1,10 @@
 
+typedef struct UI_DX12_Buffer {
+	ID3D12Resource* handle;
+	uint32_t size;
+	bool is_mapped;
+} UI_DX12_Buffer;
+
 typedef struct UI_DX12_State {
 	ID3D12Device* device;
 	D3D12_CPU_DESCRIPTOR_HANDLE atlas_cpu_descriptor;
@@ -7,145 +13,163 @@ typedef struct UI_DX12_State {
 	ID3D12RootSignature* root_signature;
 	ID3D12PipelineState* pipeline_state;
 
-	ID3D12Resource* atlases[2];
-	ID3D12Resource* atlases_staging[2];
-	uint32_t atlases_width[2];
-	uint32_t atlases_height[2];
-	bool atlas_is_mapped[2];
+	UI_DX12_Buffer vertex_buffer;
+	UI_DX12_Buffer index_buffer;
 
-	ID3D12Resource* buffers[UI_MAX_BACKEND_BUFFERS];
-	uint32_t buffer_sizes[UI_MAX_BACKEND_BUFFERS];
-	bool buffer_is_mapped[UI_MAX_BACKEND_BUFFERS];
+	ID3D12Resource* atlas;
+	ID3D12Resource* atlas_staging_buffer;
+	uint32_t atlas_width;
+	uint32_t atlas_height;
+	bool atlas_is_mapped;
 } UI_DX12_State;
 
 static UI_DX12_State UI_DX12_STATE;
 
-static UI_TextureID UI_DX12_CreateAtlas(int atlas_id, uint32_t width, uint32_t height) {
-	// Create the GPU-local texture
-	ID3D12Resource* texture;
-	{
-		D3D12_RESOURCE_DESC desc = {};
-		desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-		desc.Alignment = 0;
-		desc.Width = width;
-		desc.Height = height;
-		desc.DepthOrArraySize = 1;
-		desc.MipLevels = 1;
-		desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		desc.SampleDesc.Count = 1;
-		desc.SampleDesc.Quality = 0;
-		desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-		desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+static UI_TextureID UI_DX12_ResizeAtlas(uint32_t width, uint32_t height) {
+	if (width == 0 && height == 0) {
+		UI_DX12_STATE.atlas_staging_buffer->Release();
+		UI_DX12_STATE.atlas->Release();
+		return UI_TEXTURE_ID_NIL;
+	}
+	else {
+		UI_ASSERT(UI_DX12_STATE.atlas == NULL); // TODO
+
+		// Create the GPU-local texture
+		ID3D12Resource* texture;
+		{
+			D3D12_RESOURCE_DESC desc = {};
+			desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+			desc.Alignment = 0;
+			desc.Width = width;
+			desc.Height = height;
+			desc.DepthOrArraySize = 1;
+			desc.MipLevels = 1;
+			desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			desc.SampleDesc.Count = 1;
+			desc.SampleDesc.Quality = 0;
+			desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+			desc.Flags = D3D12_RESOURCE_FLAG_NONE;
 		
-		D3D12_HEAP_PROPERTIES props = {};
-		props.Type = D3D12_HEAP_TYPE_DEFAULT;
-		props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-		props.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+			D3D12_HEAP_PROPERTIES props = {};
+			props.Type = D3D12_HEAP_TYPE_DEFAULT;
+			props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+			props.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
 
-		bool ok = UI_DX12_STATE.device->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE, &desc,
-			D3D12_RESOURCE_STATE_COPY_DEST, NULL, IID_PPV_ARGS(&texture)) == S_OK;
-		UI_ASSERT(ok);
-		UI_DX12_STATE.atlases[atlas_id] = texture;
-		UI_DX12_STATE.atlases_width[atlas_id] = width;
-		UI_DX12_STATE.atlases_height[atlas_id] = height;
+			bool ok = UI_DX12_STATE.device->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE, &desc,
+				D3D12_RESOURCE_STATE_COPY_DEST, NULL, IID_PPV_ARGS(&texture)) == S_OK;
+			UI_ASSERT(ok);
+			UI_DX12_STATE.atlas = texture;
+			UI_DX12_STATE.atlas_width = width;
+			UI_DX12_STATE.atlas_height = height;
+		}
+
+		// Create the staging buffer
+		{
+			D3D12_RESOURCE_DESC desc = {};
+			desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+			desc.Alignment = 0;
+			desc.Width = height * (width * 4 + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1);
+			desc.Height = 1;
+			desc.DepthOrArraySize = 1;
+			desc.MipLevels = 1;
+			desc.Format = DXGI_FORMAT_UNKNOWN;
+			desc.SampleDesc.Count = 1;
+			desc.SampleDesc.Quality = 0;
+			desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+			desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+			D3D12_HEAP_PROPERTIES props = {};
+			props.Type = D3D12_HEAP_TYPE_UPLOAD;
+			props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+			props.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+			bool ok = UI_DX12_STATE.device->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE, &desc,
+				D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(&UI_DX12_STATE.atlas_staging_buffer)) == S_OK;
+			UI_ASSERT(ok);
+		}
+
+		// Create texture view
+		{
+			D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
+			desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			desc.Texture2D.MipLevels = 1;
+			UI_DX12_STATE.device->CreateShaderResourceView(texture, &desc, UI_DX12_STATE.atlas_cpu_descriptor);
+		}
+
+		return (UI_TextureID)UI_DX12_STATE.atlas_gpu_descriptor.ptr;
 	}
-
-	// Create the staging buffer
-	{
-		D3D12_RESOURCE_DESC desc = {};
-		desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-		desc.Alignment = 0;
-		desc.Width = height * (width * 4 + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1);
-		desc.Height = 1;
-		desc.DepthOrArraySize = 1;
-		desc.MipLevels = 1;
-		desc.Format = DXGI_FORMAT_UNKNOWN;
-		desc.SampleDesc.Count = 1;
-		desc.SampleDesc.Quality = 0;
-		desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-		desc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-		D3D12_HEAP_PROPERTIES props = {};
-		props.Type = D3D12_HEAP_TYPE_UPLOAD;
-		props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-		props.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-
-		bool ok = UI_DX12_STATE.device->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE, &desc,
-			D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(&UI_DX12_STATE.atlases_staging[atlas_id])) == S_OK;
-		UI_ASSERT(ok);
-	}
-
-	// Create texture view
-	{
-		D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
-		desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		desc.Texture2D.MipLevels = 1;
-		
-		UI_ASSERT(atlas_id == 0); // TODO: support for multiple atlases / dynamic atlas growth
-		UI_DX12_STATE.device->CreateShaderResourceView(texture, &desc, UI_DX12_STATE.atlas_cpu_descriptor);
-	}
-
-	return (UI_TextureID)UI_DX12_STATE.atlas_gpu_descriptor.ptr;
 }
 
 static void UI_DX12_DestroyAtlas(int atlas_id) {
 	__debugbreak(); //TODO
 }
 
-static void* UI_DX12_AtlasMapUntilDraw(int atlas_id) {
+static void* UI_DX12_MapAtlas() {
 	void* ptr;
 	D3D12_RANGE read_range = {}; // We do not intend to read from this resource on the CPU.
-	bool ok = UI_DX12_STATE.atlases_staging[atlas_id]->Map(0, &read_range, &ptr) == S_OK;
+	bool ok = UI_DX12_STATE.atlas_staging_buffer->Map(0, &read_range, &ptr) == S_OK;
 	UI_ASSERT(ok);
-	UI_DX12_STATE.atlas_is_mapped[atlas_id] = true;
+	UI_DX12_STATE.atlas_is_mapped = true;
 	return ptr;
 }
 
-static void* UI_DX12_BufferMapUntilDraw(int buffer_id) {
+static void* UI_DX12_MapVertexBuffer() {
 	void* ptr;
 	D3D12_RANGE read_range = {}; // We do not intend to read from this resource on the CPU.
-	bool ok = UI_DX12_STATE.buffers[buffer_id]->Map(0, &read_range, &ptr) == S_OK;
+	bool ok = UI_DX12_STATE.vertex_buffer.handle->Map(0, &read_range, &ptr) == S_OK;
 	UI_ASSERT(ok);
-	UI_DX12_STATE.buffer_is_mapped[buffer_id] = true;
+	UI_DX12_STATE.vertex_buffer.is_mapped = true;
 	return ptr;
 }
 
-static void UI_DX12_CreateBuffer(int buffer_id, uint32_t size_in_bytes) {
-	D3D12_HEAP_PROPERTIES heap_props = {};
-	heap_props.Type = D3D12_HEAP_TYPE_UPLOAD;
-	heap_props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-	heap_props.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-
-	D3D12_RESOURCE_DESC desc = {};
-	desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	desc.Width = size_in_bytes;
-	desc.Height = 1;
-	desc.DepthOrArraySize = 1;
-	desc.MipLevels = 1;
-	desc.Format = DXGI_FORMAT_UNKNOWN;
-	desc.SampleDesc.Count = 1;
-	desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	desc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-	bool ok = UI_DX12_STATE.device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, NULL,
-		IID_PPV_ARGS(&UI_DX12_STATE.buffers[buffer_id])) == S_OK;
-	UI_DX12_STATE.buffer_is_mapped[buffer_id] = false;
-	UI_DX12_STATE.buffer_sizes[buffer_id] = size_in_bytes;
+static void* UI_DX12_MapIndexBuffer() {
+	void* ptr;
+	D3D12_RANGE read_range = {}; // We do not intend to read from this resource on the CPU.
+	bool ok = UI_DX12_STATE.index_buffer.handle->Map(0, &read_range, &ptr) == S_OK;
 	UI_ASSERT(ok);
+	UI_DX12_STATE.index_buffer.is_mapped = true;
+	return ptr;
 }
 
-static void UI_DX12_CreateVertexBuffer(int buffer_id, uint32_t size_in_bytes) {
-	UI_DX12_CreateBuffer(buffer_id, size_in_bytes);
+static void UI_DX12_ResizeBuffer(UI_DX12_Buffer* buffer, uint32_t size) {
+	if (size == 0) {
+		buffer->handle->Release();
+	}
+	else {
+		UI_ASSERT(buffer->size == 0); // TODO
+		buffer->size = size;
+		buffer->is_mapped = false;
+
+		D3D12_HEAP_PROPERTIES heap_props = {};
+		heap_props.Type = D3D12_HEAP_TYPE_UPLOAD;
+		heap_props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+		heap_props.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+		D3D12_RESOURCE_DESC desc = {};
+		desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		desc.Width = size;
+		desc.Height = 1;
+		desc.DepthOrArraySize = 1;
+		desc.MipLevels = 1;
+		desc.Format = DXGI_FORMAT_UNKNOWN;
+		desc.SampleDesc.Count = 1;
+		desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+		desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+		bool ok = UI_DX12_STATE.device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, NULL,
+			IID_PPV_ARGS(&buffer->handle)) == S_OK;
+		UI_ASSERT(ok);
+	}
 }
 
-static void UI_DX12_CreateIndexBuffer(int buffer_id, uint32_t size_in_bytes) {
-	UI_DX12_CreateBuffer(buffer_id, size_in_bytes);
+static void UI_DX12_ResizeVertexBuffer(uint32_t size) {
+	UI_DX12_ResizeBuffer(&UI_DX12_STATE.vertex_buffer, size);
 }
 
-static void UI_DX12_DestroyBuffer(int buffer_id) {
-	__debugbreak(); //TODO
+static void UI_DX12_ResizeIndexBuffer(uint32_t size) {
+	UI_DX12_ResizeBuffer(&UI_DX12_STATE.index_buffer, size);
 }
 
 static void UI_DX12_Init(UI_Backend* backend, ID3D12Device* device, D3D12_CPU_DESCRIPTOR_HANDLE atlas_cpu_descriptor, D3D12_GPU_DESCRIPTOR_HANDLE atlas_gpu_descriptor) {
@@ -154,15 +178,13 @@ static void UI_DX12_Init(UI_Backend* backend, ID3D12Device* device, D3D12_CPU_DE
 	UI_DX12_STATE.atlas_cpu_descriptor = atlas_cpu_descriptor;
 	UI_DX12_STATE.atlas_gpu_descriptor = atlas_gpu_descriptor;
 
-	backend->create_vertex_buffer = UI_DX12_CreateVertexBuffer;
-	backend->create_index_buffer = UI_DX12_CreateIndexBuffer;
-	backend->destroy_buffer = UI_DX12_DestroyBuffer;
+	backend->resize_vertex_buffer = UI_DX12_ResizeVertexBuffer;
+	backend->resize_index_buffer = UI_DX12_ResizeIndexBuffer;
+	backend->resize_atlas = UI_DX12_ResizeAtlas;
 
-	backend->create_atlas = UI_DX12_CreateAtlas;
-	backend->destroy_atlas = UI_DX12_DestroyAtlas;
-
-	backend->buffer_map_until_draw = UI_DX12_BufferMapUntilDraw;
-	backend->atlas_map_until_draw = UI_DX12_AtlasMapUntilDraw;
+	backend->map_vertex_buffer = UI_DX12_MapVertexBuffer;
+	backend->map_index_buffer = UI_DX12_MapIndexBuffer;
+	backend->map_atlas = UI_DX12_MapAtlas;
 
 	// Create the root signature
 	{
@@ -307,12 +329,15 @@ static void UI_DX12_Init(UI_Backend* backend, ID3D12Device* device, D3D12_CPU_DE
 
 		ok = device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&UI_DX12_STATE.pipeline_state)) == S_OK;
 		UI_ASSERT(ok);
-	}
 
+		vertex_shader->Release();
+		pixel_shader->Release();
+	}
 }
 
 static void UI_DX12_Deinit(void) {
-	__debugbreak(); //TODO
+	UI_DX12_STATE.pipeline_state->Release();
+	UI_DX12_STATE.root_signature->Release();
 }
 
 // The following graphics state is expected to be already set, and will not be modified:
@@ -330,50 +355,46 @@ static void UI_DX12_Deinit(void) {
 static void UI_DX12_Draw(UI_Outputs* outputs, ID3D12GraphicsCommandList* command_list) {
 	UI_DX12_State* s = &UI_DX12_STATE;
 
-	for (int i = 0; i < 2; i++) {
-		if (UI_DX12_STATE.atlas_is_mapped[i]) {
-			ID3D12Resource* staging = UI_DX12_STATE.atlases_staging[i];
-			ID3D12Resource* dst = UI_DX12_STATE.atlases[i];
-			staging->Unmap(0, NULL);
-		
-			uint32_t width = UI_DX12_STATE.atlases_width[i];
-			uint32_t height = UI_DX12_STATE.atlases_height[i];
-			uint32_t row_pitch = (width * 4 + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1);
-			
-			D3D12_TEXTURE_COPY_LOCATION src_loc = {};
-			src_loc.pResource = staging;
-			src_loc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-			src_loc.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			src_loc.PlacedFootprint.Footprint.Width = width;
-			src_loc.PlacedFootprint.Footprint.Height = height;
-			src_loc.PlacedFootprint.Footprint.Depth = 1;
-			src_loc.PlacedFootprint.Footprint.RowPitch = row_pitch;
+	if (s->atlas_is_mapped) {
+		s->atlas_staging_buffer->Unmap(0, NULL);
 
-			D3D12_TEXTURE_COPY_LOCATION dst_loc = {};
-			dst_loc.pResource = dst;
-			dst_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-			dst_loc.SubresourceIndex = 0;
+		uint32_t width = s->atlas_width;
+		uint32_t height = s->atlas_height;
+		uint32_t row_pitch = (width * 4 + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1);
 			
-			command_list->CopyTextureRegion(&dst_loc, 0, 0, 0, &src_loc, NULL);
-			
-			D3D12_RESOURCE_BARRIER barrier = {};
-			barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-			barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-			barrier.Transition.pResource   = dst;
-			barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-			barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-			barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-			command_list->ResourceBarrier(1, &barrier);
+		D3D12_TEXTURE_COPY_LOCATION src_loc = {};
+		src_loc.pResource = s->atlas_staging_buffer;
+		src_loc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+		src_loc.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		src_loc.PlacedFootprint.Footprint.Width = width;
+		src_loc.PlacedFootprint.Footprint.Height = height;
+		src_loc.PlacedFootprint.Footprint.Depth = 1;
+		src_loc.PlacedFootprint.Footprint.RowPitch = row_pitch;
 
-			UI_DX12_STATE.atlas_is_mapped[i] = false;
-		}
+		D3D12_TEXTURE_COPY_LOCATION dst_loc = {};
+		dst_loc.pResource = s->atlas;
+		dst_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		dst_loc.SubresourceIndex = 0;
+			
+		command_list->CopyTextureRegion(&dst_loc, 0, 0, 0, &src_loc, NULL);
+			
+		D3D12_RESOURCE_BARRIER barrier = {};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barrier.Transition.pResource   = s->atlas;
+		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+		barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		command_list->ResourceBarrier(1, &barrier);
+
+		s->atlas_is_mapped = false;
 	}
 	
-	for (int i = 0; i < UI_MAX_BACKEND_BUFFERS; i++) {
-		if (s->buffer_is_mapped[i]) {
-			ID3D12Resource* buffer = s->buffers[i];
-			buffer->Unmap(0, NULL);
-			s->buffer_is_mapped[i] = false;
+	UI_DX12_Buffer* buffers[] = { &s->vertex_buffer, &s->index_buffer };
+	for (int i = 0; i < 2; i++) {
+		if (buffers[i]->is_mapped) {
+			buffers[i]->handle->Unmap(0, NULL);
+			buffers[i]->is_mapped = false;
 		}
 	}
 
@@ -388,34 +409,24 @@ static void UI_DX12_Draw(UI_Outputs* outputs, ID3D12GraphicsCommandList* command
 		{ (R+L)/(L-R), (T+B)/(B-T), 0.5f, 1.0f },
 	};
 
-	command_list->SetPipelineState(UI_DX12_STATE.pipeline_state);
-	command_list->SetGraphicsRootSignature(UI_DX12_STATE.root_signature);
+	command_list->SetPipelineState(s->pipeline_state);
+	command_list->SetGraphicsRootSignature(s->root_signature);
 	command_list->SetGraphicsRoot32BitConstants(0, 16, vertex_32bit_constants, 0);
 
-	int bound_vertex_buffer = -1;
-	int bound_index_buffer = -1;
+	D3D12_VERTEX_BUFFER_VIEW vb_view;
+	vb_view.BufferLocation = s->vertex_buffer.handle->GetGPUVirtualAddress();
+	vb_view.StrideInBytes = 2 * sizeof(float) + 2 * sizeof(float) + 4; // pos, uv, color
+	vb_view.SizeInBytes = s->vertex_buffer.size;
+	command_list->IASetVertexBuffers(0, 1, &vb_view);
+
+	D3D12_INDEX_BUFFER_VIEW ib_view;
+	ib_view.BufferLocation = s->index_buffer.handle->GetGPUVirtualAddress();
+	ib_view.SizeInBytes = s->index_buffer.size;
+	ib_view.Format = DXGI_FORMAT_R32_UINT;
+	command_list->IASetIndexBuffer(&ib_view);
 
 	for (int i = 0; i < outputs->draw_calls_count; i++) {
 		UI_DrawCall* draw_call = &outputs->draw_calls[i];
-
-		if (draw_call->vertex_buffer_id != bound_vertex_buffer) {
-			bound_vertex_buffer = draw_call->vertex_buffer_id;
-			D3D12_VERTEX_BUFFER_VIEW view;
-			view.BufferLocation = s->buffers[bound_vertex_buffer]->GetGPUVirtualAddress();
-			view.StrideInBytes = 2 * sizeof(float) + 2 * sizeof(float) + 4; // pos, uv, color
-			view.SizeInBytes = s->buffer_sizes[bound_vertex_buffer];
-			command_list->IASetVertexBuffers(0, 1, &view);
-		}
-
-		if (draw_call->index_buffer_id != bound_index_buffer) {
-			bound_index_buffer = draw_call->index_buffer_id;
-			D3D12_INDEX_BUFFER_VIEW view;
-			view.BufferLocation = s->buffers[bound_index_buffer]->GetGPUVirtualAddress();
-			view.SizeInBytes = s->buffer_sizes[bound_index_buffer];
-			view.Format = DXGI_FORMAT_R32_UINT;
-			command_list->IASetIndexBuffer(&view);
-		}
-		
 		UI_ASSERT(draw_call->texture);
 
 		D3D12_GPU_DESCRIPTOR_HANDLE handle = {};

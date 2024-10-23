@@ -1,5 +1,5 @@
 // For debug mode, uncomment this line:
-//#define UI_DX12_DEBUG_MODE
+#define UI_DX12_DEBUG_MODE
 
 #define _CRT_SECURE_NO_WARNINGS
 #pragma comment (lib, "d3d12")
@@ -67,7 +67,7 @@ static ID3D12Fence* g_dx_fence;
 static HANDLE g_dx_fence_event;
 
 static uint32_t g_dx_frame_index; // cycles through the frames
-static uint64_t g_dx_fence_values[2];
+static uint64_t g_dx_render_finished_fence_value[2];
 
 // -------------------------------------------------------------
 
@@ -90,35 +90,42 @@ static STR_View ReadEntireFile(DS_Arena* arena, const char* file) {
 static void MoveToNextFrame() {
     // About frame pacing:
     // https://raphlinus.github.io/ui/graphics/gpu/2021/10/22/swapchain-frame-pacing.html
-    // For most games, it makes sense to do this:
-    // 
-    //  CPU:  Input, simulate, build commands 1.................. |  Input, simulate, build commands 2.................. |  Input, simulate, build commands 3....................
-    //  GPU:                                                      |  Render commands 1.................................. |  Render commands 2....................................
-    // 
-    // But if your app is not intense, you can reduce latency by one frame by doing
-    // 
-    //  CPU:  Input, simulate, build commands 1                   |  Input, simulate, build commands 2                   |  Input, simulate, build commands 3
-    //  GPU:                                    Render commands 1 |                                    Render commands 2 |                                    Render commands 3
     
+    // Once the GPU is done presenting this newly built frame, it will signal the fence to the "render finished" fence value
+    uint64_t render_finished_fence_value = g_dx_render_finished_fence_value[g_dx_frame_index];
+    g_dx_command_queue->Signal(g_dx_fence, render_finished_fence_value);
+    
+#if 1
+    // Wait for the GPU to finish rendering this frame.
+    // This means that the CPU will have a bunch of idle time, and the GPU will have a bunch of idle time.
+    // For computationally heavy applications, this is not good. But it's the simplest to implement.
+    // There are some questions like how the dynamic texture atlas should be built if there are two
+    // frames-in-flight - should there be two atlases, one per frame? Or should the CPU wait on frames where it modifies it?
+    // I guess when only adding things to the atlas, no frame sync is even needed. This needs some thought.
 
-    uint64_t current_fence_value = g_dx_fence_values[g_dx_frame_index];
-    g_dx_command_queue->Signal(g_dx_fence, current_fence_value);
-
-    g_dx_frame_index = g_dx_swapchain->GetCurrentBackBufferIndex();
-
-    // if the next frame is not ready to be rendered yet, wait until it is ready.
-    if (g_dx_fence->GetCompletedValue() < g_dx_fence_values[g_dx_frame_index])
+    if (g_dx_fence->GetCompletedValue() < g_dx_render_finished_fence_value[g_dx_frame_index])
     {
-        bool ok = g_dx_fence->SetEventOnCompletion(g_dx_fence_values[g_dx_frame_index], g_dx_fence_event) == S_OK;
+        bool ok = g_dx_fence->SetEventOnCompletion(g_dx_render_finished_fence_value[g_dx_frame_index], g_dx_fence_event) == S_OK;
+        assert(ok);
         WaitForSingleObjectEx(g_dx_fence_event, INFINITE, FALSE);
     }
 
-    // hmm... if we can be building the next frame while the current frame is still rendering, then the vertex data can be screwed!
-    // SO... If we wait on the CPU until the frame has finished rendering   the next frame to be
-    // So will always be building the rendering commands for the next frame.
+    // Increment the frame index (wraps around to 0) to the next frame index.
+    g_dx_frame_index = g_dx_swapchain->GetCurrentBackBufferIndex();
+#else
+    // Increment the frame index (wraps around to 0) to the next frame index.
+    g_dx_frame_index = g_dx_swapchain->GetCurrentBackBufferIndex();
 
-    // set the fence value for the next frame
-    g_dx_fence_values[g_dx_frame_index] = current_fence_value + 1;
+    // if the backbuffer that the next frame wants to use is not ready to be rendered yet, wait until it is ready.
+    if (g_dx_fence->GetCompletedValue() < g_dx_render_finished_fence_value[g_dx_frame_index])
+    {
+        bool ok = g_dx_fence->SetEventOnCompletion(g_dx_render_finished_fence_value[g_dx_frame_index], g_dx_fence_event) == S_OK;
+        assert(ok);
+        WaitForSingleObjectEx(g_dx_fence_event, INFINITE, FALSE);
+    }
+#endif
+
+    g_dx_render_finished_fence_value[g_dx_frame_index] = render_finished_fence_value + 1;
 }
 
 static void InitDX12() {
@@ -234,8 +241,8 @@ static void InitDX12() {
     {
         ok = g_dx_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_dx_fence)) == S_OK;
         assert(ok);
-        g_dx_fence_values[0] = 1;
-        g_dx_fence_values[1] = 1;
+        g_dx_render_finished_fence_value[0] = 1;
+        g_dx_render_finished_fence_value[1] = 1;
 
         // Create an event handle to use for frame synchronization.
         g_dx_fence_event = CreateEventW(NULL, FALSE, FALSE, NULL);
@@ -274,6 +281,30 @@ static void AppInit() {
 
     g_base_font = UI_FontInit(roboto_mono_ttf.data, -4.f);
     g_icons_font = UI_FontInit(icons_ttf.data, -2.f);
+}
+
+static void AppDeinit() {
+    UI_FontDeinit(g_base_font);
+    UI_FontDeinit(g_icons_font);
+
+    UI_Deinit();
+    UI_DX12_Deinit();
+
+    // Release DX12 resources
+    CloseHandle(g_dx_fence_event);
+    g_dx_fence->Release();
+    g_dx_command_list->Release();
+    g_dx_command_allocator->Release();
+    for (int i = 0; i < BACK_BUFFER_COUNT; i++) {
+        g_dx_back_buffers[i]->Release();
+    }
+    g_dx_srv_heap->Release();
+    g_dx_rtv_heap->Release();
+    g_dx_swapchain->Release();
+    g_dx_command_queue->Release();
+    g_dx_device->Release();
+
+    DS_ArenaDeinit(&g_persist);
 }
 
 int main() {
@@ -351,4 +382,6 @@ int main() {
 
         MoveToNextFrame();
     }
+
+    AppDeinit();
 }

@@ -232,16 +232,9 @@ typedef enum UI_AlignH { UI_AlignH_Left, UI_AlignH_Middle, UI_AlignH_Right } UI_
 #define UI_TEXTURE_ID_NIL ((UI_TextureID)0)
 //#define UI_BUFFER_ID_NIL ((UI_BufferID)0)
 
-#ifndef UI_MAX_BACKEND_BUFFERS
-#define UI_MAX_BACKEND_BUFFERS 16
-#endif
-
 typedef uint64_t UI_TextureID; // UI_TEXTURE_ID_NIL is a reserved value
-// typedef uint64_t UI_BufferID;  // UI_BUFFER_ID_NIL is a reserved value
 
 typedef struct UI_DrawCall {
-	int vertex_buffer_id;
-	int index_buffer_id;
 	UI_TextureID texture;
 	uint32_t first_index;
 	uint32_t index_count;
@@ -290,18 +283,19 @@ typedef enum UI_InputEvent {
 } UI_InputEvent;
 
 typedef struct UI_Backend {
-	// `buffer_id` is a value between 0 and UI_MAX_BACKEND_BUFFERS - 1
-	void (*create_vertex_buffer)(int buffer_id, uint32_t size_in_bytes);
-	void (*create_index_buffer)(int buffer_id, uint32_t size_in_bytes);
-	void (*destroy_buffer)(int buffer_id);
-
-	// `atlas_id` is a value between 0 and 1
-	UI_TextureID(*create_atlas)(int atlas_id, uint32_t width, uint32_t height);
-	void (*destroy_atlas)(int atlas_id);
-
-	// From these functions, the returned pointer must stay valid until UI_EndFrame or destroy_buffer/destroy_atlas is called.
-	void* (*buffer_map_until_draw)(int buffer_id);
-	void* (*atlas_map_until_draw)(int atlas_id);
+	// A backend expects the following three global resources:
+	// - A vertex buffer
+	// - An index buffer
+	// - An atlas texture
+	// The resize_ functions are used for creating, resizing and destroying them. A resource should be destroyed when size=0 (or width=0 and height=0).
+	void (*resize_vertex_buffer)(uint32_t size);
+	void (*resize_index_buffer)(uint32_t size);
+	UI_TextureID (*resize_atlas)(uint32_t width, uint32_t height);
+	
+	// When mapping a resource, the returned pointer must stay valid until UI_EndFrame or resize_* is called.
+	void* (*map_atlas)();
+	void* (*map_vertex_buffer)();
+	void* (*map_index_buffer)();
 } UI_Backend;
 
 typedef struct UI_Inputs {
@@ -364,8 +358,7 @@ typedef struct UI_State {
 
 	// atlas
 	stbtt_pack_context pack_context;
-	//bool atlas_needs_reupload;
-	UI_TextureID atlases[2]; // 0 is the current atlas, 1 is NULL or the old atlas
+	UI_TextureID atlas;
 	uint8_t* atlas_buffer_grayscale; // stb rect pack works with grayscale, but we want to convert to RGBA8 on the fly.
 
 	// Mouse position in screen space coordinates, snapped to the pixel center. Placing it at the pixel center means we don't
@@ -2132,9 +2125,9 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Vec2 window_size, UI_FontV
 
 	UI_STATE.draw_next_vertex = 0;
 	UI_STATE.draw_next_index = 0;
-	UI_STATE.draw_vertices = (UI_DrawVertex*)UI_STATE.backend.buffer_map_until_draw(0);
-	UI_STATE.draw_indices = (uint32_t*)UI_STATE.backend.buffer_map_until_draw(1);
-	UI_STATE.draw_active_texture = UI_STATE.atlases[0];
+	UI_STATE.draw_vertices = (UI_DrawVertex*)UI_STATE.backend.map_vertex_buffer();
+	UI_STATE.draw_indices = (uint32_t*)UI_STATE.backend.map_index_buffer();
+	UI_STATE.draw_active_texture = UI_STATE.atlas;
 	UI_ASSERT(UI_STATE.draw_active_texture != UI_TEXTURE_ID_NIL);
 	UI_ASSERT(UI_STATE.draw_vertices != NULL);
 	UI_ASSERT(UI_STATE.draw_indices != NULL);
@@ -2190,9 +2183,9 @@ UI_API void UI_Deinit(void) {
 	DS_ArenaDeinit(&UI_STATE.prev_frame_arena);
 	DS_ArenaDeinit(&UI_STATE.persistent_arena);
 
-	UI_STATE.backend.destroy_buffer(0);
-	UI_STATE.backend.destroy_buffer(1);
-	UI_STATE.backend.destroy_atlas(0);
+	UI_STATE.backend.resize_vertex_buffer(0);
+	UI_STATE.backend.resize_index_buffer(0);
+	UI_STATE.backend.resize_atlas(0, 0);
 
 	DS_MemFree(UI_STATE.allocator, UI_STATE.atlas_buffer_grayscale);
 
@@ -2214,9 +2207,8 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 
 	// init atlas
 	{
-		UI_TextureID atlas = backend->create_atlas(0, UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE);
-		UI_ASSERT(atlas != UI_TEXTURE_ID_NIL);
-		UI_STATE.atlases[0] = atlas;
+		UI_STATE.atlas = backend->resize_atlas(UI_GLYPH_MAP_SIZE, UI_GLYPH_MAP_SIZE);
+		UI_ASSERT(UI_STATE.atlas != UI_TEXTURE_ID_NIL);
 
 		// pack a white rectangle into the atlas. See UI_WHITE_PIXEL_UV
 
@@ -2227,12 +2219,12 @@ UI_API void UI_Init(DS_Allocator* allocator, const UI_Backend* backend) {
 		UI_ASSERT(rect.was_packed);
 		UI_ASSERT(rect.x == 0 && rect.y == 0);
 
-		uint32_t* data = (uint32_t*)backend->atlas_map_until_draw(0);
+		uint32_t* data = (uint32_t*)backend->map_atlas();
 		data[0] = 0xFFFFFFFF;
 	}
 
-	backend->create_vertex_buffer(0, sizeof(UI_DrawVertex) * UI_MAX_VERTEX_COUNT);
-	backend->create_index_buffer(1, sizeof(uint32_t) * UI_MAX_INDEX_COUNT);
+	backend->resize_vertex_buffer(sizeof(UI_DrawVertex) * UI_MAX_VERTEX_COUNT);
+	backend->resize_index_buffer(sizeof(uint32_t) * UI_MAX_INDEX_COUNT);
 
 	UI_STATE.atlas_buffer_grayscale = (uint8_t*)DS_MemAlloc(UI_STATE.allocator, sizeof(uint8_t) * UI_GLYPH_MAP_SIZE * UI_GLYPH_MAP_SIZE);
 	memset(UI_STATE.atlas_buffer_grayscale, 0, UI_GLYPH_MAP_SIZE * UI_GLYPH_MAP_SIZE);
@@ -2427,8 +2419,6 @@ static void UI_FinalizeDrawBatch() {
 		draw_call.texture = UI_STATE.draw_active_texture;
 		draw_call.first_index = first_index;
 		draw_call.index_count = index_count;
-		draw_call.vertex_buffer_id = 0;
-		draw_call.index_buffer_id = 1;
 		DS_ArrPush(&UI_STATE.draw_calls, draw_call);
 	}
 	UI_ProfExit();
@@ -2603,9 +2593,8 @@ UI_API void UI_FontDeinit(UI_FontIndex font_idx) {
 	font->data = NULL;
 }
 
-static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontView font, int* out_atlas_index) {
+static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontView font) {
 	UI_ProfEnter();
-	int atlas_index = 0;
 	UI_CachedGlyphKey key = { codepoint, font.size };
 
 	UI_Font* font_data = DS_ArrGetPtr(UI_STATE.fonts, font.font);
@@ -2636,7 +2625,7 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontView font, in
 
 		// The glyph will be now rasterized into UI_.atlas_buffer_grayscale. Let's convert it into RGBA8.
 
-		uint32_t* atlas_data = (uint32_t*)UI_STATE.backend.atlas_map_until_draw(0);
+		uint32_t* atlas_data = (uint32_t*)UI_STATE.backend.map_atlas();
 		UI_ASSERT(atlas_data);
 
 		for (int y = packed_char.y0; y < packed_char.y1; y++) {
@@ -2669,13 +2658,12 @@ static UI_CachedGlyph UI_GetCachedGlyph(uint32_t codepoint, UI_FontView font, in
 		// UI_.atlas_needs_reupload = true;
 	}
 
-	if (out_atlas_index) *out_atlas_index = atlas_index;
 	UI_ProfExit();
 	return *glyph;
 }
 
 UI_API float UI_GlyphWidth(uint32_t codepoint, UI_FontView font) {
-	UI_CachedGlyph glyph = UI_GetCachedGlyph(codepoint, font, NULL);
+	UI_CachedGlyph glyph = UI_GetCachedGlyph(codepoint, font);
 	return glyph.x_advance;
 	//bool ok = DS_MapFind(&font->atlas->glyphs, &((UI_FontAtlasKey){codepoint, font->id}), &val);
 	//if (!ok) {
@@ -3184,8 +3172,7 @@ UI_API UI_Vec2 UI_DrawText(STR_View text, UI_FontView font, UI_Vec2 origin, UI_A
 	origin.y = (float)(int)(origin.y + 0.5f); // round to integer
 
 	for STR_Each(text, r, i) {
-		int atlas_index = 0;
-		UI_CachedGlyph glyph = UI_GetCachedGlyph(r, font, &atlas_index);
+		UI_CachedGlyph glyph = UI_GetCachedGlyph(r, font);
 
 		UI_Rect glyph_rect;
 		glyph_rect.min.x = origin.x + glyph.offset_pixels.x;
@@ -3199,7 +3186,7 @@ UI_API UI_Vec2 UI_DrawText(STR_View text, UI_FontView font, UI_Vec2 origin, UI_A
 		glyph_uv_rect.max.x += glyph.size_pixels.x / (float)UI_GLYPH_MAP_SIZE;
 		glyph_uv_rect.max.y += glyph.size_pixels.y / (float)UI_GLYPH_MAP_SIZE;
 
-		UI_DrawSprite(glyph_rect, color, glyph_uv_rect, UI_STATE.atlases[atlas_index], scissor);
+		UI_DrawSprite(glyph_rect, color, glyph_uv_rect, UI_STATE.atlas, scissor);
 		origin.x += glyph.x_advance;
 	}
 
