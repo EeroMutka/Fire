@@ -1,48 +1,6 @@
 // This file contains some experimental extra utilities
 
-typedef void (*UI_ArrayEditElemFn)(UI_Key key, void* elem, int index, void* user_data);
-
-typedef struct UI_ValueEditArrayModify {
-	bool append_to_end;
-	bool clear;
-	int remove_elem; // -1 if none
-} UI_ValueEditArrayModify;
-
-UI_API void UI_AddValArray(UI_Box* box, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify);
-
-UI_API void UI_AddLabelWrapped(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string);
-
-#define UI_AddValDSArray(BOX, NAME, ARRAY, DEFAULT_VALUE, EDIT_ELEM) \
-	UI_AddValDSArray_((BOX), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (DEFAULT_VALUE), (UI_ArrayEditElemFn)EDIT_ELEM, NULL)
-#define UI_AddValDSArrayEx(BOX, NAME, ARRAY, DEFAULT_VALUE, EDIT_ELEM, USER_DATA) \
-	UI_AddValDSArray_((BOX), (NAME), (DS_DynArrayRaw*)(ARRAY), sizeof((ARRAY)->data[0]), (DEFAULT_VALUE), (UI_ArrayEditElemFn)EDIT_ELEM, USER_DATA)
-
-// Formatting rules / expected types:
-// 
-// %hhd : int8_t
-// %hd  : int16_t
-// %d   : int32_t
-// %lld : int64_t
-// %hhu : uint8_t
-// %hu  : uint16_t
-// %u   : uint32_t
-// (TODO) %llu : uint64_t
-// %b   : bool
-// %f   : float
-// %lf  : double
-// %t   : UI_Text, passed by pointer
-// %%   is an escape that turns to %
-// 
-// By default, the values are read-only.    (TODO: implement !) You may add the ! specifier for editable values. In that case,
-// the passed value must be a pointer to the value.
-// Example:
-//    
-//    int foo = 50;
-//    UI_AddFmt(UI_KEY(), "Editable value: %!d", &foo); // "foo" may be edited by the user
-//    
-UI_API void UI_AddFmt(UI_Box* box, const char* fmt, ...);
-
-#ifdef /********************/ UI_IMPLEMENTATION /********************/
+#include "fire_ui.h"
 
 static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis axis, int pass, bool* request_second_pass) {
 	UI_BoxComputeUnexpandedSizeDefault(box, axis, pass, request_second_pass);
@@ -53,6 +11,8 @@ static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis 
 
 UI_API void UI_AddValArray(UI_Box* box, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify)
 {
+	UI_TODO();
+#if 0
 	UI_AddBox(box, UI_SizeFlex(1.f), UI_SizeFit(), 0);
 	UI_PushBox(box);
 
@@ -71,7 +31,7 @@ UI_API void UI_AddValArray(UI_Box* box, const char* name, void* array, int array
 	UI_AddLabel(label, 20.f, UI_SizeFit(), 0, is_open ? STR_V("\x44") : STR_V("\x46"));
 	label->font = UI_STATE.icons_font;
 
-	UI_AddLabel(UI_BBOX(box), UI_SizeFlex(1.f), UI_SizeFit(), 0, name);
+	UI_AddLabel(UI_BBOX(box), UI_SizeFlex(1.f), UI_SizeFit(), 0, STR_V(name));
 	UI_Box* add_button = UI_BBOX(box);
 	UI_AddButton(add_button, UI_SizeFit(), UI_SizeFlex(1.f), 0, STR_V("\x48"));
 	add_button->font = UI_STATE.icons_font;
@@ -136,6 +96,7 @@ UI_API void UI_AddValArray(UI_Box* box, const char* name, void* array, int array
 	}
 
 	UI_PopBox(box);
+#endif
 }
 
 // default_value may be NULL, in which case the element is zero-initialized
@@ -349,7 +310,8 @@ static void UI_AddLabelWrappedComputeUnexpandedSize(UI_Box* box, UI_Axis axis, i
 				DS_ArrPush(&data.line_strings, line_string);
 
 				line_start = (char*)word.data;
-				remaining = { word.data, (int)(text_end - word.data) };
+				remaining.data = word.data;
+				remaining.size = (int)(text_end - word.data);
 				line_remaining = line_width;
 				line_has_content = false;
 			}
@@ -380,17 +342,14 @@ static void UI_DrawBoxWithTextWrapped(UI_Box* box) {
 			box->computed_position.x + box->inner_padding.x,
 			box->computed_position.y + box->inner_padding.y + (float)i * data->line_height,
 		};
-		UI_DrawText(line_string, box->font, text_pos, UI_AlignH_Left, UI_AlignV_Upper, UI_WHITE, &box->computed_rect);
+		UI_DrawText(line_string, box->font, text_pos, UI_AlignH_Left, UI_WHITE, &box->computed_rect);
 	}
 }
 
 UI_API void UI_AddLabelWrapped(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
 	UI_AddBox(box, w, h, flags);
 	box->text = string;
-	box->font = UI_STATE.base_font;
 	box->inner_padding = UI_DEFAULT_TEXT_PADDING;
 	box->compute_unexpanded_size = UI_AddLabelWrappedComputeUnexpandedSize;
 	box->draw = UI_DrawBoxWithTextWrapped;
 }
-
-#endif // UI_IMPLEMENTATION

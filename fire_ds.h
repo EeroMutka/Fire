@@ -12,8 +12,8 @@
 // If you wish to use a different prefix than DS_, simply do a find and replace in this file.
 // 
 
-#ifndef DS_INCLUDED
-#define DS_INCLUDED
+#ifndef FIRE_DS_INCLUDED
+#define FIRE_DS_INCLUDED
 
 #include <stddef.h>
 #include <stdint.h>
@@ -21,7 +21,7 @@
 #include <string.h>  // memcpy, memmove, memset, memcmp, strlen
 
 #ifndef DS_NO_MALLOC
-#include <stdlib.h>  // for DS_AllocatorFn_Default
+#include <stdlib.h>
 #endif
 
 #ifndef DS_PROFILER_MACROS_OVERRIDE
@@ -53,40 +53,36 @@
 #define DS_LangAgnosticLiteral(T) (T) // in C, struct and union literals are of the form (MyStructType){...}
 #endif
 
-#ifndef DS_DEFAULT_ALIGNMENT
-#define DS_DEFAULT_ALIGNMENT  sizeof(void*)
-#endif
-
 #ifndef DS_ARENA_BLOCK_ALIGNMENT
-#define DS_ARENA_BLOCK_ALIGNMENT  (sizeof(void*)*2)
+#define DS_ARENA_BLOCK_ALIGNMENT 16
 #endif
 
-typedef enum DS_AllocatorType {
-	DS_AllocatorType_Heap,
-	DS_AllocatorType_Arena,
-} DS_AllocatorType;
-
-typedef struct DS_AllocatorBase_Default {
-	DS_AllocatorType type;
-} DS_AllocatorBase_Default;
-
-#ifndef DS_USE_CUSTOM_ALLOCATOR
-#define DS_AllocatorBase             DS_AllocatorBase_Default
-#define DS_AllocatorBase_Init(TYPE)  DS_LangAgnosticLiteral(DS_AllocatorBase_Default){ TYPE }
-#define DS_AllocatorFn_Impl(ALLOCATOR, OLD_PTR, OLD_SIZE, NEW_SIZE, NEW_ALIGNMENT) DS_AllocatorFn_Default(ALLOCATOR, OLD_PTR, OLD_SIZE, NEW_SIZE, NEW_ALIGNMENT)
+#ifndef DS_DEFAULT_ALLOCATOR_PROC_ALIGNMENT
+#define DS_DEFAULT_ALLOCATOR_PROC_ALIGNMENT 16 // MSVC's malloc uses 16-byte alignment when building in 64-bit mode
 #endif
+
+#ifndef DS_DEFAULT_ARENA_PUSH_ALIGNMENT
+#define DS_DEFAULT_ARENA_PUSH_ALIGNMENT 8
+#endif
+
+typedef struct DS_AllocatorBase {
+	// AllocatorProc is a combination of malloc, free and realloc.
+	// A new allocation is made when new_size > 0.
+	// An existing allocation is freed when new_size == 0; in this case the old_size parameter is ignored.
+	// To resize an existing allocation, pass the existing pointer into `ptr` and its size into `old_size`.
+	void* (*AllocatorProc)(struct DS_AllocatorBase* allocator, void* ptr, size_t old_size, size_t size, size_t align);
+} DS_AllocatorBase;
 
 // ----------------------------------------------------------
 
 typedef struct DS_Arena DS_Arena;
 
-// DS_Allocator can be any structure that DS_AllocatorFn_Impl defines the behaviour of.
-// For convenience, it's type-defined to be DS_Arena, to make it easy to pass an arena pointer to any parameter
-// of type DS_Allocator*, but it doesn't have to be an arena.
+// For convenience, DS_Allocator is type-defined to be DS_Arena to make it easy to pass an arena pointer to any parameter
+// of type DS_Allocator*, but it can be anything that points to DS_AllocatorBase.
 typedef DS_Arena DS_Allocator;
 
 typedef struct DS_ArenaBlockHeader {
-	int size_including_header;
+	size_t size_including_header;
 	struct DS_ArenaBlockHeader* next; // may be NULL
 } DS_ArenaBlockHeader;
 
@@ -97,11 +93,11 @@ typedef struct DS_ArenaMark {
 
 struct DS_Arena {
 	DS_AllocatorBase base;
-	int block_size;
 	DS_ArenaBlockHeader* first_block; // may be NULL
 	DS_ArenaMark mark;
 	DS_Allocator* allocator;
-	int total_mem_reserved;
+	size_t block_size;
+	size_t total_mem_reserved;
 };
 
 // --- Internal helpers -------------------------------------
@@ -117,8 +113,18 @@ struct DS_Arena {
 #define DS_LangAgnosticZero(T) (T){0}
 #endif
 
-static const DS_AllocatorBase DS_HEAP_ = DS_AllocatorBase_Init(DS_AllocatorType_Heap);
+#ifndef DS_NO_MALLOC
+static void* DS_HeapAllocatorProc(DS_AllocatorBase* allocator, void* ptr, size_t old_size, size_t size, size_t align) {
+	if (size == 0) {
+		_aligned_free(ptr);
+		return NULL;
+	} else {
+		return _aligned_realloc(ptr, size, align);
+	}
+}
+static const DS_AllocatorBase DS_HEAP_ = { DS_HeapAllocatorProc };
 #define DS_HEAP (DS_Allocator*)(&DS_HEAP_)
+#endif
 
 // Results in a compile-error if `elem` does not match the array's element type
 #define DS_ArrTypecheck(array, elem) (void)((array)->data == elem)
@@ -131,19 +137,14 @@ static const DS_AllocatorBase DS_HEAP_ = DS_AllocatorBase_Init(DS_AllocatorType_
 #define DS_MapKOffset(MAP) (int)((uintptr_t)&(MAP)->data->key - (uintptr_t)(MAP)->data)
 #define DS_MapVOffset(MAP) (int)((uintptr_t)&(MAP)->data->value - (uintptr_t)(MAP)->data)
 
-#define DS_SlotN(ALLOCATOR) sizeof((ALLOCATOR)->buckets[0]->slots) / sizeof((ALLOCATOR)->buckets[0]->slots[0])
-#define DS_SlotBucketSize(ALLOCATOR) sizeof(*(ALLOCATOR)->buckets[0])
-#define DS_SlotBucketNextPtrOffset(ALLOCATOR) (uint32_t)((uintptr_t)&(ALLOCATOR)->buckets[0]->next_bucket - (uintptr_t)(ALLOCATOR)->buckets[0])
-#define DS_SlotSize(ALLOCATOR) sizeof((ALLOCATOR)->buckets[0]->slots[0])
-
-#define DS_BucketElemSize(ARRAY) (sizeof((ARRAY)->buckets[0]->dummy_T))
+#define DS_BucketElemSize(ARRAY) sizeof((ARRAY)->first_bucket->first_elem)
 #define DS_BucketNextPtrOffset(ARRAY) ((ARRAY)->elems_per_bucket * DS_BucketElemSize(ARRAY))
 
 #ifdef __cplusplus
 template<typename T> static inline T* DS_Clone__(DS_Arena* a, const T& v) { T* x = (T*)DS_ArenaPush(a, sizeof(T)); *x = v; return x; }
 #define DS_Clone_(T, ARENA, VALUE) DS_Clone__<T>(ARENA, VALUE)
 #else
-#define DS_Clone_(T, ARENA, VALUE) ((T*)0 == &(VALUE), (T*)DS_CloneSize(ARENA, &(VALUE), sizeof(VALUE)))
+#define DS_Clone_(T, ARENA, VALUE) ((T*)0 == &(VALUE), (T*)DS_MemClone(ARENA, &(VALUE), sizeof(VALUE)))
 #endif
 
 // -------------------------------------------------------------------
@@ -220,8 +221,8 @@ static inline void DS_ArrBoundsCheck_(bool x) { DS_ASSERT(x); }
 // 
 
 // Basic hash functions
-DS_API uint32_t DS_MurmurHash3(const void* key, int len, uint32_t seed);
-DS_API uint64_t DS_MurmurHash64A(const void* key, int len, uint64_t seed);
+DS_API uint32_t DS_MurmurHash3(const void* key, size_t size, uint32_t seed);
+DS_API uint64_t DS_MurmurHash64A(const void* key, size_t size, uint64_t seed);
 
 // If using a struct as the key type in a DS_Map, it must not contain any compiler-generated padding, as that could cause
 // unpredictable behaviour when memcmp is used on them.
@@ -381,70 +382,76 @@ static inline bool DS_MapIter(DS_MapRaw* map, int* i, void** out_key, void** out
 
 // -- Arena interface --------------------------------
 
-DS_API void DS_ArenaInit(DS_Arena* arena, int block_size, DS_Allocator* allocator);
+DS_API void DS_ArenaInit(DS_Arena* arena, size_t block_size, DS_Allocator* allocator);
 DS_API void DS_ArenaDeinit(DS_Arena* arena);
 
-DS_API char* DS_ArenaPush(DS_Arena* arena, int size);
-DS_API char* DS_ArenaPushZero(DS_Arena* arena, int size);
-DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment);
+DS_API char* DS_ArenaPush(DS_Arena* arena, size_t size);
+DS_API char* DS_ArenaPushZero(DS_Arena* arena, size_t size);
+DS_API char* DS_ArenaPushAligned(DS_Arena* arena, size_t size, size_t alignment);
 
 DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena* arena);
 DS_API void DS_ArenaSetMark(DS_Arena* arena, DS_ArenaMark mark);
 DS_API void DS_ArenaReset(DS_Arena* arena);
 
-// -- Dual-arena scope -----------------------------------------------
+// -- MemTemp, MemScope ----------------------------------------------
 
-// The convention when passing a DS_Scope* into a function is that allocations that are returned to the caller
-// are allocated from `arena`. Temporary allocations within the function scope are allocated from the `inner` arena.
-typedef struct DS_Scope {
+// When passing a temporary arena to a function, it's often not immediately clear from the call-site whether the arena parameter
+// is for temporary allocations within the function or for allocating caller result data. To make this distinction clear,
+// DS_MemTemp can be used for passing temporary arenas.
+typedef struct DS_MemTemp {
+	DS_Arena* temp;
+} DS_MemTemp;
+
+// DS_MemScope is used for passing a temporary arena and a results arena to a function.
+// It can also be used for temporary child scopes that get immediately
+// freed using the DS_ScopeBegin / DS_ScopeEnd functions.
+typedef struct DS_MemScope {
 	DS_Arena* arena;
-	DS_Arena* inner;
-	DS_ArenaMark base; // marks the beginning of the scope for `arena`
-} DS_Scope;
+	DS_MemTemp temp;
+	DS_ArenaMark reset_arena_to; // Optional field, used by DS_ScopeBegin / DS_ScopeEnd functions.
+} DS_MemScope;
 
-static inline DS_Scope DS_ScopeBegin(DS_Scope* parent) {
-	DS_Scope new_scope = {parent->inner, parent->arena, parent->inner->mark};
+static inline DS_MemScope DS_ScopeBegin(DS_MemScope* parent) {
+	DS_MemScope new_scope = { parent->temp.temp, parent->arena };
+
+	if (parent->arena != parent->temp.temp) {
+		// When working with just one arena, both for results and temporary allocations, the results arena and the temp arena
+		// are allowed to be the same.
+		// If parent->arena = parent->temp, we must not reset at the end. If we did, then any allocations
+		// that should outlive the scope (allocations from parent->arena) would be reset too.
+
+		new_scope.reset_arena_to = parent->temp.temp->mark;
+	}
+
 	return new_scope;
 }
 
-static inline void DS_ScopeEnd(DS_Scope* scope) {
-	if (scope->arena != scope->inner) {
-		DS_ArenaSetMark(scope->arena, scope->base);
+static inline DS_MemScope DS_ScopeBeginT(DS_MemTemp* parent) {
+	DS_MemScope new_scope = { parent->temp, parent->temp, parent->temp->mark };
+	return new_scope;
+}
+
+static inline DS_MemScope DS_ScopeBeginA(DS_Arena* arena) {
+	DS_MemScope new_scope = { arena, arena, arena->mark };
+	return new_scope;
+}
+
+static inline void DS_ScopeEnd(DS_MemScope* scope) {
+	if (scope->reset_arena_to.block != NULL) {
+		DS_ArenaSetMark(scope->arena, scope->reset_arena_to);
 	}
 }
 
 // -- Memory allocation --------------------------------
 
-#ifndef DS_NO_MALLOC
-static char* DS_AllocatorFn_Default(DS_AllocatorBase_Default* allocator, char* old_ptr, int old_size, int new_size, int new_alignment) {
-	char* result;
-	if (allocator->type == DS_AllocatorType_Arena) {
-		result = DS_ArenaPushEx((DS_Arena*)allocator, new_size, new_alignment);
-		memcpy(result, old_ptr, old_size);
-	}
-	else {
-		result = (char*)_aligned_realloc(old_ptr, new_size, new_alignment);
-	}
-	return result;
-}
-#endif
+#define DS_MemAlloc(ALLOCATOR, SIZE)                               (ALLOCATOR)->base.AllocatorProc(&(ALLOCATOR)->base,  NULL,          0, (SIZE), DS_DEFAULT_ALLOCATOR_PROC_ALIGNMENT)
+#define DS_MemResize(ALLOCATOR, PTR, OLD_SIZE, SIZE)               (ALLOCATOR)->base.AllocatorProc(&(ALLOCATOR)->base, (PTR), (OLD_SIZE), (SIZE), DS_DEFAULT_ALLOCATOR_PROC_ALIGNMENT)
+#define DS_MemFree(ALLOCATOR, PTR)                                 (ALLOCATOR)->base.AllocatorProc(&(ALLOCATOR)->base, (PTR),          0,      0, DS_DEFAULT_ALLOCATOR_PROC_ALIGNMENT)
+#define DS_MemAllocAligned(ALLOCATOR, SIZE, ALIGN)                 (ALLOCATOR)->base.AllocatorProc(&(ALLOCATOR)->base,  NULL,          0, (SIZE), ALIGN)
+#define DS_MemResizeAligned(ALLOCATOR, PTR, OLD_SIZE, SIZE, ALIGN) (ALLOCATOR)->base.AllocatorProc(&(ALLOCATOR)->base, (PTR), (OLD_SIZE), (SIZE), ALIGN)
 
-// DS_AllocatorFn is a combination of malloc, free and realloc.
-// - To make a new allocation (i.e. malloc/realloc), pass a size other than 0 into `new_size`,
-//   and pass an alignment, e.g. DS_DEFAULT_ALIGNMENT into `new_alignment`.
-// - To free an existing allocation (i.e. free/realloc), pass it into `old_ptr` and its size into `old_size, otherwise pass NULL and 0.
-static inline char* DS_AllocatorFn(DS_Allocator* allocator, const void* old_ptr, int old_size, int new_size, int new_alignment) {
-	char* result = DS_AllocatorFn_Impl((DS_AllocatorBase*)allocator, (char*)old_ptr, old_size, new_size, new_alignment);
-	DS_ASSERT(((uintptr_t)result & (new_alignment - 1)) == 0); // check that the alignment is correct
-	return result;
-}
-
-#define DS_MemAllocEx(ALLOCATOR, SIZE, ALIGNMENT) DS_AllocatorFn(ALLOCATOR, NULL, 0, SIZE, ALIGNMENT)
-#define DS_MemAlloc(ALLOCATOR, SIZE)              DS_AllocatorFn(ALLOCATOR, NULL, 0, SIZE, DS_DEFAULT_ALIGNMENT)
-#define DS_MemFree(ALLOCATOR, PTR)                DS_AllocatorFn(ALLOCATOR, PTR, 0, 0, 1)
-
-static inline void* DS_CloneSize(DS_Arena* arena, const void* value, int size) { void* p = DS_ArenaPush(arena, size); return memcpy(p, value, size); }
-static inline void* DS_CloneSizeA(DS_Arena* arena, const void* value, int size, int align) { void* p = DS_ArenaPushEx(arena, size, align); return memcpy(p, value, size); }
+static inline void* DS_MemClone(DS_Arena* arena, const void* value, int size) { void* p = DS_ArenaPush(arena, size); return memcpy(p, value, size); }
+static inline void* DS_MemCloneAligned(DS_Arena* arena, const void* value, int size, int align) { void* p = DS_ArenaPushAligned(arena, size, align); return memcpy(p, value, size); }
 
 // -- Dynamic array --------------------------------
 
@@ -527,39 +534,6 @@ DS_API void DS_ArrReserveRaw(DS_DynArrayRaw* array, int capacity, int elem_size)
 DS_API void DS_ArrCloneRaw(DS_Arena* arena, DS_DynArrayRaw* array, int elem_size);
 DS_API void DS_ArrResizeRaw(DS_DynArrayRaw* array, int count, const void* value, int elem_size); // set value to NULL to not initialize the memory
 
-// -- Slot Allocator --------------------------------------------------------------------
-
-#define DS_SlotAllocator(T, N) struct { \
-	DS_Allocator* allocator; \
-	struct { union {T value; T* next_free_slot;} slots[N]; void* next_bucket; }* buckets[2]; /* first and last bucket */ \
-	T* first_free_elem; \
-	uint32_t last_bucket_end; \
-	uint32_t bucket_next_ptr_offset; \
-	uint32_t slot_size; \
-	uint32_t bucket_size; \
-	uint32_t num_slots_per_bucket; }
-
-typedef DS_SlotAllocator(char, 1) SlotAllocatorRaw;
-
-// Iterate through all slots in a slot allocator, even the destroyed ones. To detect whether or not a slot is destroyed,
-// you must encode it yourself in the slot data. However, you shouldn't encode it within the first (pointer-size) bytes,
-// because the slot allocator internally stores a pointer there on destroyed slots.
-#define DS_ForSlotAllocatorEachSlot(T, ALLOCATOR, IT) \
-	struct DS_Concat(_dummy_, __LINE__) {void* bucket; uint32_t slot_index; T* elem;}; \
-	for (struct DS_Concat(_dummy_, __LINE__) IT = {(ALLOCATOR)->buckets[0]}; DS_SlotAllocatorIter((SlotAllocatorRaw*)(ALLOCATOR), &IT.bucket, &IT.slot_index, (void**)&IT.elem);)
-
-#define DS_SlotAllocatorInit(ALLOCATOR, BACKING_ALLOCATOR) \
-	DS_SlotAllocatorInitRaw((SlotAllocatorRaw*)(ALLOCATOR), DS_SlotBucketNextPtrOffset(ALLOCATOR), DS_SlotSize(ALLOCATOR), DS_SlotBucketSize(ALLOCATOR), DS_SlotN(ALLOCATOR), BACKING_ALLOCATOR)
-
-#define DS_SlotAllocatorDeinit(ALLOCATOR)  DS_SlotAllocatorDeinitRaw((SlotAllocatorRaw*)(ALLOCATOR))
-
-// The slot's memory won't be initialized or overridden if it existed before.
-#define DS_TakeSlot(ALLOCATOR) \
-	DS_TakeSlotRaw((SlotAllocatorRaw*)(ALLOCATOR))
-
-#define DS_FreeSlot(ALLOCATOR, SLOT) \
-	DS_FreeSlotRaw((SlotAllocatorRaw*)(ALLOCATOR), SLOT)
-
 // -- Bucket Array --------------------------------------------------------------------
 
 typedef struct DS_BucketArrayIndex {
@@ -569,30 +543,30 @@ typedef struct DS_BucketArrayIndex {
 
 #define DS_BucketArray(T) struct { \
 	DS_Allocator* allocator; \
-	SlotAllocatorRaw* slot_allocator; \
-	struct {T dummy_T; void* dummy_ptr;}* buckets[2]; /* first and last bucket */ \
+	struct { T first_elem; }* first_bucket; \
+	struct { T first_elem; }* last_bucket; \
 	uint32_t count; \
 	uint32_t last_bucket_end; \
 	uint32_t elems_per_bucket; }
 
 typedef DS_BucketArray(char) DS_BucketArrayRaw;
 
-
 #define DS_BucketArrayInit(ARRAY, ALLOCATOR, ELEMS_PER_BUCKET) DS_BucketArrayInitRaw((DS_BucketArrayRaw*)(ARRAY), (ALLOCATOR), (ELEMS_PER_BUCKET));
-//#define BucketArrayInitUsingSlotAllocator(ARRAY, SLOT_ALLOCATOR) BucketArrayInitUsingSlotAllocatorRaw((DS_BucketArrayRaw*)(ARRAY), (SlotAllocatorRaw*)(SLOT_ALLOCATOR), DS_BucketElemSize(ARRAY))
 
 #define DS_BucketArraySetViewToArray(ARRAY, ELEMS_DATA, ELEMS_COUNT) DS_BucketArraySetViewToArrayRaw((DS_BucketArrayRaw*)(ARRAY), (ELEMS_DATA), (uint32_t)(ELEMS_COUNT))
 
 #define DS_BucketArrayPush(ARRAY, ...) do { \
 	DS_BucketArrayPushRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY)); \
-	(&(ARRAY)->buckets[1]->dummy_T)[(ARRAY)->last_bucket_end - 1] = (__VA_ARGS__); \
+	(&(ARRAY)->last_bucket->first_elem)[(ARRAY)->last_bucket_end - 1] = (__VA_ARGS__); \
 	} while (0)
+
+#define DS_BucketArrayPushUndef(ARRAY) DS_BucketArrayPushRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY))
 
 #define DS_BucketArrayPushN(ARRAY, ELEMS_DATA, ELEMS_COUNT)  DS_BucketArrayPushNRaw((DS_BucketArrayRaw*)(ARRAY), (ELEMS_DATA), (uint32_t)(ELEMS_COUNT), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY))
 
 #define DS_ForBucketArrayEach(T, ARRAY, IT) \
 	struct DS_Concat(_dummy_, __LINE__) {void *bucket; uint32_t slot_index; T *elem;}; \
-	for (struct DS_Concat(_dummy_, __LINE__) IT = {(ARRAY)->buckets[0]}; DS_BucketArrayIter((DS_BucketArrayRaw*)ARRAY, &IT.bucket, &IT.slot_index, (void**)&IT.elem, DS_BucketElemSize(ARRAY), DS_BucketNextPtrOffset(ARRAY));)
+	for (struct DS_Concat(_dummy_, __LINE__) IT = {(ARRAY)->first_bucket}; DS_BucketArrayIter((DS_BucketArrayRaw*)ARRAY, &IT.bucket, &IT.slot_index, (void**)&IT.elem, DS_BucketElemSize(ARRAY), DS_BucketNextPtrOffset(ARRAY));)
 
 #define DS_BucketArrayGetPtr(ARRAY, INDEX) \
 	(void*)((char*)(INDEX).bucket + DS_BucketElemSize(ARRAY)*(INDEX).slot_index)
@@ -633,24 +607,8 @@ struct DS_ArrayView {
 
 // -- IMPLEMENTATION ------------------------------------------------------------------
 
-static inline bool DS_SlotAllocatorIter(SlotAllocatorRaw* allocator, void** bucket, uint32_t* slot_index, void** elem) {
-	if (*bucket == allocator->buckets[1] && *slot_index == allocator->last_bucket_end) {
-		return false; // we're finished
-	}
-
-	if (*slot_index == allocator->num_slots_per_bucket) {
-		// go to the next bucket
-		*bucket = *(void**)((char*)*bucket + allocator->bucket_next_ptr_offset);
-		*slot_index = 0;
-	}
-
-	*elem = (void*)((char*)*bucket + allocator->slot_size * (*slot_index));
-	*slot_index += 1;
-	return true;
-}
-
 static inline bool DS_BucketArrayIter(DS_BucketArrayRaw* list, void** bucket, uint32_t* slot_index, void** elem, int elem_size, int next_bucket_ptr_offset) {
-	if (*bucket == list->buckets[1] && *slot_index == list->last_bucket_end) {
+	if (*bucket == list->last_bucket && *slot_index == list->last_bucket_end) {
 		return false; // we're finished
 	}
 
@@ -665,86 +623,9 @@ static inline bool DS_BucketArrayIter(DS_BucketArrayRaw* list, void** bucket, ui
 	return true;
 }
 
-static inline void DS_SlotAllocatorInitRaw(SlotAllocatorRaw* allocator,
-	uint32_t bucket_next_ptr_offset, uint32_t slot_size, uint32_t bucket_size,
-	uint32_t num_slots_per_bucket, DS_Allocator* backing_allocator)
-{
-	DS_ProfEnter();
-	SlotAllocatorRaw result = {0};
-	result.bucket_next_ptr_offset = bucket_next_ptr_offset;
-	result.slot_size = slot_size;
-	result.bucket_size = bucket_size;
-	result.num_slots_per_bucket = num_slots_per_bucket;
-	result.allocator = backing_allocator;
-	*allocator = result;
-	DS_ProfExit();
-}
-
-static inline void DS_SlotAllocatorDeinitRaw(SlotAllocatorRaw* allocator) {
-	DS_ProfEnter();
-	void* bucket = allocator->buckets[0];
-	for (; bucket;) {
-		void* next_bucket = *(void**)((char*)bucket + allocator->bucket_next_ptr_offset);
-		DS_MemFree(allocator->allocator, bucket);
-		bucket = next_bucket;
-	}
-	DS_DebugFillGarbage(allocator, sizeof(*allocator));
-	DS_ProfExit();
-}
-
-static inline void* DS_TakeSlotRaw(SlotAllocatorRaw* allocator) {
-	DS_ProfEnter();
-	void* result = NULL;
-	DS_ASSERT(allocator->allocator != NULL); // Did you forget to call DS_SlotAllocatorInit?
-
-	if (allocator->first_free_elem) {
-		// Take an existing slot
-		result = allocator->first_free_elem;
-		allocator->first_free_elem = *(char**)((char*)result);
-	}
-	else {
-		// Allocate from the end
-
-		void* bucket = allocator->buckets[1];
-
-		if (bucket == NULL || allocator->last_bucket_end == allocator->num_slots_per_bucket) {
-			// We need to allocate a new bucket
-
-			void* new_bucket = DS_MemAlloc(allocator->allocator, allocator->bucket_size);
-			if (bucket) {
-				// set the `next` pointer of the previous bucket to point to the new bucket
-				*(void**)((char*)bucket + allocator->bucket_next_ptr_offset) = new_bucket;
-			}
-			else {
-				// set the `first bucket` pointer to point to the new bucket
-				memcpy(&allocator->buckets[0], &new_bucket, sizeof(void*));
-				*(void**)((char*)new_bucket + allocator->bucket_next_ptr_offset) = NULL;
-			}
-
-			allocator->last_bucket_end = 0;
-			memcpy(&allocator->buckets[1], &new_bucket, sizeof(void*));
-			bucket = new_bucket;
-		}
-
-		uint32_t slot_idx = allocator->last_bucket_end++;
-		result = (char*)bucket + allocator->slot_size * slot_idx;
-	}
-
-	DS_ProfExit();
-	return result;
-}
-
-static inline void DS_FreeSlotRaw(SlotAllocatorRaw* allocator, void* slot) {
-	// It'd be nice to provide some debug checking thing to detect double frees
-	DS_ASSERT(allocator->first_free_elem != (char*)slot);
-
-	*(char**)((char*)slot) = allocator->first_free_elem;
-	allocator->first_free_elem = (char*)slot;
-}
-
 static inline DS_BucketArrayIndex DS_BucketArrayFirstIndexRaw(DS_BucketArrayRaw* array) {
 	assert(array->count > 0);
-	DS_BucketArrayIndex index = {array->buckets[0], 0};
+	DS_BucketArrayIndex index = {array->first_bucket, 0};
 	return index;
 }
 
@@ -766,8 +647,8 @@ static inline void DS_BucketArraySetViewToArrayRaw(DS_BucketArrayRaw* array, con
 	DS_BucketArrayRaw result = {0};
 	result.last_bucket_end = (int)elems_count;
 	result.count = (int)elems_count;
-	*(const void**)&result.buckets[0] = elems_data;
-	*(const void**)&result.buckets[1] = elems_data;
+	*(const void**)&result.first_bucket = elems_data;
+	*(const void**)&result.last_bucket = elems_data;
 	*array = result;
 }
 
@@ -777,28 +658,13 @@ static inline void DS_BucketArrayInitRaw(DS_BucketArrayRaw* array, DS_Allocator*
 	result.elems_per_bucket = elems_per_bucket;
 	*array = result;
 }
-//static inline void BucketArrayInitUsingSlotAllocatorRaw(DS_BucketArrayRaw *list, SlotAllocatorRaw *slot_allocator, uint32_t elem_size) {
-//	DS_ASSERT(slot_allocator->slot_next_ptr_offset > elem_size); // The slot allocator slot size must be >= bucket list element size
-//
-//	DS_BucketArrayRaw result = {0};
-//	result.slot_allocator = slot_allocator;
-//	result.elems_per_bucket = slot_allocator->slot_next_ptr_offset / elem_size; // round down
-//	*list = result;
-//}
 
 static inline void DS_BucketArrayDeinitRaw(DS_BucketArrayRaw* array, int next_bucket_ptr_offset) {
 	DS_ProfEnter();
-	void* bucket = array->buckets[0];
+	void* bucket = array->first_bucket;
 	for (; bucket;) {
 		void* next_bucket = *(void**)((char*)bucket + next_bucket_ptr_offset);
-
-		if (array->slot_allocator) {
-			DS_FreeSlotRaw(array->slot_allocator, bucket);
-		}
-		else {
-			DS_MemFree(array->allocator, bucket);
-		}
-
+		DS_MemFree(array->allocator, bucket);
 		bucket = next_bucket;
 	}
 
@@ -819,13 +685,7 @@ static void* DS_BucketArrayGetNextBucket(DS_BucketArrayRaw* array, void* bucket,
 
 	if (new_bucket == NULL) {
 		int bucket_size = next_bucket_ptr_offset + sizeof(void*);
-		if (array->slot_allocator) {
-			DS_ASSERT(array->slot_allocator->slot_size >= (uint32_t)bucket_size);
-			new_bucket = DS_TakeSlotRaw(array->slot_allocator);
-		}
-		else {
-			new_bucket = DS_MemAlloc(array->allocator, bucket_size);
-		}
+		new_bucket = DS_MemAlloc(array->allocator, bucket_size);
 		*(void**)((char*)new_bucket + next_bucket_ptr_offset) = NULL;
 	}
 
@@ -833,18 +693,18 @@ static void* DS_BucketArrayGetNextBucket(DS_BucketArrayRaw* array, void* bucket,
 		*(void**)((char*)bucket + next_bucket_ptr_offset) = new_bucket;
 	}
 	else {
-		*(void**)&array->buckets[0] = new_bucket;
+		*(void**)&array->first_bucket = new_bucket;
 		*(void**)((char*)new_bucket + next_bucket_ptr_offset) = NULL;
 	}
 
 	array->last_bucket_end = 0;
-	*(void**)&array->buckets[1] = new_bucket;
+	*(void**)&array->last_bucket = new_bucket;
 	return new_bucket;
 }
 
 static void DS_BucketArrayGetNRaw(const DS_BucketArrayRaw* array, void* dst, uint32_t elems_count, DS_BucketArrayIndex* index, uint32_t elem_size, uint32_t next_bucket_ptr_offset) {
 	while (elems_count > 0) {
-		uint32_t elems_in_bucket = index->bucket == array->buckets[1] ? array->last_bucket_end : array->elems_per_bucket;
+		uint32_t elems_in_bucket = index->bucket == array->last_bucket ? array->last_bucket_end : array->elems_per_bucket;
 		uint32_t slots_left_in_bucket = elems_in_bucket - index->slot_index;
 		
 		if (elems_count >= slots_left_in_bucket) { // go past this bucket
@@ -868,7 +728,7 @@ static void DS_BucketArrayGetNRaw(const DS_BucketArrayRaw* array, void* dst, uin
 
 static void DS_BucketArrayPushNRaw(DS_BucketArrayRaw* array, const void* elems_data, uint32_t elems_count, uint32_t elem_size, uint32_t next_bucket_ptr_offset) {
 	DS_ProfEnter();
-	void* bucket = array->buckets[1];
+	void* bucket = array->last_bucket;
 
 	array->count += elems_count;
 	while (elems_count > 0) {
@@ -903,7 +763,7 @@ static void DS_BucketArrayPushNRaw(DS_BucketArrayRaw* array, const void* elems_d
 
 static inline void* DS_BucketArrayPushRaw(DS_BucketArrayRaw* array, uint32_t elem_size, uint32_t next_bucket_ptr_offset) {
 	DS_ProfEnter();
-	void* bucket = array->buckets[1];
+	void* bucket = array->last_bucket;
 
 	if (bucket == NULL || array->last_bucket_end == array->elems_per_bucket) {
 		bucket = DS_BucketArrayGetNextBucket(array, bucket, next_bucket_ptr_offset);
@@ -918,7 +778,7 @@ static inline void* DS_BucketArrayPushRaw(DS_BucketArrayRaw* array, uint32_t ele
 }
 
 DS_API void DS_ArrCloneRaw(DS_Arena* arena, DS_DynArrayRaw* array, int elem_size) {
-	array->data = DS_CloneSize(arena, array->data, array->count * elem_size);
+	array->data = DS_MemClone(arena, array->data, array->count * elem_size);
 }
 
 DS_API void DS_ArrReserveRaw(DS_DynArrayRaw* array, int capacity, int elem_size) {
@@ -932,7 +792,7 @@ DS_API void DS_ArrReserveRaw(DS_DynArrayRaw* array, int capacity, int elem_size)
 	}
 
 	if (new_capacity != array->capacity) {
-		array->data = DS_AllocatorFn(array->allocator, array->data, array->count * elem_size, new_capacity * elem_size, DS_DEFAULT_ALIGNMENT);
+		array->data = DS_MemResize(array->allocator, array->data, array->capacity * elem_size, new_capacity * elem_size);
 		array->capacity = new_capacity;
 	}
 
@@ -1006,12 +866,9 @@ DS_API void DS_ArrInitRaw(DS_DynArrayRaw* array, DS_Allocator* allocator) {
 }
 
 DS_API void DS_ArrDeinitRaw(DS_DynArrayRaw* array, int elem_size) {
-	DS_ProfEnter();
 	DS_DebugFillGarbage(array->data, array->capacity * elem_size);
-	DS_AllocatorFn(array->allocator, array->data, 0, 0, DS_DEFAULT_ALIGNMENT);
-	DS_DynArrayRaw empty = {0};
-	*array = empty;
-	DS_ProfExit();
+	DS_MemFree(array->allocator, array->data);
+	DS_DebugFillGarbage(array, sizeof(*array));
 }
 
 DS_API int DS_ArrPushRaw(DS_DynArrayRaw* array, const void* elem, int elem_size) {
@@ -1062,7 +919,7 @@ static inline void DS_MapClearRaw(DS_MapRaw* map, int elem_size) {
 static inline void DS_MapDeinitRaw(DS_MapRaw* map, int elem_size) {
 	DS_ProfEnter();
 	DS_DebugFillGarbage(map->data, map->capacity * elem_size);
-	DS_AllocatorFn(map->allocator, map->data, 0, 0, DS_DEFAULT_ALIGNMENT);
+	DS_MemFree(map->allocator, map->data);
 	DS_MapRaw empty = {0};
 	*map = empty;
 	DS_ProfExit();
@@ -1076,15 +933,15 @@ static inline void DS_MapDeinitRaw(DS_MapRaw* map, int elem_size) {
 #endif
 
 // See https://github.com/aappleby/smhasher/blob/master/src/MurmurHash2.cpp
-static uint64_t DS_MurmurHash64A(const void* key, int len, uint64_t seed) {
+static uint64_t DS_MurmurHash64A(const void* key, size_t size, uint64_t seed) {
 	DS_ProfEnter();
 	const uint64_t m = 0xc6a4a7935bd1e995LLU;
 	const int r = 47;
 
-	uint64_t h = seed ^ (len * m);
+	uint64_t h = seed ^ (size * m);
 
 	const uint64_t* data = (const uint64_t*)key;
-	const uint64_t* end = data + (len / 8);
+	const uint64_t* end = data + (size / 8);
 
 	while (data != end) {
 		uint64_t k = *data++;
@@ -1097,7 +954,7 @@ static uint64_t DS_MurmurHash64A(const void* key, int len, uint64_t seed) {
 
 	const unsigned char* data2 = (const unsigned char*)data;
 
-	switch (len & 7) {
+	switch (size & 7) {
 	case 7: h ^= ((uint64_t)data2[6]) << 48;
 	case 6: h ^= ((uint64_t)data2[5]) << 40;
 	case 5: h ^= ((uint64_t)data2[4]) << 32;
@@ -1116,10 +973,10 @@ static uint64_t DS_MurmurHash64A(const void* key, int len, uint64_t seed) {
 }
 
 // See https://github.com/aappleby/smhasher/blob/master/src/DS_MurmurHash3.cpp
-DS_API uint32_t DS_MurmurHash3(const void* key, int len, uint32_t seed) {
+DS_API uint32_t DS_MurmurHash3(const void* key, size_t size, uint32_t seed) {
 	DS_ProfEnter();
 	const uint8_t* data = (const uint8_t*)key;
-	const int nblocks = len / 4;
+	const intptr_t nblocks = size / 4;
 
 	uint32_t h1 = seed;
 
@@ -1129,7 +986,7 @@ DS_API uint32_t DS_MurmurHash3(const void* key, int len, uint32_t seed) {
 	// body
 
 	const uint32_t* blocks = (const uint32_t*)(data + nblocks * 4);
-	for (int i = -nblocks; i; i++) {
+	for (intptr_t i = -nblocks; i; i++) {
 		uint32_t k1 = blocks[i];
 
 		k1 *= c1;
@@ -1146,7 +1003,7 @@ DS_API uint32_t DS_MurmurHash3(const void* key, int len, uint32_t seed) {
 	const uint8_t* tail = (const uint8_t*)(data + nblocks * 4);
 
 	uint32_t k1 = 0;
-	switch (len & 3) {
+	switch (size & 3) {
 	case 3: k1 ^= tail[2] << 16;
 	case 2: k1 ^= tail[1] << 8;
 	case 1: k1 ^= tail[0];
@@ -1155,7 +1012,7 @@ DS_API uint32_t DS_MurmurHash3(const void* key, int len, uint32_t seed) {
 
 	// finalization
 
-	h1 ^= len;
+	h1 ^= size;
 	h1 ^= h1 >> 16;
 	h1 *= 0x85ebca6b;
 	h1 ^= h1 >> 13;
@@ -1226,7 +1083,7 @@ static bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** o
 		map->capacity = old_capacity == 0 ? 8 : old_capacity * 2;
 		map->count = 0;
 
-		void* new_data = DS_AllocatorFn(map->allocator, NULL, 0, map->capacity * elem_size, DS_DEFAULT_ALIGNMENT);
+		void* new_data = DS_MemAlloc(map->allocator, map->capacity * elem_size);
 
 		memcpy(&map->data, &new_data, sizeof(void*));
 		memset(map->data, 0, map->capacity * elem_size); // set hash values to 0
@@ -1245,7 +1102,7 @@ static bool DS_MapGetOrAddRawEx(DS_MapRaw* map, const void* key, DS_OUT void** o
 		}
 
 		DS_DebugFillGarbage(old_data, old_capacity * elem_size);
-		DS_AllocatorFn(map->allocator, old_data, 0, 0, DS_DEFAULT_ALIGNMENT); // free the old data
+		DS_MemFree(map->allocator, old_data);
 	}
 
 	uint32_t mask = (uint32_t)map->capacity - 1;
@@ -1345,7 +1202,7 @@ static inline bool DS_MapRemoveRaw(DS_MapRaw* map, const void* key, int K_size, 
 static inline void DS_MapInitCloneRaw(DS_MapRaw* map, DS_MapRaw* src, DS_Allocator* allocator, int elem_size) {
 	*map = *src;
 	map->allocator = allocator;
-	*(void**)&map->data = DS_AllocatorFn(allocator, NULL, 0, src->capacity * elem_size, DS_DEFAULT_ALIGNMENT);
+	*(void**)&map->data = DS_MemAlloc(allocator, src->capacity * elem_size);
 	memcpy(map->data, src->data, src->capacity * elem_size);
 }
 
@@ -1360,9 +1217,15 @@ static inline bool DS_MapInsertRaw(DS_MapRaw* map, const void* key, DS_OUT void*
 	return added;
 }
 
-DS_API void DS_ArenaInit(DS_Arena* arena, int block_size, DS_Allocator* allocator) {
+static void* DS_ArenaAllocatorProc(DS_AllocatorBase* allocator, void* ptr, size_t old_size, size_t size, size_t align) {
+	char* data = DS_ArenaPushAligned((DS_Arena*)allocator, (int)size, (int)align); // TODO: use size_t for arenas instead of int
+	if (ptr) memcpy(data, ptr, old_size);
+	return data;
+}
+
+DS_API void DS_ArenaInit(DS_Arena* arena, size_t block_size, DS_Allocator* allocator) {
 	memset(arena, 0, sizeof(*arena));
-	arena->base = DS_AllocatorBase_Init(DS_AllocatorType_Arena);
+	arena->base.AllocatorProc = DS_ArenaAllocatorProc;
 	arena->block_size = block_size;
 	arena->allocator = allocator;
 }
@@ -1376,17 +1239,17 @@ DS_API void DS_ArenaDeinit(DS_Arena* arena) {
 	DS_DebugFillGarbage(arena, sizeof(DS_Arena));
 }
 
-DS_API char* DS_ArenaPush(DS_Arena* arena, int size) {
-	return DS_ArenaPushEx(arena, size, DS_DEFAULT_ALIGNMENT);
+DS_API char* DS_ArenaPush(DS_Arena* arena, size_t size) {
+	return DS_ArenaPushAligned(arena, size, DS_DEFAULT_ARENA_PUSH_ALIGNMENT);
 }
 
-DS_API char* DS_ArenaPushZero(DS_Arena* arena, int size) {
-	char* ptr = DS_ArenaPushEx(arena, size, DS_DEFAULT_ALIGNMENT);
+DS_API char* DS_ArenaPushZero(DS_Arena* arena, size_t size) {
+	char* ptr = DS_ArenaPushAligned(arena, size, DS_DEFAULT_ARENA_PUSH_ALIGNMENT);
 	memset(ptr, 0, size);
 	return ptr;
 }
 
-DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment) {
+DS_API char* DS_ArenaPushAligned(DS_Arena* arena, size_t size, size_t alignment) {
 	DS_ProfEnter();
 
 	bool alignment_is_power_of_2 = ((alignment) & ((alignment)-1)) == 0;
@@ -1396,13 +1259,13 @@ DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment) {
 	DS_ArenaBlockHeader* curr_block = arena->mark.block; // may be NULL
 	void* curr_ptr = arena->mark.ptr;
 
-	char* result_address = (char*)DS_AlignUpPow2((uintptr_t)curr_ptr, alignment);
-	int remaining_space = curr_block ? curr_block->size_including_header - (int)((uintptr_t)result_address - (uintptr_t)curr_block) : 0;
+	char* result_address = (char*)DS_AlignUpPow2((intptr_t)curr_ptr, alignment);
+	intptr_t remaining_space = curr_block ? curr_block->size_including_header - ((intptr_t)result_address - (intptr_t)curr_block) : 0;
 
-	if (size > remaining_space) { // We need a new block!
-		int result_offset = DS_AlignUpPow2(sizeof(DS_ArenaBlockHeader), alignment);
-		int new_block_size = result_offset + size;
-		if (arena->block_size > new_block_size) new_block_size = arena->block_size;
+	if ((intptr_t)size > remaining_space) { // We need a new block!
+		intptr_t result_offset = DS_AlignUpPow2(sizeof(DS_ArenaBlockHeader), alignment);
+		intptr_t new_block_size = result_offset + size;
+		if ((intptr_t)arena->block_size > new_block_size) new_block_size = arena->block_size;
 
 		DS_ArenaBlockHeader* new_block = NULL;
 		DS_ArenaBlockHeader* next_block = NULL;
@@ -1411,15 +1274,17 @@ DS_API char* DS_ArenaPushEx(DS_Arena* arena, int size, int alignment) {
 		if (curr_block && curr_block->next) {
 			next_block = curr_block->next;
 
-			int next_block_remaining_space = next_block->size_including_header - result_offset;
-			if (size <= next_block_remaining_space) {
+			intptr_t next_block_remaining_space = next_block->size_including_header - result_offset;
+			if ((intptr_t)size <= next_block_remaining_space) {
 				new_block = next_block; // Next block has enough space, let's use it!
 			}
 		}
 
 		// Otherwise, insert a new block.
 		if (new_block == NULL) {
-			new_block = (DS_ArenaBlockHeader*)DS_AllocatorFn(arena->allocator, NULL, 0, new_block_size, DS_ARENA_BLOCK_ALIGNMENT);
+			new_block = (DS_ArenaBlockHeader*)DS_MemAllocAligned(arena->allocator, new_block_size, DS_ARENA_BLOCK_ALIGNMENT);
+			DS_ASSERT(((uintptr_t)new_block & (DS_ARENA_BLOCK_ALIGNMENT - 1)) == 0); // make sure that the alignment is correct
+	
 			new_block->size_including_header = new_block_size;
 			new_block->next = next_block;
 			arena->total_mem_reserved += new_block_size;
@@ -1545,4 +1410,4 @@ void* DS_Realloc_Impl(void* old_ptr, int new_size, int new_alignment) {
 }
 #endif
 
-#endif // DS_INCLUDED
+#endif // FIRE_DS_INCLUDED
