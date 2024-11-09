@@ -11,7 +11,7 @@ static void UI_ValEditArrayScrollAreaComputeUnexpandedSize(UI_Box* box, UI_Axis 
 
 UI_API void UI_AddValArray(UI_Box* box, const char* name, void* array, int array_count, int elem_size, UI_ArrayEditElemFn edit_elem, void* user_data, UI_ValueEditArrayModify* out_modify)
 {
-	UI_TODO();
+	// TODO!
 #if 0
 	UI_AddBox(box, UI_SizeFlex(1.f), UI_SizeFit(), 0);
 	UI_PushBox(box);
@@ -301,17 +301,17 @@ static void UI_AddLabelWrappedComputeUnexpandedSize(UI_Box* box, UI_Axis axis, i
 			STR_View remaining_before = remaining;
 			STR_ParseUntilAndSkip(&remaining, ' ');
 
-			STR_View word = { remaining_before.data, (int)(remaining.data - remaining_before.data) };
+			STR_View word = { remaining_before.data, (size_t)(remaining.data - remaining_before.data) };
 			float word_width = UI_TextWidth(word, box->font);
 
 			bool break_line = word.size == 0 || (line_remaining < word_width && line_has_content);
 			if (break_line) {
-				STR_View line_string = {line_start, (int)(word.data - line_start)};
+				STR_View line_string = {line_start, (size_t)(word.data - line_start)};
 				DS_ArrPush(&data.line_strings, line_string);
 
 				line_start = (char*)word.data;
 				remaining.data = word.data;
-				remaining.size = (int)(text_end - word.data);
+				remaining.size = (size_t)(text_end - word.data);
 				line_remaining = line_width;
 				line_has_content = false;
 			}

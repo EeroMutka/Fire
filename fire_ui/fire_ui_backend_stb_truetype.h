@@ -58,8 +58,9 @@ typedef struct UI_STBTT_State {
 	float inv_atlas_height;
 } UI_STBTT_State;
 
-
+// must be called *after* UI_Init
 static void UI_STBTT_Init(UI_STBTT_CreateAtlasFn CreateAtlas, UI_STBTT_MapAtlasFn MapAtlas);
+
 static void UI_STBTT_Deinit();
 
 // `ttf_data` should be a pointer to a TTF font file data. It is NOT copied internally,

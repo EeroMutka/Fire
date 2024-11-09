@@ -588,7 +588,7 @@ OS_WINDOW_API bool OS_SetWindowFullscreen(OS_Window* window, bool fullscreen) {
 
 		int32_t x = window->pre_fullscreen_state.left;
 		int32_t y = window->pre_fullscreen_state.top;
-		int32_t w = window->pre_fullscreen_state.left - x;
+		int32_t w = window->pre_fullscreen_state.right - x;
 		int32_t h = window->pre_fullscreen_state.bottom - y;
 		SetWindowPos((HWND)window->handle, HWND_TOP, x, y, w, h, SWP_FRAMECHANGED);
 	}

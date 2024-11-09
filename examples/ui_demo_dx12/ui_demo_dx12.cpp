@@ -28,16 +28,17 @@
 #define FIRE_OS_CLIPBOARD_IMPLEMENTATION
 #include "fire_os_clipboard.h"
 
-#define STB_RECT_PACK_IMPLEMENTATION
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "fire_ui/stb_rect_pack.h"
-#include "fire_ui/stb_truetype.h"
-
+#define UI_API static
+#define UI_EXTERN extern
 #include "fire_ui/fire_ui.h"
-#include "fire_ui/fire_ui_color_pickers.h"
-#include "fire_ui/fire_ui_extras.h"
+#include "fire_ui/fire_ui_backend_stb_truetype.h"
 #include "fire_ui/fire_ui_backend_dx12.h"
 #include "fire_ui/fire_ui_backend_fire_os.h"
+
+// Build everything in this translation unit
+#include "fire_ui/fire_ui.c"
+#include "fire_ui/fire_ui_color_pickers.c"
+#include "fire_ui/fire_ui_extras.c"
 
 #include "../shared/ui_demo_window.h"
 
@@ -46,12 +47,13 @@
 // -------------------------------------------------------------
 
 static uint32_t g_window_size[] = {512, 512};
-static OS_WINDOW g_window;
+static OS_Window g_window;
 static UI_Inputs g_ui_inputs;
 static UIDemoState g_demo_state;
 
 static DS_Arena g_persist;
-static UI_FontIndex g_base_font, g_icons_font;
+static UI_Font g_base_font;
+static UI_Font g_icons_font;
 
 static ID3D12Device* g_dx_device;
 static ID3D12CommandQueue* g_dx_command_queue;
@@ -77,7 +79,7 @@ static STR_View ReadEntireFile(DS_Arena* arena, const char* file) {
     assert(f);
 
     fseek(f, 0, SEEK_END);
-    long fsize = ftell(f);
+    size_t fsize = (size_t)ftell(f);
     fseek(f, 0, SEEK_SET);
 
     char* data = DS_ArenaPush(arena, fsize);
@@ -280,31 +282,32 @@ static void AppInit() {
 
     UIDemoInit(&g_demo_state, &g_persist);
 
-    g_window = OS_WINDOW_Create(g_window_size[0], g_window_size[1], "UI demo (DX12)");
+    g_window = OS_CreateWindow(g_window_size[0], g_window_size[1], "UI demo (DX12)");
 	
 	InitDX12();
     
     D3D12_CPU_DESCRIPTOR_HANDLE atlas_cpu_descriptor = g_dx_srv_heap->GetCPUDescriptorHandleForHeapStart();
     D3D12_GPU_DESCRIPTOR_HANDLE atlas_gpu_descriptor = g_dx_srv_heap->GetGPUDescriptorHandleForHeapStart();
 
-    UI_Backend ui_backend = {0};
-    UI_DX12_Init(&ui_backend, g_dx_device, atlas_cpu_descriptor, atlas_gpu_descriptor);
-    UI_Init(DS_HEAP, &ui_backend);
+    UI_Init(DS_HEAP);
+    UI_DX12_Init(g_dx_device, atlas_cpu_descriptor, atlas_gpu_descriptor);
+    UI_STBTT_Init(UI_DX12_CreateAtlas, UI_DX12_MapAtlas);
 
     // NOTE: the font data must remain alive across the whole program lifetime!
     STR_View roboto_mono_ttf = ReadEntireFile(&g_persist, "../../fire_ui/resources/roboto_mono.ttf");
     STR_View icons_ttf = ReadEntireFile(&g_persist, "../../fire_ui/resources/fontello/font/fontello.ttf");
 
-    g_base_font = UI_FontInit(roboto_mono_ttf.data, -4.f);
-    g_icons_font = UI_FontInit(icons_ttf.data, -2.f);
+    g_base_font = { UI_STBTT_FontInit(roboto_mono_ttf.data, -4.f), 18 };
+    g_icons_font = { UI_STBTT_FontInit(icons_ttf.data, -2.f), 18 };
 }
 
 static void AppDeinit() {
-    UI_FontDeinit(g_base_font);
-    UI_FontDeinit(g_icons_font);
+    UI_STBTT_FontDeinit(g_base_font.id);
+    UI_STBTT_FontDeinit(g_icons_font.id);
 
-    UI_Deinit();
+    UI_STBTT_Deinit();
     UI_DX12_Deinit();
+    UI_Deinit();
 
     // Release DX12 resources
     CloseHandle(g_dx_fence_event);
@@ -324,7 +327,7 @@ static void AppDeinit() {
 static void UpdateAndRender() {
 
     UI_Vec2 window_size = {(float)g_window_size[0], (float)g_window_size[1]};
-    UI_BeginFrame(&g_ui_inputs, window_size, {g_base_font, 18}, {g_icons_font, 18});
+    UI_BeginFrame(&g_ui_inputs, g_base_font, g_icons_font);
 
     UIDemoBuild(&g_demo_state, window_size);
 
@@ -370,7 +373,7 @@ static void UpdateAndRender() {
         g_dx_command_list->SetDescriptorHeaps(1, &g_dx_srv_heap);
         g_dx_command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-        UI_DX12_Draw(&ui_outputs, g_dx_command_list);
+        UI_DX12_Draw(&ui_outputs, {(float)g_window_size[0], (float)g_window_size[1]}, g_dx_command_list);
 
         D3D12_RESOURCE_BARRIER rt_to_present = Transition(g_dx_back_buffers[g_dx_frame_index], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
         g_dx_command_list->ResourceBarrier(1, &rt_to_present);
@@ -404,11 +407,11 @@ static void OnResizeWindow(uint32_t width, uint32_t height, void* user_ptr) {
 int main() {
     AppInit();
 
-    while (!OS_WINDOW_ShouldClose(&g_window)) {
+    while (!OS_WindowShouldClose(&g_window)) {
         UI_OS_ResetFrameInputs(&g_window, &g_ui_inputs);
 
-        OS_WINDOW_Event event; 
-        while (OS_WINDOW_PollEvent(&g_window, &event, OnResizeWindow, NULL)) {
+        OS_Event event; 
+        while (OS_PollEvent(&g_window, &event, OnResizeWindow, NULL)) {
             UI_OS_RegisterInputEvent(&g_ui_inputs, &event);
         }
 
