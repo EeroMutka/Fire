@@ -5,7 +5,7 @@ This is a collection of easy to use programming libraries that are compatible wi
 * `fire_ui/`
   * Immediate-mode user interface library that lets you easily create intuitive UIs with buttons, text boxes, color pickers and lots more!
   * Depends on `fire_ds.h`, `fire_string.h` and [stb_truetype.h](https://github.com/nothings/stb/blob/master/stb_truetype.h)
-  * For a more details, see [my article](https://eeromutka.github.io/projects/imgui)
+  * For more details, see [my article](https://eeromutka.github.io/projects/imgui)
 * `fire_ds.h`
   * Basic data structures and utilities:
     * Memory arena
