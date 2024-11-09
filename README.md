@@ -2,28 +2,26 @@
 
 This is a collection of easy to use programming libraries that are compatible with both C and C++. The following libraries are included:
 
-* `fire_ds.h`
-  * Basic data structures and utilities, such as memory arenas, dynamic arrays, hash maps and bucketed linked lists
-* `fire_string.h`
-  * Length-based string type and lots of string utilities
-  * Still quite work-in-progress
-* `fire_build.h`
-  * Lets you easily compile C/C++ projects and generate Visual Studio project files from code
-  * Windows-only (for now).
-* `fire_os_window.h`
-  * Library for creating windows and getting keyboard & mouse input
-  * Windows-only (for now)
-* `fire_os_sync.h`
-  * Library for dealing with threads, mutexes and condition variables
-  * Windows-only (for now)
-* `fire_os_clipboard.h`
-  * Clipboard utilities
-  * Windows-only (for now)
 * `fire_ui/`
-  * Immediate-mode user interface library to give you menus, buttons, text edit boxes and lots more
-  * Depends on `fire_ds.h`, `fire_string.h`, [stb_rect_pack.h](https://github.com/nothings/stb/blob/master/stb_rect_pack.h) and [stb_truetype.h](https://github.com/nothings/stb/blob/master/stb_truetype.h)
-  * For a more detailed explanation, see [my article](https://eeromutka.github.io/projects/imgui.html)
-  * Still quite work-in-progress
+  * Immediate-mode user interface library that lets you easily create intuitive UIs with buttons, text boxes, color pickers and lots more!
+  * Depends on `fire_ds.h`, `fire_string.h` and [stb_truetype.h](https://github.com/nothings/stb/blob/master/stb_truetype.h)
+  * For a more details, see [my article](https://eeromutka.github.io/projects/imgui)
+* `fire_ds.h`
+  * Basic data structures and utilities:
+    * Memory arena
+    * Resizing dynamic array
+    * Hash map & set
+    * Bucket array
+* `fire_string.h`
+  * Length-based string type and string utilities
+* `fire_os_window.h`
+  * Create windows and get keyboard & mouse input (Windows-only for now)
+* `fire_os_sync.h`
+  * Create threads, mutexes and condition variables (Windows-only for now)
+* `fire_os_clipboard.h`
+  * Clipboard utilities (Windows-only for now)
+* `fire_build.h`
+  * Compile C/C++ projects from code (Windows-only for now)
 
 ## Building the Examples
 
