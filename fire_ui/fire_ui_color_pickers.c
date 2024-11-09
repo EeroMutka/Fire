@@ -1,9 +1,4 @@
-
-UI_API UI_Box* UI_AddColorPicker(UI_Key key, float* hue, float* saturation, float* value, float* alpha);
-
-UI_API UI_Box* UI_AddHueSaturationCircle(UI_Key key, float diameter, float* hue, float* saturation);
-
-#ifdef /********************/ UI_IMPLEMENTATION /********************/
+#include "fire_ui.h"
 
 // r,g,b, should be in 0-1 range, returned h, s, v will be in 0-1 range
 static void UI_RGBToHSV(float r, float g, float b, float* h, float* s, float* v) {
@@ -73,7 +68,7 @@ static void UI_DrawHueSaturationCircle(UI_Box* box) {
 	uint32_t prev_wheel_first_vertex;
 	for (int i = 0; i < UI_COLOR_WHEEL_NUM_ROWS; i++) {
 		uint32_t wheel_first_vertex;
-		UI_DrawVertex* wheel_vertices = UI_AddVertices(UI_COLOR_WHEEL_NUM_COLUMNS, &wheel_first_vertex);
+		UI_DrawVertex* wheel_vertices = UI_AddVerticesUnsafe(UI_COLOR_WHEEL_NUM_COLUMNS, &wheel_first_vertex);
 
 		for (int j = 0; j < UI_COLOR_WHEEL_NUM_COLUMNS; j++) {
 			float saturation = (float)i / (UI_COLOR_WHEEL_NUM_ROWS - 1.f);
@@ -87,7 +82,7 @@ static void UI_DrawHueSaturationCircle(UI_Box* box) {
 
 			if (i > 0) {
 				int j_next = (j + 1) % UI_COLOR_WHEEL_NUM_COLUMNS;
-				UI_AddQuadIndices(prev_wheel_first_vertex + j, prev_wheel_first_vertex + j_next, wheel_first_vertex + j_next, wheel_first_vertex + j, UI_TEXTURE_ID_NIL);
+				UI_AddQuadIndices(prev_wheel_first_vertex + j, prev_wheel_first_vertex + j_next, wheel_first_vertex + j_next, wheel_first_vertex + j, NULL);
 			}
 		}
 		prev_wheel_first_vertex = wheel_first_vertex;
@@ -143,7 +138,7 @@ static void UI_ColorPickerSaturationSliderDraw(UI_Box* box) {
 	UI_Rect rect = box->computed_rect;
 
 	uint32_t first_vertex;
-	UI_DrawVertex* vertices = UI_AddVertices(4, &first_vertex);
+	UI_DrawVertex* vertices = UI_AddVerticesUnsafe(4, &first_vertex);
 	for (int i = 0; i < 2; i++) {
 		float y_t = (float)i / (2 - 1.f);
 		float y = UI_Lerp(rect.min.y, rect.max.y, y_t);
@@ -151,7 +146,7 @@ static void UI_ColorPickerSaturationSliderDraw(UI_Box* box) {
 		vertices[i*2+0] = UI_DRAW_VERTEX{{rect.min.x, y}, {0, 0}, color};
 		vertices[i*2+1] = UI_DRAW_VERTEX{{rect.max.x, y}, {0, 0}, color};
 		if (i > 0) {
-			UI_AddQuadIndices(first_vertex + i*2, first_vertex + i*2+1, first_vertex + i*2-1, first_vertex + i*2-2, UI_TEXTURE_ID_NIL);
+			UI_AddQuadIndices(first_vertex + i*2, first_vertex + i*2+1, first_vertex + i*2-1, first_vertex + i*2-2, NULL);
 		}
 	}
 
@@ -170,7 +165,7 @@ static void UI_ColorPickerValueSliderDraw(UI_Box* box) {
 	UI_Rect rect = box->computed_rect;
 
 	uint32_t first_vertex;
-	UI_DrawVertex* vertices = UI_AddVertices(4, &first_vertex);
+	UI_DrawVertex* vertices = UI_AddVerticesUnsafe(4, &first_vertex);
 	for (int i = 0; i < 2; i++) {
 		float y_t = (float)i / (2 - 1.f);
 		float y = UI_Lerp(rect.min.y, rect.max.y, y_t);
@@ -178,7 +173,7 @@ static void UI_ColorPickerValueSliderDraw(UI_Box* box) {
 		vertices[i*2+0] = UI_DRAW_VERTEX{{rect.min.x, y}, {0, 0}, color};
 		vertices[i*2+1] = UI_DRAW_VERTEX{{rect.max.x, y}, {0, 0}, color};
 		if (i > 0) {
-			UI_AddQuadIndices(first_vertex + i*2, first_vertex + i*2+1, first_vertex + i*2-1, first_vertex + i*2-2, UI_TEXTURE_ID_NIL);
+			UI_AddQuadIndices(first_vertex + i*2, first_vertex + i*2+1, first_vertex + i*2-1, first_vertex + i*2-2, NULL);
 		}
 	}
 
@@ -356,5 +351,3 @@ UI_API void UI_AddColorPicker(UI_Box* box, float* hue, float* saturation, float*
 	UI_BoxAddVar(sat_slider_box, UI_GetHueSaturationValueEditDataKey(), &data);
 	UI_BoxAddVar(val_slider_box, UI_GetHueSaturationValueEditDataKey(), &data);
 }
-
-#endif // UI_IMPLEMENTATION

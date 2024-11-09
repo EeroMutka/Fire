@@ -26,51 +26,42 @@ typedef struct UI_DX11_State {
 
 static UI_DX11_State UI_DX11_STATE;
 
-static UI_TextureID UI_DX11_ResizeAtlas(uint32_t width, uint32_t height) {
-	if (width == 0 && height == 0) {
-		UI_DX11_STATE.atlas->Release();
-		UI_DX11_STATE.atlas = NULL;
-		UI_DX11_STATE.atlas_staging->Release();
-		UI_DX11_STATE.atlas_staging = NULL;
-		UI_DX11_STATE.atlas_srv->Release();
-		UI_DX11_STATE.atlas_srv = NULL;
-		return UI_TEXTURE_ID_NIL;
-	}
-	else {
-		D3D11_TEXTURE2D_DESC staging_desc = {0};
-		staging_desc.Width = width;
-		staging_desc.Height = height;
-		staging_desc.MipLevels = 1;
-		staging_desc.ArraySize = 1;
-		staging_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		staging_desc.SampleDesc.Count = 1;
-		staging_desc.Usage = D3D11_USAGE_STAGING;
-		staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+static UI_Texture* UI_DX11_CreateAtlas(uint32_t width, uint32_t height) {
+	UI_ASSERT(UI_DX11_STATE.atlas == NULL); // TODO
+	
+	D3D11_TEXTURE2D_DESC staging_desc = {0};
+	staging_desc.Width = width;
+	staging_desc.Height = height;
+	staging_desc.MipLevels = 1;
+	staging_desc.ArraySize = 1;
+	staging_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	staging_desc.SampleDesc.Count = 1;
+	staging_desc.Usage = D3D11_USAGE_STAGING;
+	staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 
-		ID3D11Texture2D* staging;
-		UI_DX11_STATE.device->CreateTexture2D(&staging_desc, NULL, &staging);
+	ID3D11Texture2D* staging;
+	UI_DX11_STATE.device->CreateTexture2D(&staging_desc, NULL, &staging);
 
-		D3D11_TEXTURE2D_DESC tex_desc = {0};
-		tex_desc.Width = width;
-		tex_desc.Height = height;
-		tex_desc.MipLevels = 1;
-		tex_desc.ArraySize = 1;
-		tex_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		tex_desc.SampleDesc.Count = 1;
-		tex_desc.Usage = D3D11_USAGE_DEFAULT;
-		tex_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+	D3D11_TEXTURE2D_DESC tex_desc = {0};
+	tex_desc.Width = width;
+	tex_desc.Height = height;
+	tex_desc.MipLevels = 1;
+	tex_desc.ArraySize = 1;
+	tex_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	tex_desc.SampleDesc.Count = 1;
+	tex_desc.Usage = D3D11_USAGE_DEFAULT;
+	tex_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
-		ID3D11Texture2D* texture;
-		UI_DX11_STATE.device->CreateTexture2D(&tex_desc, NULL, &texture);
+	ID3D11Texture2D* texture;
+	UI_DX11_STATE.device->CreateTexture2D(&tex_desc, NULL, &texture);
 
-		ID3D11ShaderResourceView* texture_srv;
-		UI_DX11_STATE.device->CreateShaderResourceView(texture, NULL, &texture_srv);
+	ID3D11ShaderResourceView* texture_srv;
+	UI_DX11_STATE.device->CreateShaderResourceView(texture, NULL, &texture_srv);
 
-		UI_DX11_STATE.atlas = texture;
-		UI_DX11_STATE.atlas_staging = staging;
-		UI_DX11_STATE.atlas_srv = texture_srv;
-		return (UI_TextureID)texture_srv;
-	}
+	UI_DX11_STATE.atlas = texture;
+	UI_DX11_STATE.atlas_staging = staging;
+	UI_DX11_STATE.atlas_srv = texture_srv;
+	return (UI_Texture*)texture_srv;
 }
 
 static void* UI_DX11_MapAtlas() {
@@ -83,27 +74,10 @@ static void* UI_DX11_MapAtlas() {
 	return mapped->pData;
 }
 
-static void* UI_DX11_MapVertexBuffer() {
-	D3D11_MAPPED_SUBRESOURCE* mapped = &UI_DX11_STATE.vertex_buffer.mapped;
-	if (mapped->pData == NULL) {
-		bool ok = UI_DX11_STATE.dc->Map(UI_DX11_STATE.vertex_buffer.handle, 0, D3D11_MAP_WRITE_DISCARD, 0, mapped) == S_OK;
-		UI_ASSERT(ok);
-	}
-	return mapped->pData;
-}
-
-static void* UI_DX11_MapIndexBuffer() {
-	D3D11_MAPPED_SUBRESOURCE* mapped = &UI_DX11_STATE.index_buffer.mapped;
-	if (mapped->pData == NULL) {
-		bool ok = UI_DX11_STATE.dc->Map(UI_DX11_STATE.index_buffer.handle, 0, D3D11_MAP_WRITE_DISCARD, 0, mapped) == S_OK;
-		UI_ASSERT(ok);
-	}
-	return mapped->pData;
-}
-
-static void UI_DX11_ResizeBuffer(UI_DX11_Buffer* buffer, uint32_t size, D3D11_BIND_FLAG bind_flags) {
+static void* UI_DX11_ResizeAndMapBuffer(UI_DX11_Buffer* buffer, uint32_t size, D3D11_BIND_FLAG bind_flags) {
 	if (size == 0) {
 		buffer->handle->Release();
+		return NULL;
 	}
 	else {
 		D3D11_BUFFER_DESC desc = {0};
@@ -114,21 +88,30 @@ static void UI_DX11_ResizeBuffer(UI_DX11_Buffer* buffer, uint32_t size, D3D11_BI
 
 		bool ok = UI_DX11_STATE.device->CreateBuffer(&desc, NULL, &buffer->handle) == S_OK;
 		UI_ASSERT(ok);
+
+		if (buffer->mapped.pData == NULL) {
+			ok = UI_DX11_STATE.dc->Map(buffer->handle, 0, D3D11_MAP_WRITE_DISCARD, 0, &buffer->mapped) == S_OK;
+			UI_ASSERT(ok && buffer->mapped.pData != NULL);
+		}
+		return buffer->mapped.pData;
 	}
 }
 
-static void UI_DX11_ResizeVertexBuffer(uint32_t size) {
-	UI_DX11_ResizeBuffer(&UI_DX11_STATE.vertex_buffer, size, D3D11_BIND_VERTEX_BUFFER);
+static UI_DrawVertex* UI_DX11_ResizeAndMapVertexBuffer(int num_vertices) {
+	return (UI_DrawVertex*)UI_DX11_ResizeAndMapBuffer(&UI_DX11_STATE.vertex_buffer, num_vertices * sizeof(UI_DrawVertex), D3D11_BIND_VERTEX_BUFFER);
 }
 
-static void UI_DX11_ResizeIndexBuffer(uint32_t size) {
-	UI_DX11_ResizeBuffer(&UI_DX11_STATE.index_buffer, size, D3D11_BIND_INDEX_BUFFER);
+static uint32_t* UI_DX11_ResizeAndMapIndexBuffer(int num_indices) {
+	return (uint32_t*)UI_DX11_ResizeAndMapBuffer(&UI_DX11_STATE.index_buffer, num_indices * sizeof(uint32_t), D3D11_BIND_INDEX_BUFFER);
 }
 
-static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11DeviceContext* dc) {
-	UI_DX11_State state = {0};
-	state.device = device;
-	state.dc = dc;
+static void UI_DX11_Init(ID3D11Device* device, ID3D11DeviceContext* dc) {
+	memset(&UI_DX11_STATE, 0, sizeof(UI_DX11_STATE));
+	UI_DX11_STATE.device = device;
+	UI_DX11_STATE.dc = dc;
+
+	UI_STATE.backend.ResizeAndMapVertexBuffer = UI_DX11_ResizeAndMapVertexBuffer;
+	UI_STATE.backend.ResizeAndMapIndexBuffer = UI_DX11_ResizeAndMapIndexBuffer;
 
 	static const char shader_src[] = "\
 	cbuffer constants : register(b0) {\
@@ -166,7 +149,7 @@ static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11Device
 	bool ok = D3DCompile(shader_src, sizeof(shader_src) - 1, "VS", NULL, NULL, "vertex_shader", "vs_5_0", 0, 0, &vertexshaderCSO, NULL) == S_OK;
 	UI_ASSERT(ok);
 
-	ok = device->CreateVertexShader(vertexshaderCSO->GetBufferPointer(), vertexshaderCSO->GetBufferSize(), NULL, &state.vertex_shader) == S_OK;
+	ok = device->CreateVertexShader(vertexshaderCSO->GetBufferPointer(), vertexshaderCSO->GetBufferSize(), NULL, &UI_DX11_STATE.vertex_shader) == S_OK;
 	UI_ASSERT(ok);
 
 	D3D11_INPUT_ELEMENT_DESC inputelementdesc[] = {
@@ -175,7 +158,7 @@ static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11Device
 		{  "COL", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
 	};
 
-	ok = device->CreateInputLayout(inputelementdesc, ARRAYSIZE(inputelementdesc), vertexshaderCSO->GetBufferPointer(), vertexshaderCSO->GetBufferSize(), &state.input_layout) == S_OK;
+	ok = device->CreateInputLayout(inputelementdesc, ARRAYSIZE(inputelementdesc), vertexshaderCSO->GetBufferPointer(), vertexshaderCSO->GetBufferSize(), &UI_DX11_STATE.input_layout) == S_OK;
 	UI_ASSERT(ok);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
@@ -184,7 +167,7 @@ static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11Device
 	ok = D3DCompile(shader_src, sizeof(shader_src) - 1, "PS", NULL, NULL, "pixel_shader", "ps_5_0", 0, 0, &pixelshaderCSO, NULL) == S_OK;
 	UI_ASSERT(ok);
 
-	ok = device->CreatePixelShader(pixelshaderCSO->GetBufferPointer(), pixelshaderCSO->GetBufferSize(), NULL, &state.pixel_shader) == S_OK;
+	ok = device->CreatePixelShader(pixelshaderCSO->GetBufferPointer(), pixelshaderCSO->GetBufferSize(), NULL, &UI_DX11_STATE.pixel_shader) == S_OK;
 	UI_ASSERT(ok);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
@@ -195,7 +178,7 @@ static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11Device
 	samplerdesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
 	samplerdesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
 	samplerdesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-	ok = device->CreateSamplerState(&samplerdesc, &state.sampler_state) == S_OK;
+	ok = device->CreateSamplerState(&samplerdesc, &UI_DX11_STATE.sampler_state) == S_OK;
 	UI_ASSERT(ok);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
@@ -212,7 +195,7 @@ static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11Device
 
 	D3D11_BLEND_DESC blend_state_desc = {0};
 	blend_state_desc.RenderTarget[0] = blend_desc;
-	ok = device->CreateBlendState(&blend_state_desc, &state.blend_state) == S_OK;
+	ok = device->CreateBlendState(&blend_state_desc, &UI_DX11_STATE.blend_state) == S_OK;
 	UI_ASSERT(ok);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
@@ -222,7 +205,7 @@ static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11Device
 	buffer_desc.Usage = D3D11_USAGE_DYNAMIC; // Will be updated every frame
 	buffer_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	ok = device->CreateBuffer(&buffer_desc, NULL, &state.constant_buffer) == S_OK;
+	ok = device->CreateBuffer(&buffer_desc, NULL, &UI_DX11_STATE.constant_buffer) == S_OK;
 	UI_ASSERT(ok);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////
@@ -232,21 +215,18 @@ static void UI_DX11_Init(UI_Backend* backend, ID3D11Device* device, ID3D11Device
 	raster_desc.CullMode = D3D11_CULL_NONE;
 	raster_desc.MultisampleEnable = true; // MSAA
 	//raster_desc.CullMode = D3D11_CULL_BACK;
-	ok = device->CreateRasterizerState(&raster_desc, &state.raster_state) == S_OK;
+	ok = device->CreateRasterizerState(&raster_desc, &UI_DX11_STATE.raster_state) == S_OK;
 	UI_ASSERT(ok);
-
-	backend->resize_atlas = UI_DX11_ResizeAtlas;
-	backend->resize_vertex_buffer = UI_DX11_ResizeVertexBuffer;
-	backend->resize_index_buffer = UI_DX11_ResizeIndexBuffer;
-
-	backend->map_vertex_buffer = UI_DX11_MapVertexBuffer;
-	backend->map_index_buffer = UI_DX11_MapIndexBuffer;
-	backend->map_atlas = UI_DX11_MapAtlas;
-
-	UI_DX11_STATE = state;
 }
 
 static void UI_DX11_Deinit(void) {
+	
+	if (UI_DX11_STATE.atlas) {
+		UI_DX11_STATE.atlas->Release();
+		UI_DX11_STATE.atlas_staging->Release();
+		UI_DX11_STATE.atlas_srv->Release();
+	}
+
 	UI_DX11_STATE.vertex_shader->Release();
 	UI_DX11_STATE.pixel_shader->Release();
 	UI_DX11_STATE.input_layout->Release();
@@ -257,7 +237,7 @@ static void UI_DX11_Deinit(void) {
 	memset(&UI_DX11_STATE, 0, sizeof(UI_DX11_STATE));
 }
 
-static void UI_DX11_Draw(UI_Outputs* outputs, ID3D11RenderTargetView* framebuffer_rtv) {
+static void UI_DX11_Draw(UI_Outputs* outputs, UI_Vec2 window_size, ID3D11RenderTargetView* framebuffer_rtv) {
 	UI_DX11_State* s = &UI_DX11_STATE;
 
 	if (s->atlas_mapped.pData) {
@@ -267,7 +247,7 @@ static void UI_DX11_Draw(UI_Outputs* outputs, ID3D11RenderTargetView* framebuffe
 
 		s->dc->CopyResource(dest, staging);
 
-		memset(&s->atlas_mapped, 0, sizeof(s->atlas_mapped));
+		s->atlas_mapped.pData = NULL;
 	}
 
 	UI_DX11_Buffer* buffers[] = { &s->vertex_buffer, &s->index_buffer };
@@ -280,14 +260,14 @@ static void UI_DX11_Draw(UI_Outputs* outputs, ID3D11RenderTargetView* framebuffe
 	
 	UINT stride = 2 * sizeof(float) + 2 * sizeof(float) + 4; // pos, uv, color
 	UINT offset = 0;
-	D3D11_VIEWPORT viewport = { 0.0f, 0.0f, UI_STATE.window_size.x, UI_STATE.window_size.y, 0.0f, 1.0f };
+	D3D11_VIEWPORT viewport = { 0.0f, 0.0f, window_size.x, window_size.y, 0.0f, 1.0f };
 
 	D3D11_MAPPED_SUBRESOURCE constantbufferMSR;
 
 	s->dc->Map(s->constant_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &constantbufferMSR);
 	float* constants = (float*)constantbufferMSR.pData;
-	constants[0] = 1.f / UI_STATE.window_size.x;
-	constants[1] = 1.f / UI_STATE.window_size.y;
+	constants[0] = 1.f / window_size.x;
+	constants[1] = 1.f / window_size.y;
 	s->dc->Unmap(s->constant_buffer, 0);
 
 	s->dc->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -311,13 +291,13 @@ static void UI_DX11_Draw(UI_Outputs* outputs, ID3D11RenderTargetView* framebuffe
 	s->dc->IASetVertexBuffers(0, 1, &s->vertex_buffer.handle, &stride, &offset);
 	s->dc->IASetIndexBuffer(s->index_buffer.handle, DXGI_FORMAT_R32_UINT, 0);
 
-	for (int i = 0; i < outputs->draw_calls_count; i++) {
-		UI_DrawCall* draw_call = &outputs->draw_calls[i];
+	for (int i = 0; i < outputs->draw_commands_count; i++) {
+		UI_DrawCommand* cmd = &outputs->draw_commands[i];
 
-		ID3D11ShaderResourceView* texture_srv = (ID3D11ShaderResourceView*)draw_call->texture;
-		UI_ASSERT(texture_srv != NULL);
+		ID3D11ShaderResourceView* texture_srv = (ID3D11ShaderResourceView*)cmd->texture;
+		if (!texture_srv) texture_srv = UI_DX11_STATE.atlas_srv;
+
 		s->dc->PSSetShaderResources(0, 1, &texture_srv);
-		s->dc->DrawIndexed(draw_call->index_count, draw_call->first_index, 0);
+		s->dc->DrawIndexed(cmd->index_count, cmd->first_index, 0);
 	}
-
 }

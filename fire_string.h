@@ -17,12 +17,11 @@
 #include <stdarg.h>
 #include <math.h> // isnan, isinf
 
-#ifdef STR_USE_FIRE_DS
-// Requires that fire_ds.h has been included
+#ifdef STR_CUSTOM_MALLOC
+// (Provide your own implementation before including this file)
+#elif defined(FIRE_DS_INCLUDED) /* Use memory functions from fire_ds.h */
 #define STR_MemAlloc(ALLOCATOR, SIZE) (void*)DS_MemAlloc((DS_Allocator*)ALLOCATOR, SIZE)
 #define STR_MemFree(ALLOCATOR, PTR) DS_MemFree((DS_Allocator*)ALLOCATOR, (void*)(PTR))
-#elif defined(STR_USE_CUSTOM_MALLOC)
-// (Provide your own implementation)
 #else
 #include <stdlib.h>
 #define STR_MemAlloc(ALLOCATOR, SIZE) (void*)malloc(SIZE)
@@ -31,12 +30,12 @@
 
 typedef struct STR_View {
 	const char* data;
-	int size;
-
+	size_t size;
+	
 #ifdef __cplusplus
 	STR_View() : data(0), size(0) {}
-	STR_View(const char* _data, int _size) : data(_data), size(_size) {}
-	STR_View(const char* c_string) : data(c_string), size(c_string ? (int)strlen(c_string) : 0) {}
+	STR_View(const char* _data, size_t _size) : data(_data), size(_size) {}
+	STR_View(const char* c_string) : data(c_string), size(c_string ? strlen(c_string) : 0) {}
 #endif
 } STR_View;
 
@@ -67,14 +66,15 @@ typedef struct STR_View {
 typedef struct STR_Builder {
 	void* allocator;
 	STR_View str;
-	int capacity;
+	size_t capacity;
 } STR_Builder;
 
-typedef struct { STR_View* data; int size; } STR_Array;
+typedef struct { STR_View* data; size_t size; } STR_Array;
 
 #define STR_IsUtf8FirstByte(c) (((c) & 0xC0) != 0x80) /* is c the start of a utf8 sequence? */
-#define STR_Each(str, r, i) (int i=0, r = 0, i##_next=0; (r=STR_NextCodepoint(str, &i##_next)); i=i##_next)
-#define STR_EachReverse(str, r, i) (int i=str.size, r = 0; r=STR_PrevCodepoint(str, &i);)
+
+//#define STR_Each(str, r, i) (size_t i=0, r = 0, i##_next=0; (r=STR_NextCodepoint(str, &i##_next)); i=i##_next)
+//#define STR_EachReverse(str, r, i) (size_t i=str.size, r = 0; r=STR_PrevCodepoint(str, &i);)
 
 typedef struct STR_Formatter {
 	void (*print)(STR_Builder* s, struct STR_Formatter* self);
@@ -138,38 +138,35 @@ STR_API STR_View STR_IntToStr(void* allocator, int value);
 STR_API STR_View STR_IntToStrEx(void* allocator, uint64_t data, bool is_signed, int radix);
 STR_API STR_View STR_FloatToStr(void* allocator, double value, int min_decimals);
 
-STR_API int STR_IntToStr_(char* buffer, uint64_t data, bool is_signed, int radix); // NOT null-terminated, the size of the string is returned.
-STR_API int STR_FloatToStr_(char* buffer, double value, int min_decimals); // NOT null-terminated, the size of the string is returned.
-
-STR_API int STR_CodepointToUTF8(char* output, uint32_t codepoint); // returns the number of bytes written
+STR_API size_t STR_CodepointToUTF8(char* output, uint32_t codepoint); // returns the number of bytes written
 STR_API uint32_t STR_UTF8ToCodepoint(STR_View str);
-STR_API int STR_CodepointSizeAsUTF8(uint32_t codepoint);
+STR_API size_t STR_CodepointSizeAsUTF8(uint32_t codepoint);
 
 // Returns the character on `byteoffset`, then increments it.
 // Will returns 0 if byteoffset >= str.size
-STR_API uint32_t STR_NextCodepoint(STR_View str, int* byteoffset);
+STR_API uint32_t STR_NextCodepoint(STR_View str, size_t* byteoffset);
 
 // Decrements `bytecounter`, then returns the character on it.
 // Will returns 0 if byteoffset < 0
-STR_API uint32_t STR_PrevCodepoint(STR_View str, int* byteoffset);
+STR_API uint32_t STR_PrevCodepoint(STR_View str, size_t* byteoffset);
 
-STR_API int STR_CodepointCount(STR_View str);
+STR_API size_t STR_CodepointCount(STR_View str);
 
 // -- String view utilities -------------
 
-STR_API STR_View STR_Advance(STR_View* str, int size);
+STR_API STR_View STR_Advance(STR_View* str, size_t size);
 
 STR_API STR_View STR_BeforeFirst(STR_View str, uint32_t codepoint); // returns `str` if no codepoint is found
 STR_API STR_View STR_BeforeLast(STR_View str, uint32_t codepoint);  // returns `str` if no codepoint is found
 STR_API STR_View STR_AfterFirst(STR_View str, uint32_t codepoint);  // returns `str` if no codepoint is found
 STR_API STR_View STR_AfterLast(STR_View str, uint32_t codepoint);   // returns `str` if no codepoint is found
 
-STR_API bool STR_Find(STR_View str, STR_View substr, int* out_offset);
-STR_API bool STR_FindC(STR_View str, const char* substr, int* out_offset);
+STR_API bool STR_Find(STR_View str, STR_View substr, size_t* out_offset);
+STR_API bool STR_FindC(STR_View str, const char* substr, size_t* out_offset);
 STR_API STR_View STR_ParseUntilAndSkip(STR_View* remaining, uint32_t codepoint); // cuts forward until `codepoint` or end of the string is reached and an empty string is returned
-STR_API bool STR_FindFirst(STR_View str, uint32_t codepoint, int* out_offset);
-STR_API bool STR_FindLast(STR_View str, uint32_t codepoint, int* out_offset);
-STR_API bool STR_LastIdxOfAnyChar(STR_View str, STR_View chars, int* out_index);
+STR_API bool STR_FindFirst(STR_View str, uint32_t codepoint, size_t* out_offset);
+STR_API bool STR_FindLast(STR_View str, uint32_t codepoint, size_t* out_offset);
+STR_API bool STR_LastIdxOfAnyChar(STR_View str, STR_View chars, size_t* out_index);
 STR_API bool STR_Contains(STR_View str, STR_View substr);
 STR_API bool STR_ContainsC(STR_View str, const char* substr);
 STR_API bool STR_ContainsU(STR_View str, uint32_t codepoint);
@@ -193,9 +190,9 @@ STR_API bool STR_MatchC(const char* a, const char* b);
 STR_API bool STR_MatchCaseInsensitive(STR_View a, STR_View b);
 STR_API bool STR_MatchCaseInsensitiveC(const char* a, const char* b);
 
-STR_API STR_View STR_Slice(STR_View str, int lo, int hi);
-STR_API STR_View STR_SliceBefore(STR_View str, int mid);
-STR_API STR_View STR_SliceAfter(STR_View str, int mid);
+STR_API STR_View STR_Slice(STR_View str, size_t lo, size_t hi);
+STR_API STR_View STR_SliceBefore(STR_View str, size_t mid);
+STR_API STR_View STR_SliceAfter(STR_View str, size_t mid);
 
 // -- IMPLEMENTATION ------------------------------------------------------------
 
@@ -206,7 +203,7 @@ typedef struct STR_ASCIISet {
 static STR_ASCIISet STR_ASCIISetMake(STR_View chars) {
 	STR_ProfEnter();
 	STR_ASCIISet set = {0};
-	for (int i = 0; i < chars.size; i++) {
+	for (size_t i = 0; i < chars.size; i++) {
 		char c = chars.data[i];
 		set.bytes[c / 8] |= 1 << (c % 8);
 	}
@@ -222,7 +219,7 @@ STR_API STR_View STR_ParseUntilAndSkip(STR_View* remaining, uint32_t codepoint) 
 	STR_View line = { remaining->data, 0 };
 
 	for (;;) {
-		int cp_size = 0;
+		size_t cp_size = 0;
 		uint32_t cp = STR_NextCodepoint(*remaining, &cp_size);
 		if (cp == 0) break;
 
@@ -236,32 +233,34 @@ STR_API STR_View STR_ParseUntilAndSkip(STR_View* remaining, uint32_t codepoint) 
 	return line;
 }
 
-STR_API bool STR_FindFirst(STR_View str, uint32_t codepoint, int* out_offset) {
-	for STR_Each(str, r, offset) {
+STR_API bool STR_FindFirst(STR_View str, uint32_t codepoint, size_t* out_offset) {
+	size_t i = 0, i_next = 0;
+	for (uint32_t r; r = STR_NextCodepoint(str, &i_next); i = i_next) {
 		if (r == codepoint) {
-			*out_offset = offset;
+			*out_offset = i;
 			return true;
 		}
 	}
 	return false;
 }
 
-STR_API bool STR_FindLast(STR_View str, uint32_t codepoint, int* out_offset) {
-	for STR_EachReverse(str, r, offset) {
+STR_API bool STR_FindLast(STR_View str, uint32_t codepoint, size_t* out_offset) {
+	size_t i = str.size;
+	for (uint32_t r; r = STR_PrevCodepoint(str, &i);) {
 		if (r == codepoint) {
-			*out_offset = offset;
+			*out_offset = i;
 			return true;
 		}
 	}
 	return false;
 }
 
-STR_API bool STR_LastIdxOfAnyChar(STR_View str, STR_View chars, int* out_index) {
+STR_API bool STR_LastIdxOfAnyChar(STR_View str, STR_View chars, size_t* out_index) {
 	STR_ProfEnter();
 	STR_ASCIISet char_set = STR_ASCIISetMake(chars);
 
 	bool found = false;
-	for (int i = str.size - 1; i >= 0; i--) {
+	for (intptr_t i = str.size - 1; i >= 0; i--) {
 		if (STR_ASCIISetContains(char_set, str.data[i])) {
 			*out_index = i;
 			found = true;
@@ -274,21 +273,21 @@ STR_API bool STR_LastIdxOfAnyChar(STR_View str, STR_View chars, int* out_index) 
 }
 
 STR_API STR_View STR_BeforeFirst(STR_View str, uint32_t codepoint) {
-	int offset = str.size;
+	size_t offset = str.size;
 	STR_FindFirst(str, codepoint, &offset);
 	STR_View result = { str.data, offset };
 	return result;
 }
 
 STR_API STR_View STR_BeforeLast(STR_View str, uint32_t codepoint) {
-	int offset = str.size;
+	size_t offset = str.size;
 	STR_FindLast(str, codepoint, &offset);
 	STR_View result = { str.data, offset };
 	return result;
 }
 
 STR_API STR_View STR_AfterFirst(STR_View str, uint32_t codepoint) {
-	int offset = str.size;
+	size_t offset = str.size;
 	STR_View result = str;
 	if (STR_FindFirst(str, codepoint, &offset)) {
 		result = STR_SliceAfter(str, offset + STR_CodepointSizeAsUTF8(codepoint));
@@ -297,7 +296,7 @@ STR_API STR_View STR_AfterFirst(STR_View str, uint32_t codepoint) {
 }
 
 STR_API STR_View STR_AfterLast(STR_View str, uint32_t codepoint) {
-	int offset = str.size;
+	size_t offset = str.size;
 	STR_View result = str;
 	if (STR_FindLast(str, codepoint, &offset)) {
 		result = STR_SliceAfter(str, offset + STR_CodepointSizeAsUTF8(codepoint));
@@ -313,7 +312,7 @@ STR_API bool STR_MatchCaseInsensitive(STR_View a, STR_View b) {
 	STR_ProfEnter();
 	bool equals = a.size == b.size;
 	if (equals) {
-		for (int i = 0; i < a.size; i++) {
+		for (size_t i = 0; i < a.size; i++) {
 			if (STR_CodepointToLower(a.data[i]) != STR_CodepointToLower(b.data[i])) {
 				equals = false;
 				break;
@@ -332,19 +331,19 @@ STR_API bool STR_MatchCaseInsensitiveC(const char* a, const char* b) {
 	return STR_MatchCaseInsensitive(STR_ToV(a), STR_ToV(b));
 }
 
-STR_API STR_View STR_Slice(STR_View str, int lo, int hi) {
+STR_API STR_View STR_Slice(STR_View str, size_t lo, size_t hi) {
 	STR_ASSERT(hi >= lo && hi <= str.size);
 	STR_View result = { str.data + lo, hi - lo };
 	return result;
 }
 
-STR_API STR_View STR_SliceAfter(STR_View str, int mid) {
+STR_API STR_View STR_SliceAfter(STR_View str, size_t mid) {
 	STR_ASSERT(mid <= str.size);
 	STR_View result = { str.data + mid, str.size - mid };
 	return result;
 }
 
-STR_API STR_View STR_SliceBefore(STR_View str, int mid) {
+STR_API STR_View STR_SliceBefore(STR_View str, size_t mid) {
 	STR_ASSERT(mid <= str.size);
 	STR_View result = { str.data, mid };
 	return result;
@@ -358,11 +357,11 @@ STR_API bool STR_Contains(STR_View str, STR_View substr) {
 	return STR_Find(str, substr, NULL);
 }
 
-STR_API bool STR_Find(STR_View str, STR_View substr, int* out_offset) {
+STR_API bool STR_Find(STR_View str, STR_View substr, size_t* out_offset) {
 	STR_ProfEnter();
 	bool found = false;
-	int i_last = str.size - substr.size;
-	for (int i = 0; i <= i_last; i++) {
+	size_t i_last = str.size - substr.size;
+	for (size_t i = 0; i <= i_last; i++) {
 		if (STR_Match(STR_Slice(str, i, i + substr.size), substr)) {
 			if (out_offset) *out_offset = i;
 			found = true;
@@ -373,13 +372,14 @@ STR_API bool STR_Find(STR_View str, STR_View substr, int* out_offset) {
 	return found;
 };
 
-STR_API bool STR_FindC(STR_View str, const char* substr, int* out_offset) {
+STR_API bool STR_FindC(STR_View str, const char* substr, size_t* out_offset) {
 	STR_View substr_v = STR_ToV(substr);
 	return STR_Find(str, substr_v, out_offset);
 };
 
 STR_API bool STR_ContainsU(STR_View str, uint32_t codepoint) {
-	for STR_Each(str, r, i) {
+	size_t i = 0;
+	for (uint32_t r; r = STR_NextCodepoint(str, &i);) {
 		if (r == codepoint) return true;
 	}
 	return false;
@@ -418,50 +418,9 @@ STR_API bool STR_CutStart(STR_View* str, STR_View start) {
 	return starts_with;
 }
 
-/*STR_API STR_RangeArray STR_Split(STR_Allocator *allocator, STR_View str, char character) {
-	STR_ProfEnter();
-	int required_len = 1;
-	for (int i = 0; i < str.size; i++) {
-		if (str.data[i] == character) required_len++;
-	}
-
-	STR_RangeArray splits = {0};
-	splits.data = (StrRange*)STR_MemAlloc(allocator, required_len * sizeof(StrRange));
-
-	int prev = 0;
-	for (int i = 0; i < str.size; i++) {
-		if (str.data[i] == character) {
-			STR_Range range = {prev, i};
-			splits.data[splits.size++] = range;
-			prev = i + 1;
-		}
-	}
-
-	STR_Range range = {prev, str.size};
-	splits.data[splits.size++] = range;
-	STR_ProfExit();
-	return splits;
-}*/
-
-STR_API STR_View STR_FloatToStr(void* allocator, double value, int min_decimals) {
-	char buffer[100];
-	int size = STR_FloatToStr_(buffer, value, min_decimals);
-	STR_View value_str = { buffer, size };
-	return STR_Clone(allocator, value_str);
-}
-
-STR_API STR_View STR_IntToStr(void* allocator, int value) { return STR_IntToStrEx(allocator, value, true, 10); }
-
-STR_API STR_View STR_IntToStrEx(void* allocator, uint64_t data, bool is_signed, int radix) {
-	char buffer[100];
-	int size = STR_IntToStr_(buffer, data, is_signed, radix);
-	STR_View value_str = { buffer, size };
-	return STR_Clone(allocator, value_str);
-}
-
-STR_API int STR_IntToStr_(char* buffer, uint64_t data, bool is_signed, int radix) {
+STR_API size_t STR_IntToStrBuf(char* buffer, uint64_t data, bool is_signed, int radix) {
 	STR_ASSERT(radix >= 2 && radix <= 16);
-	int offset = 0;
+	size_t offset = 0;
 
 	uint64_t remaining = data;
 
@@ -483,8 +442,8 @@ STR_API int STR_IntToStr_(char* buffer, uint64_t data, bool is_signed, int radix
 	if (is_negative) buffer[offset++] = '-'; // Print minus sign
 
 	// It's now printed in reverse, so let's reverse the digits
-	int i = 0;
-	int j = offset - 1;
+	intptr_t i = 0;
+	intptr_t j = offset - 1;
 	while (i < j) {
 		char temp = buffer[j];
 		buffer[j] = buffer[i];
@@ -497,8 +456,8 @@ STR_API int STR_IntToStr_(char* buffer, uint64_t data, bool is_signed, int radix
 
 // Technique from: https://blog.benoitblanchon.fr/lightweight-float-to-string/
 // - Supports printing up to nine digits after the decimal point
-STR_API int STR_FloatToStr_(char* buffer, double value, int min_decimals) {
-	int offset = 0;
+STR_API size_t STR_FloatToStrBuf(char* buffer, double value, int min_decimals) {
+	size_t offset = 0;
 	if (isnan(value)) {
 		memcpy(buffer + offset, "nan", 3), offset += 3;
 		return offset;
@@ -623,7 +582,7 @@ STR_API int STR_FloatToStr_(char* buffer, double value, int min_decimals) {
 		}
 	}
 
-	offset += STR_IntToStr_(buffer + offset, integralPart, false, 10);
+	offset += STR_IntToStrBuf(buffer + offset, integralPart, false, 10);
 
 	if (decimalPart || min_decimals > 0) { // Write decimals
 		int width = 9;
@@ -643,59 +602,54 @@ STR_API int STR_FloatToStr_(char* buffer, double value, int min_decimals) {
 		}
 		*(--temp_str) = '.';
 
-		int temp_str_len = (int)(temp_buffer + sizeof(temp_buffer) - temp_str);
+		size_t temp_str_len = (size_t)(temp_buffer + sizeof(temp_buffer) - temp_str);
 		memcpy(buffer + offset, temp_str, temp_str_len), offset += temp_str_len;
 	}
 
 	if (exponent < 0) {
 		memcpy(buffer + offset, "e-", 2), offset += 2;
-		offset += STR_IntToStr_(buffer + offset, -exponent, false, 10);
+		offset += STR_IntToStrBuf(buffer + offset, -exponent, false, 10);
 	}
 
 	if (exponent > 0) {
 		memcpy(buffer + offset, "e", 1), offset += 1;
-		offset += STR_IntToStr_(buffer + offset, exponent, false, 10);
+		offset += STR_IntToStrBuf(buffer + offset, exponent, false, 10);
 	}
 	return offset;
 }
 
-/*STR_API STR_View STR_JoinN(STR_Allocator* allocator, STR_Array args) {
-STR_ProfEnter();
-int offset = 0;
-
-for (int i = 0; i < args.size; i++) {
-offset += args.data[i].size;
+STR_API STR_View STR_FloatToStr(void* allocator, double value, int min_decimals) {
+	char buffer[100];
+	size_t size = STR_FloatToStrBuf(buffer, value, min_decimals);
+	STR_View value_str = { buffer, size };
+	return STR_Clone(allocator, value_str);
 }
 
-char *data = (char*)STR_MemAlloc(allocator, offset + 1);
+STR_API STR_View STR_IntToStr(void* allocator, int value) { return STR_IntToStrEx(allocator, value, true, 10); }
 
-offset = 0;
-for (int i = 0; i < args.size; i++) {
-memcpy(data + offset, args.data[i].data, args.data[i].size);
-offset += args.data[i].size;
+STR_API STR_View STR_IntToStrEx(void* allocator, uint64_t data, bool is_signed, int radix) {
+	char buffer[100];
+	size_t size = STR_IntToStrBuf(buffer, data, is_signed, radix);
+	STR_View value_str = { buffer, size };
+	return STR_Clone(allocator, value_str);
 }
-
-*((char*)data + offset) = 0; // Add a null termination for better visualization in a debugger
-STR_View result = {data, offset};
-STR_ProfExit();
-return result;
-}*/
 
 static const uint32_t STR_UTF8_OFFSETS[6] = {
 	0x00000000UL, 0x00003080UL, 0x000E2080UL,
 	0x03C82080UL, 0xFA082080UL, 0x82082080UL
 };
 
-STR_API int STR_CodepointSizeAsUTF8(uint32_t codepoint) {
-	char _[4]; int size = STR_CodepointToUTF8(_, codepoint);
-	return size;
+STR_API size_t STR_CodepointSizeAsUTF8(uint32_t codepoint) {
+	char _[4];
+	return STR_CodepointToUTF8(_, codepoint);
 }
 
-STR_API int STR_CodepointToUTF8(char* output, uint32_t codepoint) {
-	// Original implementation by Jeff Bezanson from https://www.cprogramming.com/tutorial/utf8.c (u8_wc_toutf8, public domain)
+STR_API size_t STR_CodepointToUTF8(char* output, uint32_t codepoint) {
+	// CREDIT: Jeff Bezanson (https://www.cprogramming.com/tutorial/utf8.c, u8_wc_toutf8; public domain)
+	
 	STR_ProfEnter();
 	uint32_t ch = codepoint;
-	int result = 0;
+	size_t result = 0;
 	if (ch < 0x80) {
 		*output++ = (char)ch;
 		result = 1;
@@ -723,16 +677,16 @@ STR_API int STR_CodepointToUTF8(char* output, uint32_t codepoint) {
 }
 
 STR_API uint32_t STR_UTF8ToCodepoint(STR_View str) {
-	int offset = 0;
+	size_t offset = 0;
 	return STR_NextCodepoint(str, &offset);
 }
 
-STR_API uint32_t STR_NextCodepoint(STR_View str, int* byteoffset) {
-	// Original implementation by Jeff Bezanson from https://www.cprogramming.com/tutorial/unicode.html (u8_nextchar, public domain)
+STR_API uint32_t STR_NextCodepoint(STR_View str, size_t* byteoffset) {
+	// CREDIT: Jeff Bezanson (https://www.cprogramming.com/tutorial/unicode.html, u8_nextchar; public domain)
 	if (*byteoffset >= str.size) return 0;
 
 	uint32_t ch = 0;
-	int sz = 0;
+	size_t sz = 0;
 	do {
 		ch <<= 6;
 		ch += (unsigned char)str.data[(*byteoffset)++];
@@ -743,7 +697,7 @@ STR_API uint32_t STR_NextCodepoint(STR_View str, int* byteoffset) {
 	return (uint32_t)ch;
 }
 
-STR_API uint32_t STR_PrevCodepoint(STR_View str, int* byteoffset) {
+STR_API uint32_t STR_PrevCodepoint(STR_View str, size_t* byteoffset) {
 	// See https://www.cprogramming.com/tutorial/unicode.html
 	if (*byteoffset <= 0) return 0;
 
@@ -751,15 +705,14 @@ STR_API uint32_t STR_PrevCodepoint(STR_View str, int* byteoffset) {
 		STR_IsUtf8FirstByte(str.data[--(*byteoffset)]) ||
 		STR_IsUtf8FirstByte(str.data[--(*byteoffset)]) || --(*byteoffset));
 
-	int b = *byteoffset;
+	size_t b = *byteoffset;
 	return STR_NextCodepoint(str, &b);
 }
 
-STR_API int STR_CodepointCount(STR_View str) {
+STR_API size_t STR_CodepointCount(STR_View str) {
 	STR_ProfEnter();
-	int i = 0;
-	for STR_Each(str, r, offset) {
-		(void)offset;
+	size_t i = 0;
+	for (uint32_t r; r = STR_NextCodepoint(str, &i);) {
 		i++;
 	}
 	STR_ProfExit();
@@ -769,14 +722,13 @@ STR_API int STR_CodepointCount(STR_View str) {
 // https://graphitemaster.github.io/aau/#unsigned-multiplication-can-overflow
 inline bool DoesMulOverflow(uint64_t x, uint64_t y) { return y && x > ((uint64_t)-1) / y; }
 inline bool DoesAddOverflow(uint64_t x, uint64_t y) { return x + y < x; }
-//inline bool DoesSubUnderflow(uint64_t x, uint64_t y) { return x - y > x; }
 
 STR_API bool STR_ParseU64Ex(STR_View s, int base, uint64_t* out_value) {
 	STR_ProfEnter();
 	STR_ASSERT(2 <= base && base <= 16);
 
 	uint64_t value = 0;
-	int i = 0;
+	size_t i = 0;
 	for (; i < s.size; i++) {
 		int c = s.data[i];
 		if (c == '_') continue;
@@ -829,8 +781,9 @@ STR_API bool STR_ParseI64Ex(STR_View s, int base, int64_t* out_value) {
 }
 
 STR_API const char* STR_CloneC(void* allocator, const char* str) {
-	char* data = (char*)STR_MemAlloc(allocator, (int)strlen(str) + 1);
-	strcpy(data, str);
+	size_t size = strlen(str) + 1;
+	char* data = (char*)STR_MemAlloc(allocator, size);
+	strcpy_s(data, size, str);
 	return data;
 }
 
@@ -844,7 +797,7 @@ STR_API char* STR_ToC(void* allocator, STR_View str) {
 }
 
 STR_API STR_View STR_ToV(const char* s) {
-	STR_View result = { (char*)s, (int)strlen(s) };
+	STR_View result = { (char*)s, strlen(s) };
 	return result;
 }
 
@@ -860,7 +813,7 @@ STR_API void STR_Free(void* allocator, STR_View str) {
 }
 
 static double STR_ToFloat_(const char* str, int* success) {
-	// Original implementation by Michael Hartmann https://github.com/michael-hartmann/parsefloat/blob/master/strtodouble.c (public domain)
+	// CREDIT: Michael Hartmann (https://github.com/michael-hartmann/parsefloat/blob/master/strtodouble.c; public domain)
 
 	double intpart = 0, fracpart = 0;
 	int sign = +1, size = 0, conversion = 0, exponent = 0;
@@ -900,7 +853,7 @@ static double STR_ToFloat_(const char* str, int* success) {
 	// convert intpart part of decimal point to a float
 	{
 		double f = 1;
-		for (int i = 0; i < size; i++) {
+		for (size_t i = 0; i < size; i++) {
 			int v = str[size - 1 - i] - '0';
 			intpart += v * f;
 			f *= 10;
@@ -923,7 +876,7 @@ static double STR_ToFloat_(const char* str, int* success) {
 
 		// convert fracpart part of decimal point to a float
 		double f = 0.1;
-		for (int i = 0; i < size; i++) {
+		for (size_t i = 0; i < size; i++) {
 			int v = str[i] - '0';
 			fracpart += v * f;
 			f *= 0.1;
@@ -950,7 +903,7 @@ static double STR_ToFloat_(const char* str, int* success) {
 		}
 
 		int f = 1;
-		for (int i = 0; i < size; i++) {
+		for (size_t i = 0; i < size; i++) {
 			int v = str[size - 1 - i] - '0';
 			exponent += v * f;
 			f *= 10;
@@ -976,8 +929,6 @@ STR_API bool STR_ParseFloat(STR_View s, double* out) {
 	char cstr[64] = {0};
 	memcpy(cstr, s.data, s.size);
 
-	// https://github.com/michael-hartmann/parsefloat/blob/master/strtodouble.c
-	char* end;
 	int success;
 	*out = STR_ToFloat_(cstr, &success);
 
@@ -991,9 +942,8 @@ STR_API STR_View STR_Replace(void* allocator, STR_View str, STR_View search_for,
 
 	STR_Builder builder = { allocator };
 
-	int last = str.size - search_for.size;
-
-	for (int i = 0; i <= last;) {
+	size_t last = str.size - search_for.size;
+	for (size_t i = 0; i <= last;) {
 		if (memcmp(str.data + i, search_for.data, search_for.size) == 0) {
 			STR_PrintV(&builder, replace_with);
 			i += search_for.size;
@@ -1011,14 +961,14 @@ STR_API STR_View STR_Replace(void* allocator, STR_View str, STR_View search_for,
 STR_API STR_View STR_ReplaceMulti(void* allocator, STR_View str, STR_Array search_for, STR_Array replace_with) {
 	STR_ProfEnter();
 	STR_ASSERT(search_for.size == replace_with.size);
-	int n = search_for.size;
+	size_t n = search_for.size;
 
 	STR_Builder builder = { allocator };
 
-	for (int i = 0; i < str.size;) {
+	for (size_t i = 0; i < str.size;) {
 
 		bool replaced = false;
-		for (int j = 0; j < n; j++) {
+		for (size_t j = 0; j < n; j++) {
 			STR_View search_for_j = ((STR_View*)search_for.data)[j];
 			if (i + search_for_j.size > str.size) continue;
 
@@ -1041,7 +991,7 @@ STR_API STR_View STR_ReplaceMulti(void* allocator, STR_View str, STR_Array searc
 	return builder.str;
 }
 
-STR_API STR_View STR_Advance(STR_View* str, int size) {
+STR_API STR_View STR_Advance(STR_View* str, size_t size) {
 	STR_ProfEnter();
 	STR_View result = STR_SliceBefore(*str, size);
 	*str = STR_SliceAfter(*str, size);
@@ -1059,7 +1009,7 @@ STR_API STR_View STR_ToLower(void* allocator, STR_View str) {
 	STR_View result = STR_Clone(allocator, str);
 	char* data = (char*)result.data; // normally, strings are const char*, but let's just ignore that here
 
-	for (int i = 0; i < result.size; i++) {
+	for (size_t i = 0; i < result.size; i++) {
 		data[i] = STR_CodepointToLower(result.data[i]);
 	}
 	STR_ProfExit();
@@ -1097,7 +1047,7 @@ STR_API void STR_PrintVA(STR_Builder* s, const char* fmt, va_list args) {
 			} break;
 			case 'f': {
 				char buffer[64];
-				int size = STR_FloatToStr_(buffer, va_arg(args, double), 0);
+				size_t size = STR_FloatToStrBuf(buffer, va_arg(args, double), 0);
 				STR_View value_str = { buffer, size };
 				STR_PrintV(s, value_str);
 			} break;
@@ -1123,7 +1073,7 @@ STR_API void STR_PrintVA(STR_Builder* s, const char* fmt, va_list args) {
 				}
 
 				char buffer[100];
-				int size = STR_IntToStr_(buffer, value, is_signed, radix);
+				size_t size = STR_IntToStrBuf(buffer, value, is_signed, radix);
 				STR_View value_str = { buffer, size };
 				STR_PrintV(s, value_str);
 			} break;
@@ -1163,13 +1113,13 @@ STR_API void STR_BuilderDeinit(STR_Builder* s) {
 }
 
 STR_API void STR_PrintC(STR_Builder* s, const char* string) {
-	STR_View str = { string, (int)strlen(string) };
+	STR_View str = { string, strlen(string) };
 	STR_PrintV(s, str);
 }
 
 STR_API void STR_PrintV(STR_Builder* s, STR_View string) {
-	int capacity = s->capacity;
-	int new_size = s->str.size + string.size;
+	size_t capacity = s->capacity;
+	size_t new_size = s->str.size + string.size;
 
 	while (new_size > capacity) {
 		capacity = capacity == 0 ? 8 : capacity * 2;

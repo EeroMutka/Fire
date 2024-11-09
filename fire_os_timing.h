@@ -11,18 +11,18 @@
 #define FIRE_OS_TIMING_INCLUDED
 
 #ifndef OS_TIMING_API
-#define OS_TIMING_API static
+#define OS_TIMING_API
 #endif
 
 #include <stdint.h>
 
-// You must call OS_TIMING_Init to initialize this library!
+// You must call OS_TIMING_Init to initialize the functionality in this file!
 OS_TIMING_API void OS_TIMING_Init();
 
-OS_TIMING_API uint64_t OS_TIMING_GetTick();
+OS_TIMING_API uint64_t OS_GetTick();
 
 // Returns the duration in seconds between two ticks.
-OS_TIMING_API double OS_TIMING_GetDuration(uint64_t start, uint64_t end);
+OS_TIMING_API double OS_GetDuration(uint64_t start, uint64_t end);
 
 #ifdef /**********/ FIRE_OS_TIMING_IMPLEMENTATION /**********/
 
@@ -44,13 +44,13 @@ OS_TIMING_API void OS_TIMING_Init() {
 	QueryPerformanceFrequency((union _LARGE_INTEGER*)&OS_TIMING_ticks_per_second);
 }
 
-OS_TIMING_API uint64_t OS_TIMING_GetTick() {
+OS_TIMING_API uint64_t OS_GetTick() {
 	uint64_t tick;
 	QueryPerformanceCounter((union _LARGE_INTEGER*)&tick);
 	return tick;
 }
 
-OS_TIMING_API double OS_TIMING_GetDuration(uint64_t start, uint64_t end) {
+OS_TIMING_API double OS_GetDuration(uint64_t start, uint64_t end) {
 	// https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps
 	uint64_t elapsed = end - start;
 	return (double)elapsed / (double)OS_TIMING_ticks_per_second;
