@@ -1,6 +1,7 @@
 
 typedef struct UI_DX11_Buffer {
 	ID3D11Buffer* handle;
+	uint32_t size;
 	D3D11_MAPPED_SUBRESOURCE mapped;
 } UI_DX11_Buffer;
 
@@ -80,19 +81,44 @@ static void* UI_DX11_ResizeAndMapBuffer(UI_DX11_Buffer* buffer, uint32_t size, D
 		return NULL;
 	}
 	else {
-		D3D11_BUFFER_DESC desc = {0};
-		desc.ByteWidth = size;
-		desc.Usage = D3D11_USAGE_DYNAMIC;
-		desc.BindFlags = bind_flags;
-		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		// resize if necessary
+		if (size > buffer->size) {
+			D3D11_BUFFER_DESC desc = {0};
+			desc.ByteWidth = size;
+			desc.Usage = D3D11_USAGE_DYNAMIC;
+			desc.BindFlags = bind_flags;
+			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 
-		bool ok = UI_DX11_STATE.device->CreateBuffer(&desc, NULL, &buffer->handle) == S_OK;
-		UI_ASSERT(ok);
+			ID3D11Buffer* new_buffer;
+			bool ok = UI_DX11_STATE.device->CreateBuffer(&desc, NULL, &new_buffer) == S_OK;
+			UI_ASSERT(ok);
 
-		if (buffer->mapped.pData == NULL) {
-			ok = UI_DX11_STATE.dc->Map(buffer->handle, 0, D3D11_MAP_WRITE_DISCARD, 0, &buffer->mapped) == S_OK;
-			UI_ASSERT(ok && buffer->mapped.pData != NULL);
+			D3D11_MAPPED_SUBRESOURCE new_buffer_mapped;
+			ok = UI_DX11_STATE.dc->Map(new_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &new_buffer_mapped) == S_OK;
+			UI_ASSERT(ok);
+			UI_ASSERT(new_buffer_mapped.pData);
+
+			if (buffer->mapped.pData) {
+				UI_ASSERT(buffer->size > 0);
+				// copy existing data over to the new buffer
+				memcpy(new_buffer_mapped.pData, buffer->mapped.pData, buffer->size);
+			}
+
+			if (buffer->handle) {
+				buffer->handle->Release();
+			}
+
+			buffer->handle = new_buffer;
+			buffer->size = size;
+			buffer->mapped = new_buffer_mapped;
 		}
+
+		// map if necessary
+		if (buffer->mapped.pData == NULL) {
+			bool ok = UI_DX11_STATE.dc->Map(buffer->handle, 0, D3D11_MAP_WRITE_DISCARD, 0, &buffer->mapped) == S_OK;
+			UI_ASSERT(ok);
+		}
+
 		return buffer->mapped.pData;
 	}
 }

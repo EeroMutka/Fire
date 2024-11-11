@@ -606,6 +606,7 @@ UI_API UI_ValTextState* UI_AddValText(UI_Box* box, UI_Size w, UI_Size h, UI_Text
 			if (UI_STATE.inputs.get_clipboard_string_fn) {
 				STR_View str = UI_STATE.inputs.get_clipboard_string_fn(UI_STATE.inputs.user_data);
 				*selection = UI_TextReplaceRange(text, selection->_[0], selection->_[1], str);
+				selection->_[0] = selection->_[1];
 			}
 		}
 

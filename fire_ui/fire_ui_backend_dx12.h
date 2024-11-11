@@ -145,6 +145,7 @@ static void UI_DX12_ResizeAndMapBuffer(UI_DX12_Buffer* buffer, uint32_t size) {
 				// copy existing data over to the new buffer
 				memcpy(new_buffer_mapped_ptr, buffer->mapped_ptr, buffer->size);
 			}
+			
 			if (buffer->handle) {
 				buffer->handle->Release();
 			}
