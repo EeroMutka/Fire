@@ -36,11 +36,12 @@ static float UI_XOffsetFromColumn(int col, STR_View line, UI_Font font) {
 	UI_ProfEnter();
 	float x = 0.f;
 
+	int iter_col = 0;
 	size_t i = 0, i_next = 0;
 	for (uint32_t r; r = STR_NextCodepoint(line, &i_next); i = i_next) {
-		if (i == col) break;
+		if (iter_col == col) break;
 		x += UI_GlyphAdvance(r, font);
-		i++;
+		iter_col++;
 	}
 
 	UI_ProfExit();
@@ -191,7 +192,7 @@ static void UI_MoveMarkByWord(UI_Mark* mark, const UI_Text* text, int dir) {
 
 	for (; r = next_codepoint_fn(UI_TextToStr(*text), &byteoffset); i++) {
 		bool whitespace = r == ' ' || r == '\t';
-		bool alnum = (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_';
+		bool alnum = (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r > 127;
 
 		if (i == 0 && r == '\n') break; // TODO: move to next line
 

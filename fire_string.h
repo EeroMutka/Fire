@@ -73,9 +73,6 @@ typedef struct { STR_View* data; size_t size; } STR_Array;
 
 #define STR_IsUtf8FirstByte(c) (((c) & 0xC0) != 0x80) /* is c the start of a utf8 sequence? */
 
-//#define STR_Each(str, r, i) (size_t i=0, r = 0, i##_next=0; (r=STR_NextCodepoint(str, &i##_next)); i=i##_next)
-//#define STR_EachReverse(str, r, i) (size_t i=str.size, r = 0; r=STR_PrevCodepoint(str, &i);)
-
 typedef struct STR_Formatter {
 	void (*print)(STR_Builder* s, struct STR_Formatter* self);
 } STR_Formatter;
@@ -711,12 +708,13 @@ STR_API uint32_t STR_PrevCodepoint(STR_View str, size_t* byteoffset) {
 
 STR_API size_t STR_CodepointCount(STR_View str) {
 	STR_ProfEnter();
+	size_t count = 0;
 	size_t i = 0;
 	for (uint32_t r; r = STR_NextCodepoint(str, &i);) {
-		i++;
+		count++;
 	}
 	STR_ProfExit();
-	return i;
+	return count;
 }
 
 // https://graphitemaster.github.io/aau/#unsigned-multiplication-can-overflow

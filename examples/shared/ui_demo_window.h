@@ -120,15 +120,18 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 	UI_PushScrollArea(main_scroll_area, UI_SizeFlex(1.f), UI_SizeFlex(1.f), 0, 0, 0);
 
 	UI_Box* click_me = UI_BOX();
-	UI_AddButton(click_me, UI_SizeFit(), UI_SizeFit(), 0, "Click me!");
+	UI_AddButton(click_me, UI_SizeFit(), UI_SizeFit(), 0, "Button 1");
 	if (UI_Clicked(click_me)) {
-		printf("Button says thanks you!\n");
+		printf("\"Yay, thanks for clicking me!\", said Button 1.\n");
 	}
 
 	UI_AddBox(UI_BOX(), 0.f, 5.f, 0); // padding
 
 	UI_Box* another_button = UI_BOX();
-	UI_AddButton(another_button, UI_SizeFit(), UI_SizeFit(), 0, "Another button");
+	UI_AddButton(another_button, UI_SizeFit(), UI_SizeFit(), 0, "Button 2");
+	if (UI_Clicked(another_button)) {
+		printf("\"Ouch, that hurt.\", said Button 2\n");
+	}
 
 	UI_AddBox(UI_BOX(), 0.f, 5.f, 0); // padding
 
