@@ -1,15 +1,12 @@
-// TODO:
-// - it'd be nice to have menus which display some internal variables of fire-UI / things you can use, such as hover state
-// - data table editor
 
-typedef struct {
+struct UIDemoTreeSpecie {
 	UI_Key key;
 	STR_View name;
 	UI_Text text;
 	bool show;
-} UIDemoTreeSpecie;
+};
 
-typedef struct UIDemoState {
+struct UIDemoState {
 	DS_Arena* persist;
 
 	UI_Key deepest_hovered_root;
@@ -19,7 +16,7 @@ typedef struct UIDemoState {
 	UI_Text dummy_text;
 
 	DS_DynArray(UIDemoTreeSpecie) trees;
-} UIDemoState;
+};
 
 static void UIDemoAddTreeSpecie(UIDemoState* state, UI_Key key, STR_View name, STR_View information) {
 	UIDemoTreeSpecie tree = {0};
@@ -299,18 +296,6 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 		UI_Box* scroll_area = UI_BOX();
 		UI_PushScrollArea(scroll_area, UI_SizeFlex(1.f), area_size, UI_BoxFlag_DrawBorder, 0, 0);
-
-		//const char* lorem_ipsum_lines[] = {
-		//	"Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
-		//	"In sagittis in enim a aliquam.",
-		//	"Curabitur congue metus volutpat mi accumsan, ac dapibus augue euismod.",
-		//	"Praesent nec est mollis quam feugiat tincidunt.",
-		//	"Mauris ut ipsum tristique, commodo enim eu, consectetur odio.",
-		//	"Mauris eget consectetur risus.",
-		//	"Curabitur aliquam orci laoreet tortor varius feugiat.",
-		//	"Phasellus dapibus laoreet imperdiet.",
-		//	"Pellentesque at molestie lectus.",
-		//};
 
 		for (int i = 0; i < button_count; i++) {
 			STR_View button_text = STR_Form(UI_FrameArena(), "Button %d", i);
