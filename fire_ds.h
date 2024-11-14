@@ -31,7 +31,7 @@
 
 #ifndef DS_ASSERT
 #include <assert.h>
-#define DS_ASSERT(x) DS_ASSERT(x)
+#define DS_ASSERT(x) assert(x)
 #endif
 
 #ifndef DS_API
