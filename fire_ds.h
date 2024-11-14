@@ -29,9 +29,9 @@
 #define DS_ProfExit()
 #endif
 
-#ifndef DS_ASSERT_OVERRIDE
+#ifndef DS_ASSERT
 #include <assert.h>
-#define DS_ASSERT(x) assert(x)
+#define DS_ASSERT(x) DS_ASSERT(x)
 #endif
 
 #ifndef DS_API
@@ -624,7 +624,7 @@ static inline bool DS_BucketArrayIter(DS_BucketArrayRaw* list, void** bucket, ui
 }
 
 static inline DS_BucketArrayIndex DS_BucketArrayFirstIndexRaw(DS_BucketArrayRaw* array) {
-	assert(array->count > 0);
+	DS_ASSERT(array->count > 0);
 	DS_BucketArrayIndex index = {array->first_bucket, 0};
 	return index;
 }
@@ -1381,14 +1381,14 @@ void* DS_Realloc_Impl(void* old_ptr, int new_size, int new_alignment) {
 		char* pages = VirtualAlloc(NULL, new_size + 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 		uint32_t old_protect;
 		BOOL ok = VirtualProtect(pages + DS_AlignUpPow2_(new_size, 4096), 4096, PAGE_NOACCESS, &old_protect);
-		assert(ok == 1 && old_protect == PAGE_READWRITE);
+		DS_ASSERT(ok == 1 && old_protect == PAGE_READWRITE);
 		result = pages + (DS_AlignUpPow2_(new_size, 4096) - new_size);
 #else
 		// protect before
 		char* pages = VirtualAlloc(NULL, new_size + 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 		uint32_t old_protect;
 		BOOL ok = VirtualProtect(pages, 4096, PAGE_NOACCESS, &old_protect);
-		assert(ok == 1 && old_protect == PAGE_READWRITE);
+		DS_ASSERT(ok == 1 && old_protect == PAGE_READWRITE);
 		result = pages + 4096;
 #endif
 	}
