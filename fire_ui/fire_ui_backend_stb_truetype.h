@@ -130,7 +130,7 @@ static UI_CachedGlyph UI_STBTT_GetCachedGlyph(uint32_t codepoint, UI_Font font) 
 
 		UI_STBTT_AtlasSlotInfo atlas_slot = UI_STBTT_AtlasAllocateSlot(UI_Max(glyph_w, glyph_h));
 
-		uint8_t* glyph_data = (uint8_t*)DS_ArenaPush(&UI_STATE.frame_arena, glyph_w*glyph_h);
+		uint8_t* glyph_data = (uint8_t*)DS_ArenaPush(UI_TEMP, glyph_w*glyph_h);
 		memset(glyph_data, 0, glyph_w*glyph_h);
 		stbtt_MakeGlyphBitmapSubpixel(&font_data->font_info, glyph_data, glyph_w, glyph_h, glyph_w, scale, scale, 0.f, 0.f, glyph_index);
 
@@ -287,7 +287,7 @@ static void UI_STBTT_AtlasFreeSlot(int slot_index) {
 }
 
 static void UI_STBTT_FreeUnusedGlyphs() {
-	DS_DynArray(UI_CachedGlyphKey) unused_glyphs = {&UI_STATE.frame_arena};
+	DS_DynArray(UI_CachedGlyphKey) unused_glyphs = {UI_TEMP};
 
 	DS_ForMapEach(UI_CachedGlyphKey, UI_STBTT_CachedGlyph, &UI_STBTT_STATE.glyph_map, IT) {
 		if (!IT.value->used_this_frame) {

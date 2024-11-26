@@ -186,26 +186,29 @@ static void UI_ColorPickerValueSliderDraw(UI_Box* box) {
 }
 
 static void UI_DrawColorPickerBox(UI_Box* box) {
-	UI_DrawRect(box->computed_rect, box->draw_args->opaque_bg_color);
+	__debugbreak();
+	//UI_DrawRect(box->computed_rect, box->draw_args->opaque_bg_color);
 }
 
 static void UI_DrawColorPickerBoxTransparent(UI_Box* box) {
-	UI_DrawRect(box->computed_rect, UI_WHITE);
-
-	float cell_size = box->computed_expanded_size.x / 4.f;
-	for (int y = 0; y < 4; y++) {
-		for (int x = (y & 1); x < 4; x += 2) {
-			UI_Vec2 min = {box->computed_position.x + (float)x * cell_size, box->computed_position.y + (float)y * cell_size};
-			UI_Vec2 max = {min.x + cell_size, min.y + cell_size};
-			UI_DrawRect(UI_RECT{min, max}, UI_LIGHTGRAY);
-		}
-	}
-
-	UI_DrawRect(box->computed_rect, box->draw_args->opaque_bg_color);
+	__debugbreak();
+	//UI_DrawRect(box->computed_rect, UI_WHITE);
+	//
+	//float cell_size = box->computed_expanded_size.x / 4.f;
+	//for (int y = 0; y < 4; y++) {
+	//	for (int x = (y & 1); x < 4; x += 2) {
+	//		UI_Vec2 min = {box->computed_position.x + (float)x * cell_size, box->computed_position.y + (float)y * cell_size};
+	//		UI_Vec2 max = {min.x + cell_size, min.y + cell_size};
+	//		UI_DrawRect(UI_RECT{min, max}, UI_LIGHTGRAY);
+	//	}
+	//}
+	//
+	//UI_DrawRect(box->computed_rect, box->draw_args->opaque_bg_color);
 }
 
 UI_API void UI_AddColorPicker(UI_Box* box, float* hue, float* saturation, float* value, float* alpha) {
-	UI_AddBox(box, UI_SizeFit(), UI_SizeFit(), UI_BoxFlag_Horizontal);
+	__debugbreak();
+	/*UI_AddBox(box, UI_SizeFit(), UI_SizeFit(), UI_BoxFlag_Horizontal);
 	UI_PushBox(box);
 	UI_AddHueSaturationCircle(UI_BBOX(box), 200.f, hue, saturation);
 
@@ -349,5 +352,5 @@ UI_API void UI_AddColorPicker(UI_Box* box, float* hue, float* saturation, float*
 
 	UI_HueSaturationValueEditData data = {*hue, *saturation, *value};
 	UI_BoxAddVar(sat_slider_box, UI_GetHueSaturationValueEditDataKey(), &data);
-	UI_BoxAddVar(val_slider_box, UI_GetHueSaturationValueEditDataKey(), &data);
+	UI_BoxAddVar(val_slider_box, UI_GetHueSaturationValueEditDataKey(), &data);*/
 }

@@ -1,6 +1,6 @@
 // fire_build.h - by Eero Mutka (https://eeromutka.github.io/)
 //
-// This library lets you build C/C++ code or generate Visual Studio projects directly from code.
+// This library lets you build C/C++ projects directly from code.
 // Only Windows and MSVC are supported targets for time being.
 // 
 // This code is released under the MIT license (https://opensource.org/licenses/MIT).
@@ -99,7 +99,7 @@ typedef BUILD_Array(char) BUILD_StrBuilder;
 struct BUILD_Project {
 	const char* name;
 	BUILD_ProjectOptions opts;
-	BUILD_Array(const char*) source_files;
+	BUILD_Array(const char*) code_files;
 	BUILD_Array(const char*) natvis_files;
 	BUILD_Array(const char*) source_dirs;
 	BUILD_Array(const char*) include_dirs;
@@ -428,9 +428,9 @@ static bool BUILD_GenerateVisualStudioProject(const BUILD_Project* project,
 		BUILD_Print(&s, "</ItemGroup>\n");
 	}
 	
-	for (int i = 0; i < project->source_files.count; i++) {
+	for (int i = 0; i < project->code_files.count; i++) {
 		BUILD_Print(&s, "<ItemGroup>\n");
-		BUILD_Print3(&s, "  <ClCompile Include=\"", project->source_files.data[i], "\" />\n");
+		BUILD_Print3(&s, "  <ClCompile Include=\"", project->code_files.data[i], "\" />\n");
 		BUILD_Print(&s, "</ItemGroup>\n");
 	}
 
@@ -504,7 +504,7 @@ BUILD_API void BUILD_ProjectInit(BUILD_Project* project, const char* name, const
 }
 
 BUILD_API void BUILD_ProjectDeinit(BUILD_Project* project) {
-	BUILD_ArrayFree(&project->source_files);
+	BUILD_ArrayFree(&project->code_files);
 	BUILD_ArrayFree(&project->natvis_files);
 	BUILD_ArrayFree(&project->source_dirs);
 	BUILD_ArrayFree(&project->include_dirs);
@@ -515,7 +515,7 @@ BUILD_API void BUILD_ProjectDeinit(BUILD_Project* project) {
 }
 
 BUILD_API void BUILD_AddSourceFile(BUILD_Project* project, const char* source_file) {
-	BUILD_ArrayPush(&project->source_files, source_file);
+	BUILD_ArrayPush(&project->code_files, source_file);
 }
 
 BUILD_API void BUILD_AddVisualStudioNatvisFile(BUILD_Project* project, const char* natvis_file) {
@@ -567,7 +567,7 @@ static void BUILD_VSWhereLogFn(BUILD_Log* self, const char* message) {
 BUILD_API bool BUILD_CompileProject(BUILD_Project* project, const char* project_directory, const char* relative_build_directory,
 	BUILD_Log* log_or_null)
 {
-	bool ok = project->source_files.count > 0;
+	bool ok = project->code_files.count > 0;
 	
 	BUILD_VSWhereLog vswhere_log = {0};
 	vswhere_log.base.print = BUILD_VSWhereLogFn;
@@ -683,9 +683,9 @@ BUILD_API bool BUILD_CompileProject(BUILD_Project* project, const char* project_
 			if (project->opts.c_runtime_library_debug) __debugbreak(); // TODO
 			if (project->opts.c_runtime_library_dll)   __debugbreak(); // TODO
 
-			for (int i = 0; i < project->source_files.count; i++) {
+			for (int i = 0; i < project->code_files.count; i++) {
 				BUILD_WPrint(&msvc_args, L" \"");
-				BUILD_WPrintUTF8(&msvc_args, project->source_files.data[i]);
+				BUILD_WPrintUTF8(&msvc_args, project->code_files.data[i]);
 				BUILD_WPrint(&msvc_args, L"\"");
 			}
 

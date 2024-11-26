@@ -64,7 +64,7 @@ UI_API void UI_AddValArray(UI_Box* box, const char* name, void* array, int array
 
 			UI_Box* arranger = UI_BBOX(elem);
 			UI_AddArranger(arranger, UI_SizeFit(), UI_SizeFit());
-			arranger->text = STR_Form(UI_FrameArena(), "%d.", i);
+			arranger->text = STR_Form(UI_TEMP, "%d.", i);
 
 			UI_Box* user_box = UI_BBOX(elem);
 			UI_AddBox(user_box, UI_SizeFlex(1.f), UI_SizeFit(), 0);
@@ -135,7 +135,7 @@ UI_API void UI_AddFmt(UI_Box* box, const char* fmt, ...) {
 	UI_AddBox(box, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 	UI_PushBox(box);
 
-	STR_Builder current_string = {UI_FrameArena()};
+	STR_Builder current_string = {UI_TEMP};
 
 	int section_index = 0;
 	for (const char* c = fmt; *c; c++) {
@@ -163,7 +163,7 @@ UI_API void UI_AddFmt(UI_Box* box, const char* fmt, ...) {
 				//	STR_PrintV(s, va_arg(args, STR_View));
 				//} break;
 			case '%': {
-				STR_PrintC(&current_string, "%");
+				STR_Print(&current_string, STR_V("%"));
 			} break;
 			case 't': {
 				UI_InfoFmtFinishCurrent_(box, &current_string, &section_index);
@@ -171,7 +171,7 @@ UI_API void UI_AddFmt(UI_Box* box, const char* fmt, ...) {
 				UI_Box* val_box = UI_KBOX(UI_HashInt(box->key, section_index));
 				if (editable) {
 					UI_Text* val = va_arg(args, UI_Text*);
-					UI_AddValText(val_box, UI_SizeFlex(1.f), UI_SizeFit(), val);
+					UI_AddValText(val_box, UI_SizeFlex(1.f), UI_SizeFit(), val, NULL);
 				} else {
 					UI_Text val = va_arg(args, UI_Text);
 					__debugbreak(); // TODO: read-only text
@@ -262,7 +262,7 @@ UI_API void UI_AddFmt(UI_Box* box, const char* fmt, ...) {
 		}
 		else {
 			STR_View character_str = { c, 1 };
-			STR_PrintV(&current_string, character_str);
+			STR_Print(&current_string, character_str);
 		}
 	}
 
@@ -289,7 +289,7 @@ static void UI_AddLabelWrappedComputeUnexpandedSize(UI_Box* box, UI_Axis axis, i
 
 		UI_BoxWithTextWrappedData data = {0};
 		data.line_height = (float)box->font.size;
-		DS_ArrInit(&data.line_strings, UI_FrameArena());
+		DS_ArrInit(&data.line_strings, UI_TEMP);
 
 		STR_View remaining = box->text;
 		char* text_end = (char*)box->text.data + box->text.size;
@@ -298,8 +298,8 @@ static void UI_AddLabelWrappedComputeUnexpandedSize(UI_Box* box, UI_Axis axis, i
 		bool line_has_content = false;
 
 		for (;;) {
-			STR_View remaining_before = remaining;
-			STR_ParseUntilAndSkip(&remaining, ' ');
+			STR_View remaining_before;
+			STR_ParseToAndSkip(&remaining, ' ', &remaining_before);
 
 			STR_View word = { remaining_before.data, (size_t)(remaining.data - remaining_before.data) };
 			float word_width = UI_TextWidth(word, box->font);

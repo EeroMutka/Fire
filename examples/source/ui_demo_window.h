@@ -165,7 +165,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_AddBox(row, UI_SizeFlex(1.f), UI_SizeFit(), UI_BoxFlag_Horizontal);
 		UI_PushBox(row);
 		UI_AddLabel(UI_BOX(), UI_SizeFit(), UI_SizeFit(), 0, "Enter text: ");
-		UI_AddValText(UI_BOX(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text);
+		UI_AddValText(UI_BOX(), UI_SizeFlex(1.f), UI_SizeFit(), &state->dummy_text, NULL);
 		UI_PopBox(row);
 	}
 
@@ -226,8 +226,8 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 
 		UI_Box* colorful_text = UI_BOX();
 		UI_AddLabel(colorful_text, UI_SizeFit(), UI_SizeFit(), 0, "This text is very colorful!");
-		colorful_text->draw_args = UI_DrawBoxDefaultArgsInit();
-		colorful_text->draw_args->text_color = UI_HSVToColor(hue, saturation, value, alpha);
+		colorful_text->draw_opts = DS_New(UI_BoxDrawOptArgs, UI_TEMP);
+		colorful_text->draw_opts->text_color = DS_Clone(UI_Color, UI_TEMP, UI_HSVToColor(hue, saturation, value, alpha));
 
 		UI_PopCollapsing(color_picker_section);
 	}
@@ -261,7 +261,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 				UI_PushBox(box);
 
 				UI_AddLabel(UI_BBOX(tree_box), UI_SizeFit(), UI_SizeFit(), 0, "Tree fact:");
-				UI_AddValText(UI_BBOX(tree_box), UI_SizeFit(), UI_SizeFit(), &tree->text);
+				UI_AddValText(UI_BBOX(tree_box), UI_SizeFit(), UI_SizeFit(), &tree->text, NULL);
 				
 				UI_PopBox(box);
 			}
@@ -298,7 +298,7 @@ static void UIDemoBuild(UIDemoState* state, UI_Vec2 window_size) {
 		UI_PushScrollArea(scroll_area, UI_SizeFlex(1.f), area_size, UI_BoxFlag_DrawBorder, 0, 0);
 
 		for (int i = 0; i < button_count; i++) {
-			STR_View button_text = STR_Form(UI_FrameArena(), "Button %d", i);
+			STR_View button_text = STR_Form(UI_TEMP, "Button %d", i);
 			UI_Box* button = UI_KBOX(UI_HashInt(UI_KEY(), i));
 			UI_AddButton(button, UI_SizeFit(), UI_SizeFit(), 0, button_text);
 			if (UI_Clicked(button)) {

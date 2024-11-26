@@ -1,3 +1,5 @@
+#ifdef UI_DEMO_DX11
+
 // For debug mode, uncomment this line:
 //#define UI_DX11_DEBUG_MODE
 
@@ -38,7 +40,7 @@
 #include "fire_ui/fire_ui_color_pickers.c"
 #include "fire_ui/fire_ui_extras.c"
 
-#include "../shared/ui_demo_window.h"
+#include "ui_demo_window.h"
 
 //// Globals ///////////////////////////////////////////////
 
@@ -205,3 +207,5 @@ int main() {
 
 	AppDeinit();
 }
+
+#endif // UI_DEMO_DX11

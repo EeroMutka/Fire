@@ -1,6 +1,6 @@
 
 static void* UI_OS_GetClipboardAlloc(size_t size, void* alloc_data) {
-	return DS_ArenaPush(UI_FrameArena(), size);
+	return DS_ArenaPush(UI_TEMP, size);
 }
 
 static STR_View UI_OS_GetClipboardString(void* user_data) {

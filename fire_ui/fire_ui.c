@@ -2,6 +2,7 @@
 
 // -- Global state ---------
 UI_API UI_State UI_STATE;
+UI_API DS_Arena* UI_TEMP;
 // -------------------------
 
 #define UI_TODO() __debugbreak()
@@ -300,10 +301,8 @@ UI_API UI_Selection UI_TextReplaceRange(UI_Text* text, UI_Mark from, UI_Mark to,
 		DS_ArrInsertN(&text->text, byteoffset, insertion.data, (int)insertion.size);
 
 		int lines_count = 0;
-		for (STR_View remaining = insertion;;) {
-			STR_View line_str = STR_ParseUntilAndSkip(&remaining, '\n');
+		for (STR_View line, end = insertion; STR_ParseToAndSkip(&end, '\n', &line);) {
 			lines_count++;
-			if (remaining.size == 0) break;
 		}
 
 		if (lines_count > 1) UI_TODO();
@@ -335,9 +334,9 @@ UI_API UI_ValNumericState* UI_AddValNumeric(UI_Box* box, UI_Size w, UI_Size h, v
 
 	STR_View value_str;
 	if (is_float) {
-		value_str = STR_FloatToStr(UI_FrameArena(), *(double*)value_64_bit, 1);
+		value_str = STR_FloatToStr(UI_TEMP, *(double*)value_64_bit, 1);
 	} else {
-		value_str = STR_IntToStrEx(UI_FrameArena(), *(uint64_t*)value_64_bit, is_signed, 10);
+		value_str = STR_IntToStrEx(UI_TEMP, *(uint64_t*)value_64_bit, is_signed, 10);
 	}
 
 	bool should_enable_text_edit = UI_STATE.selected_box_new == box->key && UI_STATE.selected_box != box->key;
@@ -350,15 +349,15 @@ UI_API UI_ValNumericState* UI_AddValNumeric(UI_Box* box, UI_Size w, UI_Size h, v
 	}
 
 	if (should_enable_text_edit) {
-		data.text = STR_Clone(UI_FrameArena(), value_str);
+		data.text = STR_Clone(UI_TEMP, value_str);
 		data.is_editing_text = true;
 	}
 	
 	if (data.is_editing_text) {
 		UI_Text new_text;
-		UI_TextInit(UI_FrameArena(), &new_text, data.text);
+		UI_TextInit(UI_TEMP, &new_text, data.text);
 		
-		UI_AddValText(box, w, h, &new_text);
+		UI_AddValText(box, w, h, &new_text, NULL);
 
 		data.text = UI_TextToStr(new_text);
 
@@ -493,17 +492,23 @@ static void UI_DrawValTextInnerBox(UI_Box* box) {
 	}
 }
 
-UI_API UI_ValTextState* UI_AddValText(UI_Box* box, UI_Size w, UI_Size h, UI_Text* text) {
+UI_API UI_ValTextState* UI_AddValText(UI_Box* box, UI_Size w, UI_Size h, UI_Text* text, const UI_ValTextOptArgs* optional) {
 	UI_ProfEnter();
 
 	UI_Font font = UI_STATE.default_font;
 
 	UI_AddBox(box, w, h, UI_BoxFlag_Selectable | UI_BoxFlag_DrawBorder | UI_BoxFlag_Clickable);
 	UI_PushBox(box);
+	box->extended_data = (void*)optional;
 
 	UI_Box* inner = UI_BBOX(box);
 	UI_AddLabel(inner, UI_SizeFit(), UI_SizeFit(), 0, STR_V(""));
 	inner->draw = UI_DrawValTextInnerBox;
+	
+	if (optional) {
+		inner->draw_opts = DS_New(UI_BoxDrawOptArgs, UI_TEMP);
+		inner->draw_opts->text_color = optional->text_color;
+	}
 
 	UI_ValTextState* state;
 	bool had_text_edit_state = UI_BoxGetRetainedVar(box, UI_AddValTextDataKey(), &state);
@@ -555,7 +560,7 @@ UI_API UI_ValTextState* UI_AddValText(UI_Box* box, UI_Size w, UI_Size h, UI_Text
 		}
 		
 		if (UI_STATE.inputs.text_input_utf32_length > 0) {
-			STR_Builder text_input = { UI_FrameArena() };
+			STR_Builder text_input = { UI_TEMP };
 			for (int i = 0; i < UI_STATE.inputs.text_input_utf32_length; i++) {
 				STR_PrintU(&text_input, UI_STATE.inputs.text_input_utf32[i]);
 			}
@@ -620,7 +625,7 @@ UI_API UI_ValTextState* UI_AddValText(UI_Box* box, UI_Size w, UI_Size h, UI_Text
 
 	UI_PopBox(box);
 
-	inner->text = STR_Clone(&UI_STATE.frame_arena, UI_TextToStr(*text)); // set text after possibile modifications
+	inner->text = STR_Clone(UI_TEMP, UI_TextToStr(*text)); // set text after possibile modifications
 
 	if (UI_IsHovered(box)) {
 		UI_STATE.outputs.cursor = UI_MouseCursor_I_beam;
@@ -661,7 +666,7 @@ UI_API void UI_AddCheckbox(UI_Box* box, bool* value) {
 UI_API void UI_AddLabel(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, STR_View string) {
 	UI_ProfEnter();
 	UI_AddBox(box, w, h, flags | UI_BoxFlag_HasText);
-	box->text = STR_Clone(&UI_STATE.frame_arena, string);
+	box->text = STR_Clone(UI_TEMP, string);
 	box->inner_padding = UI_DEFAULT_TEXT_PADDING;
 	UI_ProfExit();
 }
@@ -705,7 +710,7 @@ UI_API void UI_PopCollapsing(UI_Box* box) {
 	UI_ProfExit();
 }
 
-UI_API void UI_PushScrollArea(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y) {
+UI_API UI_Vec2 UI_PushScrollArea(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags, int anchor_x, int anchor_y) {
 	UI_ProfEnter();
 
 	UI_Box* content = UI_BBOX(box);
@@ -773,6 +778,12 @@ UI_API void UI_PushScrollArea(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags fla
 			UI_Box* scrollbar = UI_KBOX(y_key);
 			UI_AddBox(scrollbar, size[0], size[1],
 				UI_BoxFlag_PressingStaysWithoutHover | UI_BoxFlag_Clickable | UI_BoxFlag_DrawBorder | UI_BoxFlag_DrawTransparentBackground);
+			
+			float extra_size = 10.f - size[y];
+			if (extra_size > 0.f) {
+				scrollbar->offset._[y] += 0.5f*extra_size;
+				scrollbar->size[y] += extra_size;
+			}
 
 			size[x] = 18.f;
 			size[y] = UI_SizeFlex(1.f);
@@ -830,6 +841,7 @@ UI_API void UI_PushScrollArea(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags fla
 	if (anchor_y == 1) temp_boxes[0]->flags |= UI_BoxFlag_ReverseLayoutY;
 
 	UI_ProfExit();
+	return offset;
 }
 
 UI_API void UI_PopScrollArea(UI_Box* box) {
@@ -889,24 +901,8 @@ UI_API void UI_DrawBox(UI_Box* box) {
 	UI_ProfExit();
 }
 
-static UI_DrawBoxDefaultArgs* UI_DrawBoxDefaultArgsConstDefaults() {
-	static const UI_DrawBoxDefaultArgs args = {
-		{ 250, 255, 255, 255 }, // text_color
-		{ 255, 255, 255, 50 },  // transparent_bg_color
-		{ 50, 50, 50, 255 },    // opaque_bg_color
-		{ 0, 0, 0, 128 },       // border_color
-	};
-	return (UI_DrawBoxDefaultArgs*)&args;
-}
-
-UI_API UI_DrawBoxDefaultArgs* UI_DrawBoxDefaultArgsInit() {
-	return DS_Clone(UI_DrawBoxDefaultArgs, &UI_STATE.frame_arena, *UI_DrawBoxDefaultArgsConstDefaults());
-}
-
 UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	UI_ProfEnter();
-
-	const UI_DrawBoxDefaultArgs* args = box->draw_args;
 
 	if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
 		const float shadow_distance = 10.f;
@@ -916,18 +912,23 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 		UI_DrawRectRounded2(rect, 2.f * shadow_distance, UI_COLOR{ 0, 0, 0, 50 }, UI_COLOR{ 0, 0, 0, 0 }, 2);
 	}
 
+	const UI_BoxDrawOptArgs* opts = box->draw_opts;
+
 	UI_Rect box_rect = box->computed_rect;
 
 	if (box->flags & UI_BoxFlag_DrawTransparentBackground) {
-		UI_DrawRectRounded(box_rect, 4.f, args->transparent_bg_color, 2);
+		UI_Color transparent_bg_color = opts && opts->transparent_bg_color ? *opts->transparent_bg_color : UI_COLOR{ 255, 255, 255, 50 };
+		UI_DrawRectRounded(box_rect, 4.f, transparent_bg_color, 2);
 	}
 
 	if (box->flags & UI_BoxFlag_DrawOpaqueBackground) {
-		UI_DrawRectRounded(box_rect, 4.f, args->opaque_bg_color, 2);
+		UI_Color opaque_bg_color = opts && opts->opaque_bg_color ? *opts->opaque_bg_color : UI_COLOR{ 50, 50, 50, 255 };
+		UI_DrawRectRounded(box_rect, 4.f, opaque_bg_color, 2);
 	}
 
 	if (box->flags & UI_BoxFlag_DrawBorder) {
-		UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, args->border_color);
+		UI_Color border_color = opts && opts->border_color ? *opts->border_color : UI_COLOR{ 0, 0, 0, 128 };
+		UI_DrawRectLinesRounded(box_rect, 2.f, 4.f, border_color);
 	}
 
 	if (box->flags & UI_BoxFlag_Clickable) {
@@ -977,8 +978,9 @@ UI_API void UI_DrawBoxDefault(UI_Box* box) {
 	}
 
 	if (box->flags & UI_BoxFlag_HasText) {
+		UI_Color text_color = opts && opts->text_color ? *opts->text_color : UI_COLOR{ 250, 255, 255, 255 };
 		UI_Vec2 text_pos = UI_AddV2(box->computed_position, box->inner_padding);
-		UI_DrawText(box->text, box->font, text_pos, UI_AlignH_Left, args->text_color, &box_rect);
+		UI_DrawText(box->text, box->font, text_pos, UI_AlignH_Left, text_color, &box_rect);
 	}
 
 	UI_ProfExit();
@@ -1081,7 +1083,7 @@ UI_API bool UI_IsHoveredIdle(UI_Box* box) {
 //}
 
 UI_API void UI_BoxAddVarData(UI_Box* box, UI_Key key, void* ptr, int size) {
-	UI_BoxVariableHeader* header = (UI_BoxVariableHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxVariableHeader) + size);
+	UI_BoxVariableHeader* header = (UI_BoxVariableHeader*)DS_ArenaPush(UI_TEMP, sizeof(UI_BoxVariableHeader) + size);
 	header->key = key;
 	header->next = box->variables;
 	header->debug_size = size;
@@ -1098,7 +1100,7 @@ UI_API bool UI_BoxGetRetainedVarData(UI_Box* box, UI_Key key, void** out_ptr, in
 	}
 	else {
 		// Keep the variable alive by adding it to this frame's box
-		UI_BoxVariableHeader* header = (UI_BoxVariableHeader*)DS_ArenaPush(&UI_STATE.frame_arena, sizeof(UI_BoxVariableHeader) + size);
+		UI_BoxVariableHeader* header = (UI_BoxVariableHeader*)DS_ArenaPush(UI_TEMP, sizeof(UI_BoxVariableHeader) + size);
 		header->key = key;
 		header->next = box->variables;
 		header->debug_size = size;
@@ -1151,7 +1153,7 @@ UI_API bool UI_SelectionMovementInput(UI_Box* box, UI_Key* out_new_selected_box)
 
 	bool result = false;
 	if (UI_IsSelected(box) && box->parent && box->flags & UI_BoxFlag_Selectable) { // UI_BoxFlag_Selectable might have been removed for this new frame
-		if (UI_InputWasPressedOrRepeated(UI_Input_Down) || (UI_InputWasPressedOrRepeated(UI_Input_Tab) && !UI_InputIsDown(UI_Input_Shift))) {
+		if ((UI_InputWasPressedOrRepeated(UI_Input_Tab) && !UI_InputIsDown(UI_Input_Shift))) {
 			UI_Box* n = box;
 			for (;;) {
 				if (n->first_child) {
@@ -1179,7 +1181,7 @@ UI_API bool UI_SelectionMovementInput(UI_Box* box, UI_Key* out_new_selected_box)
 				}
 			}
 		}
-		if (UI_InputWasPressedOrRepeated(UI_Input_Up) || (UI_InputWasPressedOrRepeated(UI_Input_Tab) && UI_InputIsDown(UI_Input_Shift))) {
+		if (UI_InputWasPressedOrRepeated(UI_Input_Tab) && UI_InputIsDown(UI_Input_Shift)) {
 			UI_Box* n = box;
 			for (;;) {
 				// go to the previous node
@@ -1223,7 +1225,7 @@ end:;
 UI_API UI_Box* UI_GetOrAddBox(UI_Key key, bool assert_newly_added) {
 	UI_ProfEnter();
 	
-	UI_Box* box = DS_New(UI_Box, UI_FrameArena());
+	UI_Box* box = DS_New(UI_Box, UI_TEMP);
 	void* box_voidptr = box; // this is annoying...
 	bool newly_added = DS_MapInsert(&UI_STATE.data_from_key, key, box_voidptr);
 	if (assert_newly_added) {
@@ -1248,7 +1250,6 @@ UI_API UI_Box* UI_InitBox(UI_Box* box, UI_Size w, UI_Size h, UI_BoxFlags flags) 
 	box->size[1] = h;
 	box->flags = flags;
 	box->draw = UI_DrawBoxDefault;
-	box->draw_args = UI_DrawBoxDefaultArgsConstDefaults();
 	box->compute_unexpanded_size = UI_BoxComputeUnexpandedSizeDefault;
 
 	if (UI_STATE.mouse_clicking_down_box == box->key && UI_InputIsDown(UI_Input_MouseLeft)) {
@@ -1333,10 +1334,16 @@ UI_API void UI_PopBoxN(UI_Box* box, int n) {
 
 UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Font default_font, UI_Font icons_font) {
 	UI_ProfEnter();
-
+	
+	DS_Arena prev_frame_arena = UI_STATE._prev_frame_arena;
+	UI_STATE._prev_frame_arena = UI_STATE._frame_arena;
+	UI_STATE._frame_arena = prev_frame_arena;
+	DS_ArenaReset(&UI_STATE._frame_arena);
+	UI_TEMP = &UI_STATE._frame_arena;
+	
 	const int max_vertices_default = 4096;
 	const int max_indices_default = 4096*4;
-	
+
 	UI_STATE.default_font = default_font;
 	UI_STATE.icons_font = icons_font;
 
@@ -1351,21 +1358,17 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Font default_font, UI_Font
 	UI_ASSERT(UI_STATE.index_buffer != NULL);
 	
 	UI_STATE.active_texture = NULL;
-	DS_ArrInit(&UI_STATE.draw_commands, &UI_STATE.frame_arena);
+	UI_STATE.active_scissor_rect = UI_RECT{{0.f, 0.f}, {10000000.f, 10000000.f}};
+	DS_ArrInit(&UI_STATE.draw_commands, UI_TEMP);
 	
 	UI_STATE.inputs = *inputs;
 	memset(&UI_STATE.outputs, 0, sizeof(UI_STATE.outputs));
 	
 	UI_ASSERT(UI_STATE.box_stack.count == 1);
 	UI_STATE.mouse_pos = UI_AddV2(UI_STATE.inputs.mouse_position, UI_VEC2{ 0.5f, 0.5f });
-	
-	DS_Arena prev_frame_arena = UI_STATE.prev_frame_arena;
-	UI_STATE.prev_frame_arena = UI_STATE.frame_arena;
-	UI_STATE.frame_arena = prev_frame_arena;
-	DS_ArenaReset(&UI_STATE.frame_arena);
 
 	UI_STATE.prev_frame_data_from_key = UI_STATE.data_from_key;
-	DS_MapInit(&UI_STATE.data_from_key, &UI_STATE.frame_arena);
+	DS_MapInit(&UI_STATE.data_from_key, UI_TEMP);
 	
 	UI_STATE.mouse_clicking_down_box = UI_STATE.mouse_clicking_down_box_new;
 	UI_STATE.mouse_clicking_down_box_new = UI_INVALID_KEY;
@@ -1394,8 +1397,8 @@ UI_API void UI_BeginFrame(const UI_Inputs* inputs, UI_Font default_font, UI_Font
 UI_API void UI_Deinit(void) {
 	UI_ProfEnter();
 	
-	DS_ArenaDeinit(&UI_STATE.frame_arena);
-	DS_ArenaDeinit(&UI_STATE.prev_frame_arena);
+	DS_ArenaDeinit(&UI_STATE._frame_arena);
+	DS_ArenaDeinit(&UI_STATE._prev_frame_arena);
 	
 	UI_ProfExit();
 }
@@ -1406,8 +1409,8 @@ UI_API void UI_Init(DS_Allocator* allocator) {
 	memset(&UI_STATE, 0, sizeof(UI_STATE));
 	UI_STATE.allocator = allocator;
 	
-	DS_ArenaInit(&UI_STATE.prev_frame_arena, DS_KIB(4), allocator);
-	DS_ArenaInit(&UI_STATE.frame_arena, DS_KIB(4), allocator);
+	DS_ArenaInit(&UI_STATE._prev_frame_arena, DS_KIB(4), allocator);
+	DS_ArenaInit(&UI_STATE._frame_arena, DS_KIB(4), allocator);
 	
 	DS_ArrInit(&UI_STATE.box_stack, allocator);
 	DS_ArrPush(&UI_STATE.box_stack, NULL);
@@ -1595,10 +1598,13 @@ static void UI_FinalizeDrawBatch() {
 	uint32_t index_count = UI_STATE.index_buffer_count - first_index;
 	if (index_count > 0) {
 		UI_DrawCommand draw_call = {0};
+		draw_call.scissor_rect = UI_STATE.active_scissor_rect;
 		draw_call.texture = UI_STATE.active_texture;
 		draw_call.first_index = first_index;
 		draw_call.index_count = index_count;
-		DS_ArrPush(&UI_STATE.draw_commands, draw_call);
+		if (draw_call.scissor_rect.max.x > draw_call.scissor_rect.min.x && draw_call.scissor_rect.max.y > draw_call.scissor_rect.min.y) {
+			DS_ArrPush(&UI_STATE.draw_commands, draw_call);
+		}
 	}
 	UI_ProfExit();
 }
@@ -1648,7 +1654,7 @@ UI_API UI_SplittersState* UI_Splitters(UI_Key key, UI_Rect area, UI_Axis X, int 
 	UI_SplittersState* data;
 	UI_BoxGetRetainedVar(UI_KBOX(key), 0, &data); // TODO: go directly from key to data and not through a box
 
-	float* panel_end_offsets = (float*)DS_ArenaPushZero(&UI_STATE.frame_arena, sizeof(float) * panel_count);
+	float* panel_end_offsets = (float*)DS_ArenaPushZero(UI_TEMP, sizeof(float) * panel_count);
 	if (data->panel_end_offsets) {
 		int panel_copy_count = UI_Min(data->panel_count, panel_count);
 		for (int i = 0; i < panel_copy_count; i++) {
@@ -1766,6 +1772,15 @@ UI_API UI_DrawVertex* UI_AddVerticesUnsafe(int count, uint32_t* out_first_vertex
 	
 	UI_ProfExit();
 	return result_data;
+}
+
+UI_API void UI_SetActiveScissorRect(UI_Rect rect) {
+	UI_FinalizeDrawBatch();
+	UI_STATE.active_scissor_rect = rect;
+}
+
+UI_API UI_Rect UI_GetActiveScissorRect() {
+	return UI_STATE.active_scissor_rect;
 }
 
 UI_API uint32_t UI_AddVertices(UI_DrawVertex* vertices, int count) {
@@ -2160,7 +2175,7 @@ UI_API void UI_DrawPolylineEx(const UI_Vec2* points, const UI_Color* colors, int
 
 		UI_Vec2 start_dir, end_dir;
 
-		DS_DynArray(UI_Vec2) line_normals = { UI_FrameArena() };
+		DS_DynArray(UI_Vec2) line_normals = { UI_TEMP };
 		DS_ArrResizeUndef(&line_normals, points_count);
 
 		int last = points_count - 1;

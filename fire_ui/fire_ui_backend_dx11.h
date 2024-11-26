@@ -240,6 +240,7 @@ static void UI_DX11_Init(ID3D11Device* device, ID3D11DeviceContext* dc) {
 	raster_desc.FillMode = D3D11_FILL_SOLID;
 	raster_desc.CullMode = D3D11_CULL_NONE;
 	raster_desc.MultisampleEnable = true; // MSAA
+	raster_desc.ScissorEnable = true;
 	//raster_desc.CullMode = D3D11_CULL_BACK;
 	ok = device->CreateRasterizerState(&raster_desc, &UI_DX11_STATE.raster_state) == S_OK;
 	UI_ASSERT(ok);
@@ -320,6 +321,13 @@ static void UI_DX11_Draw(UI_Outputs* outputs, UI_Vec2 window_size, ID3D11RenderT
 	for (int i = 0; i < outputs->draw_commands_count; i++) {
 		UI_DrawCommand* cmd = &outputs->draw_commands[i];
 
+		D3D11_RECT scissor_rect;
+		scissor_rect.left = (int)cmd->scissor_rect.min.x;
+		scissor_rect.right = (int)cmd->scissor_rect.max.x;
+		scissor_rect.top = (int)cmd->scissor_rect.min.y;
+		scissor_rect.bottom = (int)cmd->scissor_rect.max.y;
+		s->dc->RSSetScissorRects(1, &scissor_rect);
+		
 		ID3D11ShaderResourceView* texture_srv = (ID3D11ShaderResourceView*)cmd->texture;
 		if (!texture_srv) texture_srv = UI_DX11_STATE.atlas_srv;
 

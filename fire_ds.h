@@ -137,14 +137,13 @@ static const DS_AllocatorBase DS_HEAP_ = { DS_HeapAllocatorProc };
 #define DS_MapKOffset(MAP) (int)((uintptr_t)&(MAP)->data->key - (uintptr_t)(MAP)->data)
 #define DS_MapVOffset(MAP) (int)((uintptr_t)&(MAP)->data->value - (uintptr_t)(MAP)->data)
 
-#define DS_BucketElemSize(ARRAY) sizeof((ARRAY)->first_bucket->first_elem)
-#define DS_BucketNextPtrOffset(ARRAY) ((ARRAY)->elems_per_bucket * DS_BucketElemSize(ARRAY))
+#define DS_BucketElemSize(ARRAY) sizeof(*(ARRAY)->buckets->elems)
 
 #ifdef __cplusplus
 template<typename T> static inline T* DS_Clone__(DS_Arena* a, const T& v) { T* x = (T*)DS_ArenaPush(a, sizeof(T)); *x = v; return x; }
-#define DS_Clone_(T, ARENA, VALUE) DS_Clone__<T>(ARENA, VALUE)
+#define DS_Clone_(T, ARENA, ...) DS_Clone__<T>(ARENA, __VA_ARGS__)
 #else
-#define DS_Clone_(T, ARENA, VALUE) ((T*)0 == &(VALUE), (T*)DS_MemClone(ARENA, &(VALUE), sizeof(VALUE)))
+#define DS_Clone_(T, ARENA, ...) ((T*)0 == &(__VA_ARGS__), (T*)DS_MemClone(ARENA, &(__VA_ARGS__), sizeof(__VA_ARGS__)))
 #endif
 
 // -------------------------------------------------------------------
@@ -168,7 +167,7 @@ static inline void DS_ArrBoundsCheck_(bool x) { DS_ASSERT(x); }
 #define DS_GIB(x) ((uint64_t)(x) << 30)
 #define DS_TIB(x) ((uint64_t)(x) << 40)
 
-#define DS_Clone(T, ARENA, VALUE) DS_Clone_(T, ARENA, VALUE)
+#define DS_Clone(T, ARENA, ...) DS_Clone_(T, ARENA, __VA_ARGS__)
 
 #define DS_New(T, ARENA) (T*)DS_Clone(T, (ARENA), DS_LangAgnosticZero(T))
 
@@ -393,21 +392,21 @@ DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena* arena);
 DS_API void DS_ArenaSetMark(DS_Arena* arena, DS_ArenaMark mark);
 DS_API void DS_ArenaReset(DS_Arena* arena);
 
-// -- MemTemp, MemScope ----------------------------------------------
+// -- MemScope ----------------------------------------------
 
 // When passing a temporary arena to a function, it's often not immediately clear from the call-site whether the arena parameter
 // is for temporary allocations within the function or for allocating caller result data. To make this distinction clear,
-// DS_MemTemp can be used for passing temporary arenas.
-typedef struct DS_MemTemp {
+// DS_MemScopeNone can be used for passing temporary arenas only.
+typedef struct DS_MemScopeNone {
 	DS_Arena* temp;
-} DS_MemTemp;
+} DS_MemScopeNone;
 
 // DS_MemScope is used for passing a temporary arena and a results arena to a function.
 // It can also be used for temporary child scopes that get immediately
 // freed using the DS_ScopeBegin / DS_ScopeEnd functions.
 typedef struct DS_MemScope {
 	DS_Arena* arena;
-	DS_MemTemp temp;
+	DS_MemScopeNone temp;
 	DS_ArenaMark reset_arena_to; // Optional field, used by DS_ScopeBegin / DS_ScopeEnd functions.
 } DS_MemScope;
 
@@ -426,7 +425,7 @@ static inline DS_MemScope DS_ScopeBegin(DS_MemScope* parent) {
 	return new_scope;
 }
 
-static inline DS_MemScope DS_ScopeBeginT(DS_MemTemp* parent) {
+static inline DS_MemScope DS_ScopeBeginT(DS_MemScopeNone* parent) {
 	DS_MemScope new_scope = { parent->temp, parent->temp, parent->temp->mark };
 	return new_scope;
 }
@@ -536,52 +535,63 @@ DS_API void DS_ArrResizeRaw(DS_DynArrayRaw* array, int count, const void* value,
 
 // -- Bucket Array --------------------------------------------------------------------
 
-typedef struct DS_BucketArrayIndex {
-	void* bucket;
-	uint32_t slot_index;
-} DS_BucketArrayIndex;
+// DS_BucketArrayIndex encodes the following struct: { uint32_t bucket_index_plus_one; uint32_t slot_index; }
+// This means that the index 0 is always invalid.
+typedef uint64_t DS_BucketArrayIndex;
 
+#define DS_EncodeBucketArrayIndex(BUCKET, SLOT) ((uint64_t)((BUCKET) + 1) | ((uint64_t)(SLOT) << 32))
+#define DS_BucketFromIndex(INDEX) ((uint32_t)(INDEX) - 1)
+#define DS_SlotFromIndex(INDEX)   (uint32_t)((INDEX) >> 32)
+
+// hmm... Maybe we can initialize the bucket array with an option for an inital array allocation.
 #define DS_BucketArray(T) struct { \
 	DS_Allocator* allocator; \
-	struct { T first_elem; }* first_bucket; \
-	struct { T first_elem; }* last_bucket; \
-	uint32_t count; \
+	struct { T* elems; }* buckets; \
+	uint32_t buckets_count; \
+	uint32_t buckets_capacity; \
+	uint32_t elems_per_bucket; \
 	uint32_t last_bucket_end; \
-	uint32_t elems_per_bucket; }
+	uint32_t count : 31; \
+	uint32_t using_small_ptr_array : 1; }
 
-typedef DS_BucketArray(char) DS_BucketArrayRaw;
+typedef DS_BucketArray(void) DS_BucketArrayRaw;
 
-#define DS_BucketArrayInit(ARRAY, ALLOCATOR, ELEMS_PER_BUCKET) DS_BucketArrayInitRaw((DS_BucketArrayRaw*)(ARRAY), (ALLOCATOR), (ELEMS_PER_BUCKET));
+#define DS_BkArrInit(ARRAY, ALLOCATOR, ELEMS_PER_BUCKET) \
+	DS_BucketArrayInitRaw((DS_BucketArrayRaw*)(ARRAY), (ALLOCATOR), (ELEMS_PER_BUCKET));
 
-#define DS_BucketArraySetViewToArray(ARRAY, ELEMS_DATA, ELEMS_COUNT) DS_BucketArraySetViewToArrayRaw((DS_BucketArrayRaw*)(ARRAY), (ELEMS_DATA), (uint32_t)(ELEMS_COUNT))
+#define DS_BkArrInitUsingSmallPtrArray(ARRAY, ALLOCATOR, ELEMS_PER_BUCKET, SMALL_PTR_ARRAY, SMALL_PTR_ARRAY_COUNT) \
+	DS_BucketArrayInitUsingSmallArrayRaw((DS_BucketArrayRaw*)(ARRAY), (ALLOCATOR), (ELEMS_PER_BUCKET), (SMALL_PTR_ARRAY), (SMALL_PTR_ARRAY_COUNT));
 
-#define DS_BucketArrayPush(ARRAY, ...) do { \
-	DS_BucketArrayPushRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY)); \
-	(&(ARRAY)->last_bucket->first_elem)[(ARRAY)->last_bucket_end - 1] = (__VA_ARGS__); \
+#define DS_BkArrPush(ARRAY, ...) do { \
+	DS_BucketArrayPushRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketElemSize(ARRAY)); \
+	(ARRAY)->buckets[(ARRAY)->buckets_count - 1].elems[(ARRAY)->last_bucket_end - 1] = (__VA_ARGS__); \
 	} while (0)
 
-#define DS_BucketArrayPushUndef(ARRAY) DS_BucketArrayPushRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY))
+#define DS_BkArrPushUndef(ARRAY) DS_BucketArrayPushRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketElemSize(ARRAY))
+#define DS_BkArrPushZero(ARRAY)  memset(DS_BucketArrayPushRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketElemSize(ARRAY)), 0, DS_BucketElemSize(ARRAY))
 
-#define DS_BucketArrayPushN(ARRAY, ELEMS_DATA, ELEMS_COUNT)  DS_BucketArrayPushNRaw((DS_BucketArrayRaw*)(ARRAY), (ELEMS_DATA), (uint32_t)(ELEMS_COUNT), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY))
+#define DS_BkArrFirst() DS_EncodeBucketArrayIndex(0, 0)
+#define DS_BkArrLast(ARRAY) DS_EncodeBucketArrayIndex((ARRAY)->buckets_count - 1, (ARRAY)->last_bucket_end - 1)
 
-#define DS_ForBucketArrayEach(T, ARRAY, IT) \
-	struct DS_Concat(_dummy_, __LINE__) {void *bucket; uint32_t slot_index; T *elem;}; \
-	for (struct DS_Concat(_dummy_, __LINE__) IT = {(ARRAY)->first_bucket}; DS_BucketArrayIter((DS_BucketArrayRaw*)ARRAY, &IT.bucket, &IT.slot_index, (void**)&IT.elem, DS_BucketElemSize(ARRAY), DS_BucketNextPtrOffset(ARRAY));)
+#define DS_BkArrNext(ARRAY, INDEX) \
+	(DS_SlotFromIndex(INDEX) == (ARRAY)->elems_per_bucket - 1) ? \
+		DS_EncodeBucketArrayIndex(DS_BucketFromIndex(INDEX) + 1, 0) : \
+		DS_EncodeBucketArrayIndex(DS_BucketFromIndex(INDEX), DS_SlotFromIndex(INDEX) + 1)
 
-#define DS_BucketArrayGetPtr(ARRAY, INDEX) \
-	(void*)((char*)(INDEX).bucket + DS_BucketElemSize(ARRAY)*(INDEX).slot_index)
+#define DS_BkArrEnd(ARRAY) DS_BkArrNext(ARRAY, DS_BkArrLast(ARRAY))
 
-// Read N elems into the memory address at DST starting from the index INDEX and move the index forward by N
-#define DS_BucketArrayGetN(ARRAY, DST, N, INDEX)  DS_BucketArrayGetNRaw((DS_BucketArrayRaw*)(ARRAY), (DST), (uint32_t)(N), (INDEX), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY))
+#define DS_BkArrPushN(ARRAY, ELEMS_DATA, ELEMS_COUNT)  DS_BucketArrayPushNRaw((DS_BucketArrayRaw*)(ARRAY), (ELEMS_DATA), (uint32_t)(ELEMS_COUNT), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY))
 
-#define DS_BucketArrayFirstIndex(ARRAY)      DS_BucketArrayFirstIndexRaw((DS_BucketArrayRaw*)(ARRAY))
+#define DS_BkArrEach(ARRAY, IT) DS_BucketArrayIndex IT = DS_BkArrFirst(), IT##_end = DS_BkArrEnd(ARRAY); IT != IT##_end; IT = DS_BkArrNext(ARRAY, IT)
 
-// - Returns DS_BucketArrayIndex
-//#define DS_BucketArrayGetEnd(ARRAY)        DS_BucketArrayGetEndRaw((DS_BucketArrayRaw*)(ARRAY))
+#define DS_BkArrGet(ARRAY, INDEX) (&(ARRAY)->buckets[DS_BucketFromIndex(INDEX)].elems[DS_SlotFromIndex(INDEX)])
 
-//#define DS_BucketArraySetEnd(ARRAY, END)   DS_BucketArraySetEndRaw((DS_BucketArrayRaw*)(ARRAY), (END))
+// Read N elems into the memory address at DST starting from the index INDEX and move the index forward by N.
+#define DS_BkArrReadN(ARRAY, DST, N, INDEX)  DS_BucketArrayReadNRaw((DS_BucketArrayRaw*)(ARRAY), (DST), (uint32_t)(N), (INDEX), DS_BucketElemSize(ARRAY), (uint32_t)DS_BucketNextPtrOffset(ARRAY))
 
-#define DS_BucketArrayDeinit(ARRAY)        DS_BucketArrayDeinitRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketNextPtrOffset(ARRAY))
+#define DS_BkArrDeinit(ARRAY) DS_BucketArrayDeinitRaw((DS_BucketArrayRaw*)(ARRAY), DS_BucketNextPtrOffset(ARRAY))
+
+// #define DS_BucketArraySetViewToArray(ARRAY, ELEMS_DATA, ELEMS_COUNT) DS_BucketArraySetViewToArrayRaw((DS_BucketArrayRaw*)(ARRAY), (ELEMS_DATA), (uint32_t)(ELEMS_COUNT))
 
 // -- C++ extras -----------------------------------
 
@@ -603,52 +613,30 @@ struct DS_ArrayView {
 	inline T& operator [](size_t i)       { return DS_ArrBoundsCheck((*this), i), data[i]; }
 	inline T operator [](size_t i) const  { return DS_ArrBoundsCheck((*this), i), data[i]; }
 };
+
+#define DS_Dup(ARENA, ...) DS_Clone__(ARENA, __VA_ARGS__)
+
 #endif
 
 // -- IMPLEMENTATION ------------------------------------------------------------------
 
-static inline bool DS_BucketArrayIter(DS_BucketArrayRaw* list, void** bucket, uint32_t* slot_index, void** elem, int elem_size, int next_bucket_ptr_offset) {
-	if (*bucket == list->last_bucket && *slot_index == list->last_bucket_end) {
-		return false; // we're finished
-	}
-
-	if (*slot_index == list->elems_per_bucket) {
-		// go to the next bucket
-		*bucket = *(void**)((char*)*bucket + next_bucket_ptr_offset);
-		*slot_index = 0;
-	}
-
-	*elem = (void*)((char*)*bucket + elem_size * (*slot_index));
-	*slot_index += 1;
-	return true;
-}
-
-static inline DS_BucketArrayIndex DS_BucketArrayFirstIndexRaw(DS_BucketArrayRaw* array) {
-	DS_ASSERT(array->count > 0);
-	DS_BucketArrayIndex index = {array->first_bucket, 0};
-	return index;
-}
-
-//static inline DS_BucketArrayIndex DS_BucketArrayGetEndRaw(DS_BucketArrayRaw* array) {
-//	DS_BucketArrayIndex index = { array->buckets[1], array->last_bucket_end };
-//	return index;
-//}
-
-//static inline void DS_BucketArraySetEndRaw(DS_BucketArrayRaw* array, DS_BucketArrayIndex end) {
-//	if (end.bucket) {
-//		memcpy(&array->buckets[1], &end.bucket, sizeof(void*));
-//	} else {
-//		array->buckets[1] = array->buckets[0];
-//	}
-//	array->last_bucket_end = end.slot_index;
-//}
-
-static inline void DS_BucketArraySetViewToArrayRaw(DS_BucketArrayRaw* array, const void* elems_data, uint32_t elems_count) {
+/*static inline void DS_BucketArraySetViewToArrayRaw(DS_BucketArrayRaw* array, const void* elems_data, uint32_t elems_count) {
 	DS_BucketArrayRaw result = {0};
 	result.last_bucket_end = (int)elems_count;
 	result.count = (int)elems_count;
 	*(const void**)&result.first_bucket = elems_data;
 	*(const void**)&result.last_bucket = elems_data;
+	*array = result;
+}*/
+
+static inline void DS_BucketArrayInitUsingSmallArrayRaw(DS_BucketArrayRaw* array, DS_Allocator* allocator, int elems_per_bucket, void** small_ptr_array, int small_ptr_array_count) {
+	DS_BucketArrayRaw result = {0};
+	result.allocator = allocator;
+	result.elems_per_bucket = elems_per_bucket;
+	result.last_bucket_end = elems_per_bucket;
+	*(void**)&result.buckets = small_ptr_array;
+	result.buckets_count = small_ptr_array_count;
+	result.using_small_ptr_array = 1;
 	*array = result;
 }
 
@@ -656,87 +644,87 @@ static inline void DS_BucketArrayInitRaw(DS_BucketArrayRaw* array, DS_Allocator*
 	DS_BucketArrayRaw result = {0};
 	result.allocator = allocator;
 	result.elems_per_bucket = elems_per_bucket;
+	result.last_bucket_end = elems_per_bucket;
 	*array = result;
 }
 
-static inline void DS_BucketArrayDeinitRaw(DS_BucketArrayRaw* array, int next_bucket_ptr_offset) {
+static inline void DS_BucketArrayDeinitRaw(DS_BucketArrayRaw* array) {
 	DS_ProfEnter();
-	void* bucket = array->first_bucket;
-	for (; bucket;) {
-		void* next_bucket = *(void**)((char*)bucket + next_bucket_ptr_offset);
-		DS_MemFree(array->allocator, bucket);
-		bucket = next_bucket;
+	
+	for (uint32_t i = 0; i < array->buckets_count; i++) {
+		DS_MemFree(array->allocator, array->buckets[i].elems);
+	}
+	
+	if (!array->using_small_ptr_array) {
+		DS_MemFree(array->allocator, array->buckets);
 	}
 
-	DS_BucketArrayRaw empty = {0};
-	*array = empty;
+	DS_DebugFillGarbage(array, sizeof(*array));
 	DS_ProfExit();
 }
 
-static void* DS_BucketArrayGetNextBucket(DS_BucketArrayRaw* array, void* bucket, uint32_t next_bucket_ptr_offset) {
-	// We need to allocate a new bucket. Or take an existing one from the end (only possible if DS_BucketArraySetEnd has been used).
-	void* new_bucket = NULL;
+static void DS_BucketArrayMoveToNextBucket(DS_BucketArrayRaw* array, uint32_t elem_size) {
+	DS_ASSERT(array->elems_per_bucket > 0); // did you remember to call DS_BkArrInit?
 
-	// There may be an unused bucket at the end that we can use instead of allocating a new one.
-	// First try to use that.
-	if (bucket) {
-		new_bucket = *(void**)((char*)bucket + next_bucket_ptr_offset);
+	if (array->buckets_count == array->buckets_capacity) {
+		uint32_t new_cap = array->buckets_capacity == 0 ? 8 : array->buckets_capacity * 2;
+		
+		if (array->using_small_ptr_array) {
+			void* new_buckets = DS_MemAlloc(array->allocator, new_cap * sizeof(void*));
+			memcpy(new_buckets, array->buckets, array->buckets_capacity * sizeof(void*));
+			*(void**)&array->buckets = new_buckets;
+			array->using_small_ptr_array = 0;
+		}
+		else {
+			*(void**)&array->buckets = DS_MemResize(array->allocator, array->buckets, array->buckets_capacity * sizeof(void*), new_cap * sizeof(void*));
+		}
+		
+		array->buckets_capacity = new_cap;
 	}
-
-	if (new_bucket == NULL) {
-		int bucket_size = next_bucket_ptr_offset + sizeof(void*);
-		new_bucket = DS_MemAlloc(array->allocator, bucket_size);
-		*(void**)((char*)new_bucket + next_bucket_ptr_offset) = NULL;
-	}
-
-	if (bucket) {
-		*(void**)((char*)bucket + next_bucket_ptr_offset) = new_bucket;
-	}
-	else {
-		*(void**)&array->first_bucket = new_bucket;
-		*(void**)((char*)new_bucket + next_bucket_ptr_offset) = NULL;
-	}
-
+	
+	array->buckets[array->buckets_count].elems = DS_MemAlloc(array->allocator, elem_size * array->elems_per_bucket);
+	array->buckets_count += 1;
 	array->last_bucket_end = 0;
-	*(void**)&array->last_bucket = new_bucket;
-	return new_bucket;
 }
 
-static void DS_BucketArrayGetNRaw(const DS_BucketArrayRaw* array, void* dst, uint32_t elems_count, DS_BucketArrayIndex* index, uint32_t elem_size, uint32_t next_bucket_ptr_offset) {
+static void DS_BucketArrayReadNRaw(const DS_BucketArrayRaw* array, void* dst, uint32_t elems_count, DS_BucketArrayIndex* index, uint32_t elem_size, uint32_t next_bucket_ptr_offset)
+{
 	while (elems_count > 0) {
-		uint32_t elems_in_bucket = index->bucket == array->last_bucket ? array->last_bucket_end : array->elems_per_bucket;
-		uint32_t slots_left_in_bucket = elems_in_bucket - index->slot_index;
+		uint32_t bucket = DS_BucketFromIndex(*index);
+		uint32_t slot = DS_SlotFromIndex(*index);
+		uint32_t elems_in_bucket = bucket == array->buckets_count - 1 ? array->last_bucket_end : array->elems_per_bucket;
+		uint32_t slots_left_in_bucket = elems_in_bucket - slot;
 		
 		if (elems_count >= slots_left_in_bucket) { // go past this bucket
 			uint32_t bytes_to_add_now = slots_left_in_bucket * elem_size;
 
-			memcpy(dst, (char*)index->bucket + index->slot_index * elem_size, bytes_to_add_now);
+			memcpy(dst, (char*)array->buckets[bucket].elems + slot * elem_size, bytes_to_add_now);
 			dst = (char*)dst + bytes_to_add_now;
 			elems_count -= slots_left_in_bucket;
 
-			// move to the next bucket
-			index->bucket = *(void**)((char*)index->bucket + next_bucket_ptr_offset);
-			index->slot_index = 0;
+			*index = DS_EncodeBucketArrayIndex(bucket + 1, 0);
 		} else {
 			uint32_t bytes_to_add_now = elems_count * elem_size;
-			memcpy(dst, (char*)index->bucket + index->slot_index * elem_size, bytes_to_add_now);
-			index->slot_index += elems_count;
+			memcpy(dst, (char*)array->buckets[bucket].elems + slot * elem_size, bytes_to_add_now);
+			
+			*index = DS_EncodeBucketArrayIndex(bucket, slot + elems_count);
 			break;
 		}
 	}
 }
 
-static void DS_BucketArrayPushNRaw(DS_BucketArrayRaw* array, const void* elems_data, uint32_t elems_count, uint32_t elem_size, uint32_t next_bucket_ptr_offset) {
+static void DS_BucketArrayPushNRaw(DS_BucketArrayRaw* array, const void* elems_data, uint32_t elems_count, uint32_t elem_size) {
 	DS_ProfEnter();
-	void* bucket = array->last_bucket;
 
 	array->count += elems_count;
 	while (elems_count > 0) {
-		if (bucket == NULL || array->last_bucket_end == array->elems_per_bucket) {
-			bucket = DS_BucketArrayGetNextBucket(array, bucket, next_bucket_ptr_offset);
+		if (array->last_bucket_end == array->elems_per_bucket) {
+			DS_BucketArrayMoveToNextBucket(array, elem_size);
 		}
-
+		
+		void* bucket = array->buckets[array->buckets_count - 1].elems;
 		uint32_t slots_left_in_bucket = array->elems_per_bucket - array->last_bucket_end;
+
 		if (elems_count >= slots_left_in_bucket) {
 			uint32_t bytes_to_add_now = slots_left_in_bucket * elem_size;
 
@@ -761,14 +749,14 @@ static void DS_BucketArrayPushNRaw(DS_BucketArrayRaw* array, const void* elems_d
 	DS_ProfExit();
 }
 
-static inline void* DS_BucketArrayPushRaw(DS_BucketArrayRaw* array, uint32_t elem_size, uint32_t next_bucket_ptr_offset) {
+static inline void* DS_BucketArrayPushRaw(DS_BucketArrayRaw* array, uint32_t elem_size) {
 	DS_ProfEnter();
-	void* bucket = array->last_bucket;
 
-	if (bucket == NULL || array->last_bucket_end == array->elems_per_bucket) {
-		bucket = DS_BucketArrayGetNextBucket(array, bucket, next_bucket_ptr_offset);
+	if (array->last_bucket_end == array->elems_per_bucket) {
+		DS_BucketArrayMoveToNextBucket(array, elem_size);
 	}
 
+	void* bucket = array->buckets[array->buckets_count - 1].elems;
 	uint32_t slot_idx = array->last_bucket_end++;
 	void* result = (char*)bucket + elem_size * slot_idx;
 

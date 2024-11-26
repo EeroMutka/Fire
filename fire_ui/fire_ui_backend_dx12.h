@@ -441,6 +441,13 @@ static void UI_DX12_Draw(UI_Outputs* outputs, UI_Vec2 window_size, ID3D12Graphic
 
 	for (int i = 0; i < outputs->draw_commands_count; i++) {
 		UI_DrawCommand* draw = &outputs->draw_commands[i];
+		
+		D3D12_RECT scissor_rect;
+		scissor_rect.left = (int)draw->scissor_rect.min.x;
+		scissor_rect.right = (int)draw->scissor_rect.max.x;
+		scissor_rect.top = (int)draw->scissor_rect.min.y;
+		scissor_rect.bottom = (int)draw->scissor_rect.max.y;
+		command_list->RSSetScissorRects(1, &scissor_rect);
 
 		D3D12_GPU_DESCRIPTOR_HANDLE handle = {};
 		handle.ptr = draw->texture ? (UINT64)draw->texture : UI_DX12_STATE.atlas_gpu_descriptor.ptr;

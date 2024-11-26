@@ -16,13 +16,12 @@
 
 #include <stdint.h>
 
-// You must call OS_TIMING_Init to initialize the functionality in this file!
-OS_TIMING_API void OS_TIMING_Init();
+OS_TIMING_API uint64_t OS_GetCPUFrequency();
 
-OS_TIMING_API uint64_t OS_GetTick();
+OS_TIMING_API uint64_t OS_GetCPUTick();
 
-// Returns the duration in seconds between two ticks.
-OS_TIMING_API double OS_GetDuration(uint64_t start, uint64_t end);
+// Returns the duration in seconds between two CPU ticks.
+OS_TIMING_API double OS_GetDuration(uint64_t cpu_frequency, uint64_t start, uint64_t end);
 
 #ifdef /**********/ FIRE_OS_TIMING_IMPLEMENTATION /**********/
 
@@ -38,22 +37,22 @@ __declspec(dllimport) int __stdcall QueryPerformanceCounter(union _LARGE_INTEGER
 #endif
 // -----------------------------------------------------------
 
-OS_TIMING_API uint64_t OS_TIMING_ticks_per_second;
-
-OS_TIMING_API void OS_TIMING_Init() {
-	QueryPerformanceFrequency((union _LARGE_INTEGER*)&OS_TIMING_ticks_per_second);
+OS_TIMING_API uint64_t OS_GetCPUFrequency() {
+	uint64_t result;
+	QueryPerformanceFrequency((union _LARGE_INTEGER*)&result);
+	return result;
 }
 
-OS_TIMING_API uint64_t OS_GetTick() {
+OS_TIMING_API uint64_t OS_GetCPUTick() {
 	uint64_t tick;
 	QueryPerformanceCounter((union _LARGE_INTEGER*)&tick);
 	return tick;
 }
 
-OS_TIMING_API double OS_GetDuration(uint64_t start, uint64_t end) {
+OS_TIMING_API double OS_GetDuration(uint64_t cpu_frequency, uint64_t start, uint64_t end) {
 	// https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps
 	uint64_t elapsed = end - start;
-	return (double)elapsed / (double)OS_TIMING_ticks_per_second;
+	return (double)elapsed / (double)cpu_frequency;
 }
 
 #endif // FIRE_OS_TIMING_IMPLEMENTATION
