@@ -25,9 +25,8 @@ This is a collection of easy to use programming libraries that are compatible wi
 
 ## Building the Examples
 
-Open `examples/build/examples.sln` in [Visual Studio 2017](https://visualstudio.microsoft.com/) (or higher) to build and run the examples.
-
-The VS project files can be configured using the `examples/gen_projects.c` file. To regenerate the project files, run `examples/gen_projects.bat`.
+If you have [Visual Studio 2022](https://visualstudio.microsoft.com/), you can open `examples/build_projects/examples.sln` to build and run the demos.
+Otherwise, download [premake5](https://premake.github.io/download) and run `premake5.exe [target]` in the `examples` directory to generate project files.
 
 ## Screenshots
 
