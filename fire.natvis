@@ -22,7 +22,7 @@ https://docs.microsoft.com/en-us/visualstudio/debugger/create-custom-views-of-na
 		</Expand>
 	</Type>
 
-	<Type Name="DS_DynArray_&lt;*&gt;">
+	<Type Name="DS_DynArray&lt;*&gt;">
 		<DisplayString>{{data={(void*)data}, count={count}}}</DisplayString>
 		<Expand>
 			<ArrayItems>
