@@ -1340,7 +1340,6 @@ DS_API void DS_ArenaSetMark(DS_Arena* arena, DS_ArenaMark mark) {
 #ifndef DS_NO_MALLOC
 static void DS_InitBasicMemConfig(DS_BasicMemConfig* mem) {
 	mem->ds_info = { &mem->temp_arena };
-	//mem->hatch_temp_allocator = { &mem->ds_, TempAllocatorProc };
 	mem->heap_allocator = { &mem->ds_info, DS_HeapAllocatorProc };
 	DS_ArenaInit(&mem->temp_arena, 4096, (DS_Allocator*)&mem->heap_allocator);	
 	mem->temp = &mem->temp_arena;
