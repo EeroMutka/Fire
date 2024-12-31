@@ -12,7 +12,7 @@
 // If you wish to use a different prefix than DS_, simply do a find and replace in this file.
 // 
 
-#ifndef FIRE_DS_INCLUDED
+#pragma once
 #define FIRE_DS_INCLUDED
 
 #include <stddef.h>
@@ -65,21 +65,30 @@
 #define DS_DEFAULT_ARENA_PUSH_ALIGNMENT 8
 #endif
 
+// DS_Info provides access to "global" info, though currently only being an arena for temporary allocations.
+// Passing a temporary arena to a function as a DS_Info parameter shows the intent better in the callsite compared
+// to passing it as an arena pointer, as it clearly distinguishes it from an arena parameter intended for result allocations.
+typedef struct DS_Info {
+	struct DS_Arena* temp_arena;
+} DS_Info;
+
 typedef struct DS_AllocatorBase {
+	// Pointer to the global info is stored here to make it easy to get the temporary arena
+	// inside functions that just take an allocator or an arena parameter.
+	DS_Info* ds;
+
 	// AllocatorProc is a combination of malloc, free and realloc.
 	// A new allocation is made when new_size > 0.
 	// An existing allocation is freed when new_size == 0; in this case the old_size parameter is ignored.
 	// To resize an existing allocation, pass the existing pointer into `ptr` and its size into `old_size`.
-	void* (*AllocatorProc)(struct DS_AllocatorBase* allocator, void* ptr, size_t old_size, size_t size, size_t align);
+	void* (*allocator_proc)(struct DS_AllocatorBase* allocator, void* ptr, size_t old_size, size_t size, size_t align);
 } DS_AllocatorBase;
 
 // ----------------------------------------------------------
 
-typedef struct DS_Arena DS_Arena;
-
 // For convenience, DS_Allocator is type-defined to be DS_Arena to make it easy to pass an arena pointer to any parameter
-// of type DS_Allocator*, but it can be anything that points to DS_AllocatorBase.
-typedef DS_Arena DS_Allocator;
+// of type DS_Allocator*, but really it can be anything that contains a DS_AllocatorBase as its first member.
+typedef struct DS_Arena DS_Allocator;
 
 typedef struct DS_ArenaBlockHeader {
 	size_t size_including_header;
@@ -91,14 +100,17 @@ typedef struct DS_ArenaMark {
 	char* ptr;
 } DS_ArenaMark;
 
-struct DS_Arena {
-	DS_AllocatorBase base;
+typedef struct DS_Arena {
+	union {
+		DS_AllocatorBase base;
+		struct DS_Info* ds;
+	};
 	DS_ArenaBlockHeader* first_block; // may be NULL
 	DS_ArenaMark mark;
 	DS_Allocator* allocator;
 	size_t block_size;
 	size_t total_mem_reserved;
-};
+} DS_Arena;
 
 // --- Internal helpers -------------------------------------
 
@@ -122,8 +134,17 @@ static void* DS_HeapAllocatorProc(DS_AllocatorBase* allocator, void* ptr, size_t
 		return _aligned_realloc(ptr, size, align);
 	}
 }
-static const DS_AllocatorBase DS_HEAP_ = { DS_HeapAllocatorProc };
-#define DS_HEAP (DS_Allocator*)(&DS_HEAP_)
+
+struct DS_BasicMemConfig {
+	DS_Info ds_info;
+	DS_Arena temp_arena;
+	DS_AllocatorBase heap_allocator;
+
+	// Usage helpers
+	DS_Arena* temp;
+	DS_Info* ds;
+	DS_Allocator* heap;
+};
 #endif
 
 // Results in a compile-error if `elem` does not match the array's element type
@@ -379,7 +400,7 @@ static inline bool DS_MapIter(DS_MapRaw* map, int* i, void** out_key, void** out
 	return true;
 }
 
-// -- Arena interface --------------------------------
+// -- Arena ------------------------------------------
 
 DS_API void DS_ArenaInit(DS_Arena* arena, size_t block_size, DS_Allocator* allocator);
 DS_API void DS_ArenaDeinit(DS_Arena* arena);
@@ -392,62 +413,47 @@ DS_API DS_ArenaMark DS_ArenaGetMark(DS_Arena* arena);
 DS_API void DS_ArenaSetMark(DS_Arena* arena, DS_ArenaMark mark);
 DS_API void DS_ArenaReset(DS_Arena* arena);
 
-// -- MemScope ----------------------------------------------
+// -- Scope ------------------------------------------
 
-// When passing a temporary arena to a function, it's often not immediately clear from the call-site whether the arena parameter
-// is for temporary allocations within the function or for allocating caller result data. To make this distinction clear,
-// DS_MemScopeNone can be used for passing temporary arenas only.
-typedef struct DS_MemScopeNone {
-	DS_Arena* temp;
-} DS_MemScopeNone;
+// DS_Scope provides convenience functions for storing an arena mark as a local and
+// setting it back after some temporary allocations.
+typedef struct DS_Scope {
+	DS_Arena* temp_arena;
+	DS_ArenaMark reset_to;
+} DS_Scope;
 
-// DS_MemScope is used for passing a temporary arena and a results arena to a function.
-// It can also be used for temporary child scopes that get immediately
-// freed using the DS_ScopeBegin / DS_ScopeEnd functions.
-typedef struct DS_MemScope {
-	DS_Arena* arena;
-	DS_MemScopeNone temp;
-	DS_ArenaMark reset_arena_to; // Optional field, used by DS_ScopeBegin / DS_ScopeEnd functions.
-} DS_MemScope;
+static inline DS_Scope DS_ScopePush(DS_Info* ds) {
+	DS_Scope scope = {ds->temp_arena, ds->temp_arena->mark};
+	return scope;
+}
 
-static inline DS_MemScope DS_ScopeBegin(DS_MemScope* parent) {
-	DS_MemScope new_scope = { parent->temp.temp, parent->arena };
-
-	if (parent->arena != parent->temp.temp) {
-		// When working with just one arena, both for results and temporary allocations, the results arena and the temp arena
-		// are allowed to be the same.
-		// If parent->arena = parent->temp, we must not reset at the end. If we did, then any allocations
-		// that should outlive the scope (allocations from parent->arena) would be reset too.
-
-		new_scope.reset_arena_to = parent->temp.temp->mark;
+// Use this version of DS_ScopePush if, within the scope, you're allocating memory into an arena
+// which is intended to outlive the scope.
+static inline DS_Scope DS_ScopePushWithOut(DS_Arena* outliving_arena) {
+	DS_Scope scope = {outliving_arena->ds->temp_arena};
+	
+	// If the same arena is used for allocating memory that is expected to outlive the scope,
+	// we definitely don't want to reset the arena mark on DS_ScopePop!!
+	if (scope.temp_arena != outliving_arena) {
+		scope.reset_to = scope.temp_arena->mark;
 	}
 
-	return new_scope;
+	return scope;
 }
 
-static inline DS_MemScope DS_ScopeBeginT(DS_MemScopeNone* parent) {
-	DS_MemScope new_scope = { parent->temp, parent->temp, parent->temp->mark };
-	return new_scope;
-}
-
-static inline DS_MemScope DS_ScopeBeginA(DS_Arena* arena) {
-	DS_MemScope new_scope = { arena, arena, arena->mark };
-	return new_scope;
-}
-
-static inline void DS_ScopeEnd(DS_MemScope* scope) {
-	if (scope->reset_arena_to.block != NULL) {
-		DS_ArenaSetMark(scope->arena, scope->reset_arena_to);
+static inline void DS_ScopePop(DS_Scope scope) {
+	if (scope.reset_to.block) {
+		DS_ArenaSetMark(scope.temp_arena, scope.reset_to);
 	}
 }
 
 // -- Memory allocation --------------------------------
 
-#define DS_MemAlloc(ALLOCATOR, SIZE)                               (ALLOCATOR)->base.AllocatorProc(&(ALLOCATOR)->base,  NULL,          0, (SIZE), DS_DEFAULT_ALLOCATOR_PROC_ALIGNMENT)
-#define DS_MemResize(ALLOCATOR, PTR, OLD_SIZE, SIZE)               (ALLOCATOR)->base.AllocatorProc(&(ALLOCATOR)->base, (PTR), (OLD_SIZE), (SIZE), DS_DEFAULT_ALLOCATOR_PROC_ALIGNMENT)
-#define DS_MemFree(ALLOCATOR, PTR)                                 (ALLOCATOR)->base.AllocatorProc(&(ALLOCATOR)->base, (PTR),          0,      0, DS_DEFAULT_ALLOCATOR_PROC_ALIGNMENT)
-#define DS_MemAllocAligned(ALLOCATOR, SIZE, ALIGN)                 (ALLOCATOR)->base.AllocatorProc(&(ALLOCATOR)->base,  NULL,          0, (SIZE), ALIGN)
-#define DS_MemResizeAligned(ALLOCATOR, PTR, OLD_SIZE, SIZE, ALIGN) (ALLOCATOR)->base.AllocatorProc(&(ALLOCATOR)->base, (PTR), (OLD_SIZE), (SIZE), ALIGN)
+#define DS_MemAlloc(ALLOCATOR, SIZE)                               (ALLOCATOR)->base.allocator_proc(&(ALLOCATOR)->base,  NULL,          0, (SIZE), DS_DEFAULT_ALLOCATOR_PROC_ALIGNMENT)
+#define DS_MemResize(ALLOCATOR, PTR, OLD_SIZE, SIZE)               (ALLOCATOR)->base.allocator_proc(&(ALLOCATOR)->base, (PTR), (OLD_SIZE), (SIZE), DS_DEFAULT_ALLOCATOR_PROC_ALIGNMENT)
+#define DS_MemFree(ALLOCATOR, PTR)                                 (ALLOCATOR)->base.allocator_proc(&(ALLOCATOR)->base, (PTR),          0,      0, DS_DEFAULT_ALLOCATOR_PROC_ALIGNMENT)
+#define DS_MemAllocAligned(ALLOCATOR, SIZE, ALIGN)                 (ALLOCATOR)->base.allocator_proc(&(ALLOCATOR)->base,  NULL,          0, (SIZE), ALIGN)
+#define DS_MemResizeAligned(ALLOCATOR, PTR, OLD_SIZE, SIZE, ALIGN) (ALLOCATOR)->base.allocator_proc(&(ALLOCATOR)->base, (PTR), (OLD_SIZE), (SIZE), ALIGN)
 
 static inline void* DS_MemClone(DS_Arena* arena, const void* value, int size) { void* p = DS_ArenaPush(arena, size); return memcpy(p, value, size); }
 static inline void* DS_MemCloneAligned(DS_Arena* arena, const void* value, int size, int align) { void* p = DS_ArenaPushAligned(arena, size, align); return memcpy(p, value, size); }
@@ -1213,7 +1219,8 @@ static void* DS_ArenaAllocatorProc(DS_AllocatorBase* allocator, void* ptr, size_
 
 DS_API void DS_ArenaInit(DS_Arena* arena, size_t block_size, DS_Allocator* allocator) {
 	memset(arena, 0, sizeof(*arena));
-	arena->base.AllocatorProc = DS_ArenaAllocatorProc;
+	arena->base.ds = allocator->base.ds;
+	arena->base.allocator_proc = DS_ArenaAllocatorProc;
 	arena->block_size = block_size;
 	arena->allocator = allocator;
 }
@@ -1330,72 +1337,17 @@ DS_API void DS_ArenaSetMark(DS_Arena* arena, DS_ArenaMark mark) {
 	DS_ProfExit();
 }
 
-//#ifndef DS_REALLOC_OVERRIDE
-#if 0
-
-// #define UNICODE // TODO: remove
-// #include <Windows.h> // TODO: remove
-#include <stdlib.h>
-
-void* DS_Realloc_Impl(void* old_ptr, int new_size, int new_alignment) {
-	//static bool inside_allocation_validation = false;
-	//static DS_Set(void*) DS_alive_allocations = {.arena = DS_HEAP};
-	//
-	//if (old_ptr != NULL && !inside_allocation_validation) {
-	//	inside_allocation_validation = true;
-	//
-	//	bool was_alive = DS_SetRemove(&DS_alive_allocations, &old_ptr);
-	//	DS_ASSERT(was_alive);
-	//	
-	//	inside_allocation_validation = false;
-	//}
-
-	// NEXT STEP TODO: allocation map / validation!
-
-	// static char buffer[64*64*64];
-	// static size_t buffer_offset = 0;
-	// if (buffer_offset > sizeof(buffer)) __debugbreak();
-	// void *result = buffer + buffer_offset;
-	// buffer_offset += new_size;
-	// buffer_offset = DS_AlignUpPow2_(buffer_offset, 8);
-
-#if 0 // debug
-#define DS_AlignUpPow2_(x, p) (((x) + (p) - 1) & ~((p) - 1)) // e.g. (x=30, p=16) -> 32
-	void* result = NULL;
-	if (new_size > 0) {
-		new_size = DS_AlignUpPow2_(new_size, 8); // lets do this just to make sure the resulting pointer will be aligned well
-#if 1
-		// protect after
-		char* pages = VirtualAlloc(NULL, new_size + 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-		uint32_t old_protect;
-		BOOL ok = VirtualProtect(pages + DS_AlignUpPow2_(new_size, 4096), 4096, PAGE_NOACCESS, &old_protect);
-		DS_ASSERT(ok == 1 && old_protect == PAGE_READWRITE);
-		result = pages + (DS_AlignUpPow2_(new_size, 4096) - new_size);
-#else
-		// protect before
-		char* pages = VirtualAlloc(NULL, new_size + 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-		uint32_t old_protect;
-		BOOL ok = VirtualProtect(pages, 4096, PAGE_NOACCESS, &old_protect);
-		DS_ASSERT(ok == 1 && old_protect == PAGE_READWRITE);
-		result = pages + 4096;
-#endif
-	}
-#endif
-
-	void* result = _aligned_realloc(old_ptr, new_size, new_alignment);
-
-	//if (result != NULL && !inside_allocation_validation) {
-	//	DS_ASSERT(result != NULL);
-	//	inside_allocation_validation = true;
-	//
-	//	bool newly_added = DS_SetAdd(&DS_alive_allocations, &result);
-	//	DS_ASSERT(newly_added);
-	//
-	//	inside_allocation_validation = false;
-	//}
-
-	return result;
+#ifndef DS_NO_MALLOC
+static void DS_InitBasicMemConfig(DS_BasicMemConfig* mem) {
+	mem->ds_info = { &mem->temp_arena };
+	//mem->hatch_temp_allocator = { &mem->ds_, TempAllocatorProc };
+	mem->heap_allocator = { &mem->ds_info, DS_HeapAllocatorProc };
+	DS_ArenaInit(&mem->temp_arena, 4096, (DS_Allocator*)&mem->heap_allocator);	
+	mem->temp = &mem->temp_arena;
+	mem->ds = &mem->ds_info;
+	mem->heap = (DS_Allocator*)&mem->heap_allocator;
+}
+static void DS_DeinitBasicMemConfig(DS_BasicMemConfig* mem) {
+	DS_ArenaDeinit(&mem->temp_arena);
 }
 #endif
-
-#endif // FIRE_DS_INCLUDED

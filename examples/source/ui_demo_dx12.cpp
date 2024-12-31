@@ -53,7 +53,8 @@ static OS_Window g_window;
 static UI_Inputs g_ui_inputs;
 static UIDemoState g_demo_state;
 
-static DS_Arena g_persist;
+static DS_BasicMemConfig g_mem;
+static DS_Arena g_persist_arena;
 static UI_Font g_base_font;
 static UI_Font g_icons_font;
 
@@ -280,9 +281,10 @@ static D3D12_RESOURCE_BARRIER Transition(ID3D12Resource* resource, D3D12_RESOURC
 }
 
 static void AppInit() {
-    DS_ArenaInit(&g_persist, 4096, DS_HEAP);
+    DS_InitBasicMemConfig(&g_mem);
+    DS_ArenaInit(&g_persist_arena, 4096, g_mem.heap);
 
-    UIDemoInit(&g_demo_state, &g_persist);
+    UIDemoInit(&g_demo_state, &g_persist_arena);
 
     g_window = OS_CreateWindow(g_window_size[0], g_window_size[1], "UI demo (DX12)");
 	
@@ -291,13 +293,13 @@ static void AppInit() {
     D3D12_CPU_DESCRIPTOR_HANDLE atlas_cpu_descriptor = g_dx_srv_heap->GetCPUDescriptorHandleForHeapStart();
     D3D12_GPU_DESCRIPTOR_HANDLE atlas_gpu_descriptor = g_dx_srv_heap->GetGPUDescriptorHandleForHeapStart();
 
-    UI_Init(DS_HEAP);
+    UI_Init(g_mem.heap);
     UI_DX12_Init(g_dx_device, atlas_cpu_descriptor, atlas_gpu_descriptor);
     UI_STBTT_Init(UI_DX12_CreateAtlas, UI_DX12_MapAtlas);
 
     // NOTE: the font data must remain alive across the whole program lifetime!
-    STR_View roboto_mono_ttf = ReadEntireFile(&g_persist, "../../fire_ui/resources/roboto_mono.ttf");
-    STR_View icons_ttf = ReadEntireFile(&g_persist, "../../fire_ui/resources/fontello/font/fontello.ttf");
+    STR_View roboto_mono_ttf = ReadEntireFile(&g_persist_arena, "../../fire_ui/resources/roboto_mono.ttf");
+    STR_View icons_ttf = ReadEntireFile(&g_persist_arena, "../../fire_ui/resources/fontello/font/fontello.ttf");
 
     g_base_font = { UI_STBTT_FontInit(roboto_mono_ttf.data, -4.f), 18 };
     g_icons_font = { UI_STBTT_FontInit(icons_ttf.data, -2.f), 18 };
@@ -323,7 +325,8 @@ static void AppDeinit() {
     g_dx_command_queue->Release();
     g_dx_device->Release();
 
-    DS_ArenaDeinit(&g_persist);
+    DS_ArenaDeinit(&g_persist_arena);
+    DS_DeinitBasicMemConfig(&g_mem);
 }
 
 static void UpdateAndRender() {
